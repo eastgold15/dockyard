@@ -23,7 +23,10 @@ function nodeSocketDuplex(socket: net.Socket) {
   return {
     readable: new ReadableStream<Uint8Array>({
       start(controller) {
-        socket.on("data", (d) => controller.enqueue(new Uint8Array(d)));
+        // bun-types 1.4.4 把 data 标成 string|Buffer（未 setEncoding 时实为 Buffer）
+        socket.on("data", (d) =>
+          controller.enqueue(typeof d === "string" ? new TextEncoder().encode(d) : new Uint8Array(d)),
+        );
         socket.on("end", () => controller.close());
         socket.on("error", (e) => controller.error(e));
       },

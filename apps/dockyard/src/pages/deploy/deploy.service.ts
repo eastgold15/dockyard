@@ -687,7 +687,7 @@ export class DeployService {
       const save = Bun.spawn(["docker", "save", image], { stdout: "pipe" });
       // dockerode 要 Node stream；Bun.stdout 是 Bun 扩展的 Web stream（类型不完全重合）
       await remote.loadImage(
-        Readable.fromWeb(save.stdout as unknown as import("stream/web").ReadableStream),
+        Readable.fromWeb(save.stdout as unknown as import("node:stream/web").ReadableStream),
       );
       if ((await save.exited) !== 0) throw new ServiceError(`docker save 失败: ${image}`);
       await log(`已传输 ${image}`);

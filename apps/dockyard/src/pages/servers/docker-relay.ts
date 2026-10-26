@@ -34,7 +34,12 @@ export class DockerRelay {
             }
           })();
           // 本地 → 远端
-          socket.on("data", (d) => void channel.write(new Uint8Array(d)).catch(() => socket.destroy()));
+          socket.on("data", (d) =>
+            void channel
+              // bun-types 1.4.4 同上：string|Buffer
+              .write(typeof d === "string" ? new TextEncoder().encode(d) : new Uint8Array(d))
+              .catch(() => socket.destroy()),
+          );
           socket.on("end", () => void channel.end().catch(() => {}));
           socket.on("error", () => void channel.close().catch(() => {}));
         })

@@ -6,11 +6,12 @@
  */
 import { createContext, useContext } from "solid-js";
 import type { ServiceState } from "../canvas.model";
+import type { DeployStage } from "../../deploy/deploy.socket";
 
 export type DeployStatus = "queued" | "building" | "transferring" | "deploying" | "success" | "failed";
 
 export interface LiveState {
-  targets: Record<number, { status: DeployStatus | null; running: boolean }>;
+  targets: Record<number, { status: DeployStatus | null; running: boolean; stage: DeployStage | null }>;
   services: Record<string, ServiceState>; // key = `${targetId}:${svcName}`
   // 部署日志增量聚合（SSE log 事件）：按 target 归并当前 run 的行，日志抽屉直接渲染。
   // runId 切换即重置；上限 5000 行防长构建撑爆内存（完整日志永远在服务端 chunks 里）。
@@ -28,7 +29,7 @@ export const LiveContext = createContext<LiveState>(emptyLive);
 /** 返回 accessor：JSX 里 `live().status` 细粒度订阅该目标的实时状态 */
 export const useTargetLive = (targetId: number) => {
   const ctx = useContext(LiveContext);
-  return () => ctx.targets[targetId] ?? { status: null, running: false };
+  return () => ctx.targets[targetId] ?? { status: null, running: false, stage: null };
 };
 
 export const useServiceState = (targetId: number, svcName: string) => {
@@ -45,17 +46,21 @@ export const useDeployLog = (targetId: number) => {
 /** SSE 消息 → LiveState 增量（纯函数；store 侧可配 produce 用，也可整体替换） */
 export function applyLiveEvent(prev: LiveState, msg: Record<string, unknown>): LiveState {
   if (msg.type === "status") {
-    const t = prev.targets[msg.targetId as number] ?? { status: null, running: false };
+    const t = prev.targets[msg.targetId as number] ?? { status: null, running: false, stage: null };
+    // stage 缺省保留旧值（粗 status 事件不带细步骤）；携带才更新
+    const stage = "stage" in msg ? (msg.stage as DeployStage | null) : t.stage;
     return {
       ...prev,
-      targets: { ...prev.targets, [msg.targetId as number]: { ...t, status: msg.status as DeployStatus } },
+      targets: { ...prev.targets, [msg.targetId as number]: { ...t, status: msg.status as DeployStatus, stage } },
     };
   }
   if (msg.type === "running") {
-    const t = prev.targets[msg.targetId as number] ?? { status: null, running: false };
+    const t = prev.targets[msg.targetId as number] ?? { status: null, running: false, stage: null };
+    // 新 run 开播清旧 stage（上一轮的断点不能污染本轮步骤条）
+    const next = msg.running ? { ...t, running: true, stage: null } : { ...t, running: false };
     return {
       ...prev,
-      targets: { ...prev.targets, [msg.targetId as number]: { ...t, running: Boolean(msg.running) } },
+      targets: { ...prev.targets, [msg.targetId as number]: next },
     };
   }
   if (msg.type === "state") {

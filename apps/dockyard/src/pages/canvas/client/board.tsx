@@ -320,10 +320,15 @@ export function Board(props: { lens: () => number | null }) {
         const msg = JSON.parse(e.data) as Record<string, unknown>;
         if (msg.type === "status" || msg.type === "running") {
           const id = msg.targetId as number;
-          const t = live.targets[id] ?? { status: null, running: false };
-          setLive("targets", id, msg.type === "status"
-            ? { ...t, status: msg.status as never }
-            : { ...t, running: Boolean(msg.running) });
+          const t = live.targets[id] ?? { status: null, running: false, stage: null };
+          if (msg.type === "status") {
+            // stage 缺省保留旧值（与 applyLiveEvent 同语义）
+            const stage = "stage" in msg ? (msg.stage as never) : t.stage;
+            setLive("targets", id, { ...t, status: msg.status as never, stage });
+          } else {
+            // 新 run 开播清旧 stage（上一轮的断点不能污染本轮步骤条）
+            setLive("targets", id, msg.running ? { ...t, running: true, stage: null } : { ...t, running: false });
+          }
         } else if (msg.type === "state") {
           setLive("services", `${msg.targetId}:${msg.service}`, msg.state as never);
         } else if (msg.type === "log") {

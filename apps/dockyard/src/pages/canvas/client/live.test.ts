@@ -27,3 +27,26 @@ test("log 事件：行数超上限丢弃最旧行", () => {
   expect(lines[0]).toBe("L100"); // 最旧 100 行被裁
   expect(lines.at(-1)).toBe(`L${LOG_TAIL_LIMIT + 99}`);
 });
+
+test("status 事件：stage 携带才更新，缺省保留旧值", () => {
+  let s: LiveState = emptyLive;
+  s = applyLiveEvent(s, { type: "status", targetId: 1, status: "building", stage: "building" });
+  expect(s.targets[1]).toEqual({ status: "building", running: false, stage: "building" });
+  // 粗 status 事件不带 stage → 保留
+  s = applyLiveEvent(s, { type: "status", targetId: 1, status: "deploying" });
+  expect(s.targets[1]).toEqual({ status: "deploying", running: false, stage: "building" });
+  // 携带即推进
+  s = applyLiveEvent(s, { type: "status", targetId: 1, status: "deploying", stage: "exposing" });
+  expect(s.targets[1]!.stage).toBe("exposing");
+});
+
+test("running 事件：开播清旧 stage（断点不污染新一轮步骤条）", () => {
+  let s: LiveState = emptyLive;
+  s = applyLiveEvent(s, { type: "status", targetId: 1, status: "failed", stage: "building" });
+  s = applyLiveEvent(s, { type: "running", targetId: 1, running: true });
+  expect(s.targets[1]).toEqual({ status: "failed", running: true, stage: null });
+  // 停播不动 stage（终态驻留段正是步骤条断点数据源）
+  s = applyLiveEvent(s, { type: "status", targetId: 1, status: "failed", stage: "deploying" });
+  s = applyLiveEvent(s, { type: "running", targetId: 1, running: false });
+  expect(s.targets[1]!.stage).toBe("deploying");
+});

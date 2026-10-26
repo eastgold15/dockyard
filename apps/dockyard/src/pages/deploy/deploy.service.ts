@@ -26,6 +26,7 @@ import {
   type Harness,
   type Log,
   type SetStatus,
+  type SetStage,
 } from "./pipeline";
 import { dbContainerForm, dbLogicalForm, githubAppForm, localAppForm } from "./forms";
 import {
@@ -447,16 +448,13 @@ export class DeployService {
     const ch = CANVAS_CHANNEL;
     const dep = await this.repo.createDeployment(targetId, { trigger });
     const log = this.makeLog(dep.id, targetId);
-    const setStatus: SetStatus = async (status, patch = {}) => {
-      await this.repo.updateDeployment(dep.id, { status, ...patch });
-      events.publish(ch, { type: "status", targetId, status });
-    };
+    const { setStatus, setStage } = this.makeRunControls(dep, targetId, ch);
 
     events.publish(ch, { type: "running", targetId, running: true });
     events.publish(ch, { type: "status", targetId, status: "queued" });
     try {
       const form = await this.resolveForm(target);
-      await executeForm(this.harness, { target, run: dep, log, setStatus }, form);
+      await executeForm(this.harness, { target, run: dep, log, setStatus, setStage }, form);
       await setStatus("success", { finishedAt: new Date() });
       await log("✅ 部署完成");
       await this.repo.pruneRuns(targetId, RUNS_KEEP);
@@ -467,6 +465,24 @@ export class DeployService {
       await log.flush(); // 终态前推空缓冲，抽屉侧才能即时收尾
       events.publish(ch, { type: "running", targetId, running: false });
     }
+  }
+
+  /**
+   * setStatus/setStage 对：写库 + SSE。status 是粗状态机（六值 CHECK 约束），
+   * stage 是细步骤进度（best-effort）；stage 并入 status 事件推送，前端缺省保留合并。
+   */
+  private makeRunControls(dep: Deployment, targetId: number, ch: string) {
+    let current: Deployment["status"] = dep.status;
+    const setStatus: SetStatus = async (status, patch = {}) => {
+      current = status;
+      await this.repo.updateDeployment(dep.id, { status, ...patch });
+      events.publish(ch, { type: "status", targetId, status });
+    };
+    const setStage: SetStage = async (stage) => {
+      await this.repo.updateDeployment(dep.id, { stage });
+      events.publish(ch, { type: "status", targetId, status: current, stage });
+    };
+    return { setStatus, setStage };
   }
 
   /**
@@ -548,16 +564,13 @@ export class DeployService {
       ...(artifact.id ? { artifactId: artifact.id } : {}),
     });
     const log = this.makeLog(dep.id, targetId);
-    const setStatus: SetStatus = async (status, patch = {}) => {
-      await this.repo.updateDeployment(dep.id, { status, ...patch });
-      events.publish(ch, { type: "status", targetId, status });
-    };
+    const { setStatus, setStage } = this.makeRunControls(dep, targetId, ch);
 
     events.publish(ch, { type: "running", targetId, running: true });
     events.publish(ch, { type: "status", targetId, status: "queued" });
     try {
       await setStatus("deploying", { commitSha: src.commitSha });
-      await activateArtifact(this.harness, { target, run: dep, log, setStatus }, artifact);
+      await activateArtifact(this.harness, { target, run: dep, log, setStatus, setStage }, artifact);
       await setStatus("success", { finishedAt: new Date() });
       await log("✅ 回滚完成");
       // 回滚是「留旧版」的明确意图：auto 策略不降级的话，下一轮轮询会立刻把坏 sha 自动部回去
@@ -594,13 +607,11 @@ export class DeployService {
       // trigger=ship：仅传输不起容器，与真部署在历史里可辨（体检病-4：success 语义不混杂）
       const dep = await this.repo.createDeployment(targetId, { trigger: "ship" });
       const log = this.makeLog(dep.id, targetId);
-      const setStatus: SetStatus = async (status, patch = {}) => {
-        await this.repo.updateDeployment(dep.id, { status, ...patch });
-        events.publish(ch, { type: "status", targetId, status });
-      };
+      const { setStatus, setStage } = this.makeRunControls(dep, targetId, ch);
       events.publish(ch, { type: "running", targetId, running: true });
+      events.publish(ch, { type: "status", targetId, status: "queued" });
       try {
-        await form.provision!({ target, run: dep, log, setStatus }, this.harness);
+        await form.provision!({ target, run: dep, log, setStatus, setStage }, this.harness);
         await setStatus("success", { finishedAt: new Date() });
         await log("✅ 产物已传输（容器未启动；可将卡移入远程区后部署）");
       } catch (error) {

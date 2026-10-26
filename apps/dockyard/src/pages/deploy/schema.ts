@@ -87,6 +87,10 @@ export const deployments = sqliteTable("deploy_runs", {
   project: text(),
   // 本次部署产出的产物（六阶段模型：Artifact 是一等实体，回滚 = 新 run 引用旧产物重新激活）
   artifactId: integer(),
+  // 流水线当前阶段（执行序六段，见 DeployStage）。best-effort 进度指示，不是状态机：
+  // success/failed 时驻留在最后到达段（failed 的断点=步骤条红叉）；null = 旁路（逻辑库）/存量降级。
+  // 故意不加 enum（CHECK 约束改一次就要重建表）——取值域由 TS 层 DeployStage 约束
+  stage: text().$type<DeployStage>(),
   startedAt: integer({ mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
   finishedAt: integer({ mode: "timestamp" }),
 });
@@ -141,6 +145,15 @@ export interface DepEdge {
   service: string | null;
   db: number; // db target id
 }
+
+/** 六阶段流水线的阶段名（执行序：源→构建→传输→运行→暴露→产物） */
+export type DeployStage =
+  | "sourcing"
+  | "building"
+  | "transferring"
+  | "deploying"
+  | "exposing"
+  | "packaging";
 
 export type DeployTarget = typeof deployTargets.$inferSelect;
 export type Deployment = typeof deployments.$inferSelect;

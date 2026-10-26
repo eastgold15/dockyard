@@ -1,4 +1,5 @@
 import { defineRealtime } from "@elysiax/core";
+import type { DeployStage } from "./schema";
 
 /**
  * 画布实时状态的事件总线（SSE 上游）。
@@ -6,7 +7,8 @@ import { defineRealtime } from "@elysiax/core";
  * 与容器状态轮询（container-poller）往里推，SSE 端点（canvas.actions /events）订阅后推给浏览器。
  */
 export type CanvasEvent =
-  | { type: "status"; targetId: number; status: string }
+  // stage = 六阶段细步骤进度（可选，缺省时前端保留旧值合并；best-effort 不是状态机）
+  | { type: "status"; targetId: number; status: string; stage?: DeployStage }
   | { type: "running"; targetId: number; running: boolean }
   | { type: "state"; targetId: number; service: string; state: "running" | "exited" | "unknown" }
   // 部署日志增量（service 侧 100ms/50 行窗口合并后推送，不是逐行；日志抽屉订阅此事件免轮询）

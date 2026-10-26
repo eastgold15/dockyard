@@ -24,6 +24,7 @@ import { ConsoleView } from "./console";
 import { emitRefresh, useUi } from "./ui";
 import { confirmAction } from "./feedback";
 import { useDeployLog, useTargetLive } from "./live";
+import { PipelineSteps, stagePosture, stepStates } from "./pipeline-steps";
 
 // ── 壳与通用件 ──
 
@@ -1008,6 +1009,8 @@ type Mutate = (fn: () => Promise<{ notice?: string }>, opts?: { refreshBoard?: b
 function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: Mutate }) {
   const ui = useUi();
   const t = () => props.data.target;
+  // 实时通道：进行中 run 的步骤条跟 SSE 脉冲，历史行回落到库值
+  const live = useTargetLive(t().id);
   return (
     <>
       <div class="flex items-center gap-2">
@@ -1068,6 +1071,14 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
                 <span class="rounded border border-harbor-700 px-1 text-[10px] text-neutral-500">
                   {d.trigger === "rollback" ? `回滚←#${d.rollbackOf}` : d.trigger === "ship" ? "仅传输" : "自动"}
                 </span>
+              </Show>
+              {/* 六阶段迷你步骤条：stage=null（旁路/存量）降级不显示 */}
+              <Show when={stagePosture(t(), d)}>
+                {(posture) => (
+                  <PipelineSteps
+                    states={stepStates(live().stage ?? d.stage!, live().status ?? d.status, posture())}
+                  />
+                )}
               </Show>
               <span class="text-neutral-400">{fmtAgo(d.startedAt)}</span>
               {d.finishedAt ? <span class="mono text-neutral-600">{Math.round((new Date(d.finishedAt).getTime() - new Date(d.startedAt).getTime()) / 1000)}s</span> : null}

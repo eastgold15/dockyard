@@ -95,4 +95,11 @@ export const migrations: MigrationsJournal = [
     timestamp: 19,
     sql: "ALTER TABLE `deploy_targets` ADD `artifactServerId` integer;",
   },
+  // 流水线阶段列：六阶段可视化的数据源（best-effort 进度，不是状态机）。
+  // 无 CHECK 约束，存量行 null = 降级为旧徽章展示。
+  {
+    name: "0020_run_stage",
+    timestamp: 20,
+    sql: "ALTER TABLE `deploy_runs` ADD `stage` text;",
+  },
 ];

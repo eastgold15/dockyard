@@ -18,10 +18,12 @@ import type { ProjectService } from "../projects/projects.socket";
 import type { ServerService } from "../servers/servers.socket";
 import type { DeployRepository } from "./deploy.repository";
 import { envFilePaths } from "./detect";
-import type { DeployArtifact, Deployment, DeployTarget } from "./schema";
+import type { DeployArtifact, Deployment, DeployStage, DeployTarget } from "./schema";
 
 export type Log = (line: string) => Promise<void>;
 export type SetStatus = (s: Deployment["status"], p?: Partial<Deployment>) => Promise<unknown>;
+/** 细步骤进度（best-effort，不是状态机）：只写 stage 列 + SSE，永不触碰 status */
+export type SetStage = (s: DeployStage) => Promise<unknown>;
 
 /** 阶段上下文：一次部署运行里所有阶段共享的句柄 */
 export interface StageCtx {
@@ -29,6 +31,7 @@ export interface StageCtx {
   run: Deployment;
   log: Log;
   setStatus: SetStatus;
+  setStage: SetStage;
 }
 
 /**
@@ -307,6 +310,7 @@ export async function executeForm(h: Harness, ctx: StageCtx, form: DeployForm): 
 export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise<void> {
   const { target, log } = ctx;
   const serverId = await h.nodeServerId(target);
+  await ctx.setStage("deploying");
   await ctx.setStatus("deploying", p.sha ? { commitSha: p.sha } : {});
 
   // 共享资源复用时只 up 业务服务子集（compose 仍会拉起 depends_on 依赖——复用场景的 compose 不应依赖被跳过的中间件）
@@ -322,8 +326,10 @@ export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise
   await upLog(up.stdout + up.stderr);
   if (up.code !== 0) throw new ServiceError(`远端 compose up 失败（exit ${up.code}）`);
 
-  // 有域名绑定 → edge 全量对账（路由 + 证书状态回写）
+  // 有域名绑定 → edge 全量对账（路由 + 证书状态回写）。
+  // 无域名也埋 exposing（埋点成本为零）：否则进行中视图里「暴露」段会假性 pending
   const domains = await h.edge.domainsOfTarget(target.id);
+  await ctx.setStage("exposing");
   if (domains.length > 0) {
     await log("同步 edge 路由与证书 …");
     await h.edge.syncServer(serverId, log);
@@ -339,6 +345,7 @@ export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise
 export async function captureArtifact(h: Harness, ctx: StageCtx, p: Provision): Promise<void> {
   const { target, run: dep, log } = ctx;
   try {
+    await ctx.setStage("packaging");
     const snapshotJson = encryptSecret(JSON.stringify(p.snapshot));
     // 逐服务打 tag：dockyard-<targetId>-<svc>:run-<runId>（不动用户 compose 的镜像名）
     let imageTags: Record<string, string> | undefined;
@@ -378,6 +385,8 @@ export async function captureArtifact(h: Harness, ctx: StageCtx, p: Provision): 
 //    有 imageTags 时生成 pin 覆盖文件锁死旧镜像，up 时 -p 沿用当初项目名 ──
 export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: DeployArtifact): Promise<void> {
   const { target, log } = ctx;
+  // 回滚只走 运行→暴露 两段（产物是激活旧件，前三段在步骤条上显示跳过）
+  await ctx.setStage("deploying");
   const snapshot = JSON.parse(decryptSecret(artifact.snapshotJson)) as {
     compose: string;
     override: string;
@@ -435,6 +444,7 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
   if (up.code !== 0) throw new ServiceError(`回滚 compose up 失败（exit ${up.code}）`);
 
   const domains = await h.edge.domainsOfTarget(target.id);
+  await ctx.setStage("exposing");
   if (domains.length) {
     await log("同步 edge 路由与证书 …");
     await h.edge.syncServer(serverId, log);

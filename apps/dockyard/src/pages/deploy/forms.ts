@@ -35,6 +35,7 @@ export const githubAppForm: DeployForm = {
 
     // 1. 源：远端 clone / fetch（token 不落盘——clone 后立即重写 remote）
     await ctx.setStatus("building");
+    await ctx.setStage("sourcing");
     const probe = await client.exec(`[ -d "${srcDir}/.git" ] && echo yes || echo no`);
     if (probe.stdout.trim() !== "yes") {
       await rlog(`远端克隆 ${ownerRepo} …`);
@@ -64,6 +65,7 @@ export const githubAppForm: DeployForm = {
     const buildCmd = target.serviceName
       ? `docker compose -f "${composePath}" build ${target.serviceName}`
       : `for s in $(docker compose -f "${composePath}" config --services); do docker compose -f "${composePath}" build "$s" || exit 1; done`;
+    await ctx.setStage("building");
     const build = await h.execLongRemote(
       serverId,
       `cd "${srcDir}" && ${buildCmd}`,
@@ -113,6 +115,7 @@ export function localAppForm(proj: Project): DeployForm {
       const serverId = await h.nodeServerId(target);
       const repoDir = join(proj.localPath!, proj.rootDir ?? "");
       await ctx.setStatus("building");
+      await ctx.setStage("sourcing");
       const shaProc = Bun.spawn(["git", "rev-parse", "--short=8", "HEAD"], { cwd: repoDir, stdout: "pipe", stderr: "ignore" });
       const sha = ((await new Response(shaProc.stdout).text()).trim()) || `local-${Date.now()}`;
 
@@ -134,6 +137,7 @@ export function localAppForm(proj: Project): DeployForm {
         env = { DOCKER_DEFAULT_PLATFORM: platform };
       }
       await log(`本地构建 ${repoDir} @${sha} …`);
+      await ctx.setStage("building");
       await run(
         [...composeBase, "build", ...(target.serviceName ? [target.serviceName] : [])],
         repoDir, log, env,
@@ -148,6 +152,7 @@ export function localAppForm(proj: Project): DeployForm {
       if (images.length === 0) throw new ServiceError("compose 没有产生任何镜像");
 
       // 2. 传输：docker save → dockerode 经 SSH relay load 到远端
+      await ctx.setStage("transferring");
       await ctx.setStatus("transferring", { commitSha: sha });
       const remote = await h.serverService.docker(serverId);
       for (const image of images) {
@@ -214,6 +219,8 @@ export const dbContainerForm: DeployForm = {
     const { target } = ctx;
     if (!target.envJson) throw new ServiceError("数据库目标缺少模板内容");
     if (!target.containerName) throw new ServiceError("数据库目标缺少容器名（旧数据？重建该目标）");
+    // 模板渲染 = 本形态的「源」段
+    await ctx.setStage("sourcing");
     const rendered = JSON.parse(decryptSecret(target.envJson)) as { compose: string; env: string };
     const serverId = await h.nodeServerId(target);
     // preflight 门禁在任何写入之前：被阻止时绝不能覆盖在跑实例目录里的 compose/.env
@@ -221,6 +228,8 @@ export const dbContainerForm: DeployForm = {
     const client = await h.serverService.ssh(serverId);
     const remoteDir = await h.resolveRemoteDir(client, target.remoteDir ?? `~/dockyard/${target.name}`);
     await client.exec(`mkdir -p ${remoteDir}`);
+    // sftp 推送 = 本形态的「传输」段（无构建：官方镜像由 up 拉取）
+    await ctx.setStage("transferring");
     const sftp = await openSftp(client);
     await sftp.write(`${remoteDir}/docker-compose.yml`, rendered.compose);
     await sftp.write(`${remoteDir}/.env`, rendered.env);

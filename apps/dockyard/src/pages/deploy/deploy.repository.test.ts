@@ -52,6 +52,14 @@ test("createDeployment：trigger/rollbackOf 血缘落库", async () => {
   expect(base.trigger).toBe("ui"); // 默认值
 });
 
+test("stage：新建为 null，可更新，历史联查透出（0020 迁移）", async () => {
+  const run = await repo.createDeployment(targetId);
+  expect(run.stage).toBeNull(); // 存量/旁路语义
+  await repo.updateDeployment(run.id, { stage: "building" });
+  const rows = await repo.deploymentsOfTarget(targetId);
+  expect(rows.find((r) => r.id === run.id)?.stage).toBe("building");
+});
+
 test("pruneRuns：只留最近 keep 条，chunks 级联清", async () => {
   // 造 5 条 run，各带 2 行 chunk
   const ids: number[] = [];

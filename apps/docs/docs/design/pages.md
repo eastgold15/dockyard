@@ -2,7 +2,7 @@
 
 > 每页四件事：现状源码差异 → 样板目标 → 实施 → 验收。状态只用：**未开始 / 待视觉验收 / 已验收**。
 > “源码已改”不等于验收通过；验收必须在真实页面记录视口、日期与证据。
-> 规范本体见 [../.interface-design/system.md](../.interface-design/system.md)。
+> 规范本体见 [../../../dockyard/.interface-design/system.md](../../../dockyard/.interface-design/system.md)。
 
 ## 状态图例
 

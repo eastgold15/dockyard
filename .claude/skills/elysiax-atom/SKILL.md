@@ -137,4 +137,4 @@ export default defineRoutes().post("/", { body: form }, async ({ di, body, toast
 ## 完成后
 
 1. 跑 `elysiax doctor`（若有）验证插座/插头对应。
-2. 提醒用户：路由/UI 验收按 `docs/design/pages.md` 三态纪律走（文档已写 ≠ 源码已改 ≠ 浏览器验收通过）。
+2. 提醒用户：路由/UI 验收按 `apps/docs/docs/design/pages.md` 三态纪律走（文档已写 ≠ 源码已改 ≠ 浏览器验收通过）。

@@ -1,11 +1,16 @@
 ## Dockyard
 
+## 文档约束
+
+文档统一放本仓库 `apps/docs/docs/`（blume 文档站），AI 读写文档都去这里，不散落在别处。
+框架（elysiax）的文档在 elysiax 仓库的 `apps/docs/docs/`，各放各的。
+
 ## UI - 设计规范（先读）
 
 任何 UI 任务（新页面、改样式、加组件、视觉审查）开始前，先读：
 
 1. `.interface-design/system.md` — 视觉契约：颜色/排版/间距/组件规格/例外边界
-2. `docs/design/pages.md` — 页面进度表：现状差异、实施状态、验收记录
+2. `../docs/docs/design/pages.md` — 页面进度表：现状差异、实施状态、验收记录
 
 规范没有覆盖到的新模式：先与用户确认，确认后同步更新 system.md 与 pages.md。不得仅凭本轮对话记忆另起风格。状态纪律：文档已写 ≠ 源码已改 ≠ 浏览器验收通过；进度表只认三态（未开始 / 待视觉验收 / 已验收）。
 

@@ -40,7 +40,7 @@ model: inherit
 
 13. hx-* 路由用 `routes.*` 类型化 helper（`.elysiax/routes.gen`），不写裸路径字符串。注意带后缀/查询串的 URL 别被前缀 helper 误吞。
 14. 通用功能（日期、校验、ID、重试等）应先用现成库，手写实现需说明理由。
-15. UI 改动须符合 `apps/dockyard/.interface-design/system.md`；文档写"已改"但源码/浏览器未验证的进度表三态纪律。
+15. UI 改动须符合 `../dockyard/apps/dockyard/.interface-design/system.md`；文档写"已改"但源码/浏览器未验证的进度表三态纪律。
 
 ## 工作方式
 

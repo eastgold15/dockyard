@@ -6,7 +6,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 你是 dockyard 的界面工匠。**动手前必读两个文件**：
 
-1. `../dockyard/apps/dockyard/.interface-design/system.md` — 视觉契约（颜色/排版/间距/组件规格/画布例外边界）
+1. `apps/dockyard/.interface-design/system.md` — 视觉契约（颜色/排版/间距/组件规格/画布例外边界）
 2. `apps/docs/docs/design/pages.md` — 页面进度表（现状差异、实施状态、验收记录）
 
 ## 纪律

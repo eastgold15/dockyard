@@ -591,7 +591,8 @@ export class DeployService {
     const form = localAppForm(project);
     const task = (async () => {
       const ch = CANVAS_CHANNEL;
-      const dep = await this.repo.createDeployment(targetId, { trigger: "ui" });
+      // trigger=ship：仅传输不起容器，与真部署在历史里可辨（体检病-4：success 语义不混杂）
+      const dep = await this.repo.createDeployment(targetId, { trigger: "ship" });
       const log = this.makeLog(dep.id, targetId);
       const setStatus: SetStatus = async (status, patch = {}) => {
         await this.repo.updateDeployment(dep.id, { status, ...patch });
@@ -635,11 +636,17 @@ export class DeployService {
       this.serverService.byId(node.serverId),
     ]);
     const crossing = isLocalHost(oldServer?.host ?? "") !== isLocalHost(newServer?.host ?? "");
-    if (crossing) {
-      if (target.kind !== "app")
+    if (target.kind !== "app") {
+      if (crossing)
         throw new ServiceError("数据库不能跨区移动——数据不随卡走，请在目标服务器新建实例");
-      if (!target.artifactShipped)
-        throw new ServiceError("构建产物尚未传输到云端——先在服务抽屉执行「传输产物」");
+    } else {
+      // 产物门票按「落点服务器」核验（不是布尔）：本地构建的镜像只 load 在当次目标上——
+      // 换任何服务器（含 remote→remote 平移）都必须先重传到目标服务器，否则 up 会 pull 不存在的镜像名
+      const { type } = await this.sourceOf(target);
+      const shippedHere = target.artifactServerId != null && target.artifactServerId === node.serverId;
+      const needTicket = type === "local" ? target.nodeId !== nodeId : crossing;
+      if (needTicket && !shippedHere)
+        throw new ServiceError("构建产物尚未传输到目标服务器——先在服务抽屉执行「传输产物」");
     }
 
     await this.repo.updateTarget(targetId, { nodeId, groupId: null, x: null, y: null });

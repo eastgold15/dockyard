@@ -2,7 +2,7 @@ import { ServiceError } from "@elysiax/core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { decryptSecret, encryptSecret } from "../../../shared/crypto";
 import { textToEnvMap } from "../../../shared/env-text";
-import { containerNameOf } from "../../resources/resources.socket";
+// containerNameOf 不再现算：身份读 target.containerName 列（体检病-3）
 import type { CanvasService } from "../../canvas/canvas.socket";
 import type { ServerService } from "../../servers/servers.socket";
 // 父子之间也走插座：deploy 的服务经父原子插座引入
@@ -42,7 +42,7 @@ export class RuntimeService {
     } else {
       const owned = (c: { Labels?: Record<string, string>; Names?: string[] }) =>
         c.Labels?.["dockyard.target-id"] === String(target.id) ||
-        c.Names?.includes(`/${containerNameOf(target.id, target.name)}`);
+        c.Names?.includes(`/${target.containerName}`);
       hit = containers.find((c) => owned(c) && c.State === "running") ?? containers.find(owned);
     }
     return hit ? docker.getContainer(hit.Id) : null;

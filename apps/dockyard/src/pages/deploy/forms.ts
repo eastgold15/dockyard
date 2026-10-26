@@ -13,7 +13,7 @@ import { parseOwnerRepo } from "../github/github.socket";
 import { logicalDbCommands, type DbType } from "../resources/resources.socket";
 import type { Project } from "../projects/projects.socket";
 import { envFilePaths } from "./detect";
-import { dockerArch, run, type DeployForm, type Harness, type Provision, type StageCtx } from "./pipeline";
+import { dockerArch, inspectCompose, run, type DeployForm, type Harness, type Provision, type StageCtx } from "./pipeline";
 
 // ── app · GitHub 导入：远端服务器拉代码 → 服务器上构建镜像 → 免传输（就地就绪）──
 export const githubAppForm: DeployForm = {
@@ -72,21 +72,12 @@ export const githubAppForm: DeployForm = {
     );
     if (build.code !== 0) throw new ServiceError(`远端构建失败（exit ${build.code}）`);
 
-    // 4. 传输 = 免（就地就绪）：推 .env/override，读 compose config 供对账/打 tag
-    const cfgOut = await h.sshExec(serverId, `cd "${srcDir}" && docker compose -f "${composePath}" config --format json`);
-    if (cfgOut.code !== 0) throw new ServiceError(redact(`远端 compose config 失败：${cfgOut.stderr}`));
-    const cfg = JSON.parse(cfgOut.stdout) as {
-      name?: string;
-      services?: Record<string, { container_name?: string; image?: string }>;
-    };
-    const project = cfg.name ?? `dockyard-${target.id}`;
-    const containerNames = Object.entries(cfg.services ?? {}).map(
-      ([svc, def]) => def.container_name ?? `${project}-${svc}-1`,
-    );
-    // preflight 是「首次远端写入前的门禁」：检出目录的构建产物已在上面落位（clone 之本意），
-    // 但 .env/override 秘密文件必须在归属校验通过后才写
-    if (containerNames.length > 0)
-      await h.preflightCheck(target, serverId, containerNames, log);
+    // 4. 传输 = 免（就地就绪）：产物断言核验（config 解析 + preflight 门禁）→ 推 .env/override。
+    // 检出目录的构建产物已在上面落位（clone 之本意），但秘密文件必须在归属校验通过后才写
+    const inspected = await inspectCompose(h, {
+      target, serverId, remoteDir: srcDir, composeFile: composePath,
+      hasOverride: Boolean(target.overrideCompose), log, redact,
+    });
 
     // 构建期间缓存连接可能已被丢弃重建——拿当前可用连接
     const fresh = await h.serverService.ssh(serverId);
@@ -98,12 +89,7 @@ export const githubAppForm: DeployForm = {
 
     return {
       remoteDir: srcDir,
-      project,
-      containerNames,
-      services: cfg.services,
-      composeArgs: target.overrideCompose
-        ? `-f "${composePath}" -f docker-compose.dockyard.yml`
-        : `-f "${composePath}"`,
+      ...inspected,
       upServices: target.upServices ?? undefined,
       sha,
       log: rlog, // up 段日志保持脱敏纪律
@@ -174,7 +160,8 @@ export function localAppForm(proj: Project): DeployForm {
         if ((await save.exited) !== 0) throw new ServiceError(`docker save 失败: ${image}`);
         await log(`已传输 ${image}`);
       }
-      await h.repo.updateTarget(target.id, { artifactShipped: true });
+      // 门票升维：布尔 + 落点 serverId（换服务器必须重传——镜像只 load 在当次目标上）
+      await h.repo.updateTarget(target.id, { artifactShipped: true, artifactServerId: serverId });
 
       // 3. 传输（配置）：compose/.env/override 推远端工作目录
       const client = await h.serverService.ssh(serverId);
@@ -191,20 +178,12 @@ export function localAppForm(proj: Project): DeployForm {
         );
       }
 
-      // 4. 产物断言核验：远端 compose config（base 文件，与两条历史路径一致不含 override）
-      const cfgOut = await h.sshExec(serverId, `cd "${remoteDir}" && docker compose -f docker-compose.yml config --format json`);
-      if (cfgOut.code !== 0) throw new ServiceError(`远端 compose config 失败：${cfgOut.stderr}`);
-      const cfg = JSON.parse(cfgOut.stdout) as {
-        name?: string;
-        services?: Record<string, { container_name?: string; image?: string }>;
-      };
-      const project = cfg.name ?? `dockyard-${target.id}`;
-      const containerNames = Object.entries(cfg.services ?? {}).map(
-        ([svc, def]) => def.container_name ?? `${project}-${svc}-1`,
-      );
-      // preflight 门禁：compose 占位已写（核验所需），秘密文件（.env/override）必须校验通过后才写
-      if (containerNames.length > 0)
-        await h.preflightCheck(target, serverId, containerNames, log);
+      // 4. 产物断言核验（config 解析 + preflight 门禁）：compose 占位已写（核验所需），
+      // 秘密文件（.env/override）必须校验通过后才写
+      const inspected = await inspectCompose(h, {
+        target, serverId, remoteDir, composeFile: "docker-compose.yml",
+        hasOverride: Boolean(target.overrideCompose), log,
+      });
 
       // 5. 传输（秘密）：.env/override 推远端
       if (target.envJson) await sftp.write(`${remoteDir}/.env`, decryptSecret(target.envJson));
@@ -215,12 +194,7 @@ export function localAppForm(proj: Project): DeployForm {
 
       return {
         remoteDir,
-        project,
-        containerNames,
-        services: cfg.services,
-        composeArgs: target.overrideCompose
-          ? "-f docker-compose.yml -f docker-compose.dockyard.yml"
-          : "-f docker-compose.yml",
+        ...inspected,
         upServices: target.upServices ?? undefined,
         sha,
         snapshot: {

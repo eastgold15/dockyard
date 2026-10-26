@@ -88,4 +88,11 @@ export const migrations: MigrationsJournal = [
     timestamp: 18,
     sql: "UPDATE `deploy_artifacts` SET `sha` = (SELECT `commitSha` FROM `deploy_runs` WHERE `deploy_runs`.`id` = `deploy_artifacts`.`runId`) WHERE `sha` IS NULL;",
   },
+  // 产物位置升维：artifactShipped 布尔说不清「产物在哪台服务器」（remote→remote 平移不查票，
+  // 新服务器 up 会 pull 不存在的本地镜像）。记录传输落点 serverId，移动时按目标服务器比对。
+  {
+    name: "0019_artifact_server",
+    timestamp: 19,
+    sql: "ALTER TABLE `deploy_targets` ADD `artifactServerId` integer;",
+  },
 ];

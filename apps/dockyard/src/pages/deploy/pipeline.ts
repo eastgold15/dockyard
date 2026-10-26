@@ -244,6 +244,54 @@ export function createHarness(deps: {
 
 // ── 执行器：形态分派 + 共享后半段 ──
 
+/**
+ * compose 产物断言核验（两 app 形态共享）：远端 config 解析（base 文件，不含 override）
+ * → project/容器名/服务镜像 → preflight 门禁 → composeArgs 拼接。
+ * 契约单点：preflight 在秘密文件（.env/override）写入前完成——调用方把本助手排在 secrets 推送之前。
+ */
+export async function inspectCompose(
+  h: Harness,
+  opts: {
+    target: DeployTarget;
+    serverId: number;
+    remoteDir: string;
+    /** compose 文件名（远端目录内；统一加引号拼进 shell） */
+    composeFile: string;
+    hasOverride: boolean;
+    log: Log;
+    /** github 路径的 token 脱敏（config 输出理论上不含 token，纪律保持） */
+    redact?: (s: string) => string;
+  },
+): Promise<Pick<Provision, "project" | "containerNames" | "services" | "composeArgs">> {
+  const redact = opts.redact ?? ((s: string) => s);
+  const cfgOut = await h.sshExec(
+    opts.serverId,
+    `cd "${opts.remoteDir}" && docker compose -f "${opts.composeFile}" config --format json`,
+  );
+  if (cfgOut.code !== 0) throw new ServiceError(redact(`远端 compose config 失败：${cfgOut.stderr}`));
+  const cfg = JSON.parse(cfgOut.stdout) as {
+    name?: string;
+    services?: Record<string, { container_name?: string; image?: string }>;
+  };
+  // 对账用容器名：compose 项目名定死（远端 -p 一致），显式 container_name 优先
+  const project = cfg.name ?? `dockyard-${opts.target.id}`;
+  const containerNames = Object.entries(cfg.services ?? {}).map(
+    ([svc, def]) => def.container_name ?? `${project}-${svc}-1`,
+  );
+  if (containerNames.length > 0)
+    await h.preflightCheck(opts.target, opts.serverId, containerNames, opts.log);
+  return {
+    project,
+    containerNames,
+    services: cfg.services,
+    // 注意：-f 一旦指定就只认列出的文件，base 必须一起带上
+    composeArgs: opts.hasOverride
+      ? `-f "${opts.composeFile}" -f docker-compose.dockyard.yml`
+      : `-f "${opts.composeFile}"`,
+  };
+}
+
+
 /** 组合形态：provision（源→构建→传输）→ activate（运行+暴露）→ captureArtifact（产物入库）；
  *  custom 形态（逻辑库）全程自控，不穿零点、无产物。 */
 export async function executeForm(h: Harness, ctx: StageCtx, form: DeployForm): Promise<void> {

@@ -3,7 +3,6 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { ServiceError } from "@elysiax/core";
 import type { AppPaths } from "../../../shared/paths";
-import { containerNameOf } from "../../resources/resources.socket";
 import type { CanvasService } from "../../canvas/canvas.socket";
 import type { ServerService } from "../../servers/servers.socket";
 // 父子之间也走插座：deploy 的服务经父原子插座引入
@@ -52,7 +51,9 @@ export class BackupService {
     const node = await this.canvas.byId(target.nodeId);
     if (!node) throw new ServiceError("画布节点不存在");
     const client = await this.server.ssh(node.serverId);
-    const container = containerNameOf(target.id, target.name);
+    // 容器身份唯一真相 = target.containerName 列（创建时定死）；不再现算（体检病-3）
+    if (!target.containerName) throw new ServiceError("数据库目标缺少容器名（旧数据？重建该目标）");
+    const container = target.containerName;
     const { stdout, stderr, code } = await client.exec(
       `docker exec ${container} sh -c '${cmd}' | gzip | base64 -w0`,
     );

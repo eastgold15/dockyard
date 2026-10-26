@@ -57,6 +57,9 @@ export const deployTargets = sqliteTable("deploy_targets", {
   buildPlatform: text(),
   // 构建产物是否已传输到远端（部署通道：跨界拖卡的前置条件；本地构建部署成功自动置位）
   artifactShipped: integer({ mode: "boolean" }).notNull().default(false),
+  // 产物落在哪台服务器（镜像只 load 在当次目标上）：换服务器必须重传，否则远端 up 会
+  // 去 pull 一个 registry 里不存在的本地镜像名。artifactShipped 的布尔升维（体检病-1）
+  artifactServerId: integer(),
   createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 }, (t) => [
   // 防误操作：同一卡片上同类型同名目标唯一（重复建库在表单层就拦住）
@@ -73,8 +76,8 @@ export const deployments = sqliteTable("deploy_runs", {
   commitSha: text(),
   // 旧日志列：已停止写入（日志走 deploy_log_chunks），保留仅为读存量数据兜底
   logText: text().notNull().default(""),
-  // 触发来源（回滚血缘：rollbackOf 指向被回滚的 run）
-  trigger: text({ enum: ["ui", "auto", "rollback"] }).notNull().default("ui"),
+  // 触发来源（回滚血缘：rollbackOf 指向被回滚的 run；ship = 仅传输产物不起容器）
+  trigger: text({ enum: ["ui", "auto", "rollback", "ship"] }).notNull().default("ui"),
   rollbackOf: integer(),
   // 旧产物列：已停止写入（产物走 deploy_artifacts + artifactId），保留仅为存量兜底读
   imageSnapshot: text({ mode: "json" }).$type<Record<string, string>>(),

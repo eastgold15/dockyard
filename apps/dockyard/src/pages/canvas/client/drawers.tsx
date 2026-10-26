@@ -1063,10 +1063,10 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
             <div class="flex items-center gap-3 border-b border-harbor-800/60 py-2 text-xs">
               <Chip tone={d.status === "success" ? "ok" : d.status === "failed" ? "warn" : "muted"}>{d.status}</Chip>
               <span class="text-neutral-500">#{d.id}</span>
-              {/* 触发来源：手动/自动/回滚（回滚带血缘号） */}
+              {/* 触发来源：手动/自动/回滚/仅传输（回滚带血缘号） */}
               <Show when={d.trigger && d.trigger !== "ui"}>
                 <span class="rounded border border-harbor-700 px-1 text-[10px] text-neutral-500">
-                  {d.trigger === "rollback" ? `回滚←#${d.rollbackOf}` : "自动"}
+                  {d.trigger === "rollback" ? `回滚←#${d.rollbackOf}` : d.trigger === "ship" ? "仅传输" : "自动"}
                 </span>
               </Show>
               <span class="text-neutral-400">{fmtAgo(d.startedAt)}</span>

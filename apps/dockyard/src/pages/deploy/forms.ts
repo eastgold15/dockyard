@@ -83,6 +83,10 @@ export const githubAppForm: DeployForm = {
     const containerNames = Object.entries(cfg.services ?? {}).map(
       ([svc, def]) => def.container_name ?? `${project}-${svc}-1`,
     );
+    // preflight 是「首次远端写入前的门禁」：检出目录的构建产物已在上面落位（clone 之本意），
+    // 但 .env/override 秘密文件必须在归属校验通过后才写
+    if (containerNames.length > 0)
+      await h.preflightCheck(target, serverId, containerNames, log);
 
     // 构建期间缓存连接可能已被丢弃重建——拿当前可用连接
     const fresh = await h.serverService.ssh(serverId);
@@ -102,6 +106,7 @@ export const githubAppForm: DeployForm = {
         : `-f "${composePath}"`,
       upServices: target.upServices ?? undefined,
       sha,
+      log: rlog, // up 段日志保持脱敏纪律
       snapshot: {
         compose: composeText,
         override: target.overrideCompose ? decryptSecret(target.overrideCompose) : "",
@@ -185,11 +190,6 @@ export function localAppForm(proj: Project): DeployForm {
           `cd ${remoteDir} && mkdir -p "${join(".", p, "..")}" && [ -f "${p}" ] || printf '# dockyard 占位：真实环境变量在 docker-compose.dockyard.yml 的 environment 里\\n' > "${p}"`,
         );
       }
-      if (target.envJson) await sftp.write(`${remoteDir}/.env`, decryptSecret(target.envJson));
-      // 识别出的资源限制/服务级 environment 以 override compose 叠加（不改用户原 compose）
-      if (target.overrideCompose)
-        await sftp.write(`${remoteDir}/docker-compose.dockyard.yml`, decryptSecret(target.overrideCompose));
-      await sftp.close();
 
       // 4. 产物断言核验：远端 compose config（base 文件，与两条历史路径一致不含 override）
       const cfgOut = await h.sshExec(serverId, `cd "${remoteDir}" && docker compose -f docker-compose.yml config --format json`);
@@ -202,6 +202,16 @@ export function localAppForm(proj: Project): DeployForm {
       const containerNames = Object.entries(cfg.services ?? {}).map(
         ([svc, def]) => def.container_name ?? `${project}-${svc}-1`,
       );
+      // preflight 门禁：compose 占位已写（核验所需），秘密文件（.env/override）必须校验通过后才写
+      if (containerNames.length > 0)
+        await h.preflightCheck(target, serverId, containerNames, log);
+
+      // 5. 传输（秘密）：.env/override 推远端
+      if (target.envJson) await sftp.write(`${remoteDir}/.env`, decryptSecret(target.envJson));
+      // 识别出的资源限制/服务级 environment 以 override compose 叠加（不改用户原 compose）
+      if (target.overrideCompose)
+        await sftp.write(`${remoteDir}/docker-compose.dockyard.yml`, decryptSecret(target.overrideCompose));
+      await sftp.close();
 
       return {
         remoteDir,
@@ -232,6 +242,8 @@ export const dbContainerForm: DeployForm = {
     if (!target.containerName) throw new ServiceError("数据库目标缺少容器名（旧数据？重建该目标）");
     const rendered = JSON.parse(decryptSecret(target.envJson)) as { compose: string; env: string };
     const serverId = await h.nodeServerId(target);
+    // preflight 门禁在任何写入之前：被阻止时绝不能覆盖在跑实例目录里的 compose/.env
+    await h.preflightCheck(target, serverId, [target.containerName], ctx.log);
     const client = await h.serverService.ssh(serverId);
     const remoteDir = await h.resolveRemoteDir(client, target.remoteDir ?? `~/dockyard/${target.name}`);
     await client.exec(`mkdir -p ${remoteDir}`);
@@ -243,7 +255,9 @@ export const dbContainerForm: DeployForm = {
 
     return {
       remoteDir,
-      // 模板 up 不带 -p（沿用目录名项目，与历史行为一致）；对账用创建时定死的容器名
+      // 模板 up 不带 -p（项目名 = 目录名；dbCompose 不渲染顶层 name，ownership.project 只是标签）。
+      // 已知疣（历史逐字保留）：回滚目录名不同，activateArtifact 兜底 -p dockyard-<id>——
+      // 容器名显式定死所以换项目名 up 也能收养旧容器，可用但项目标签会变。将来要修应让模板渲染 name:。
       containerNames: [target.containerName],
       composeArgs: "",
       snapshot: { compose: rendered.compose, override: "", env: rendered.env },

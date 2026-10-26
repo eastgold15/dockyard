@@ -40,8 +40,11 @@ export interface Provision {
   remoteDir: string;
   /** compose 项目名（cfg.name ?? dockyard-<id>）；db 模板不设（沿用目录名，与历史行为一致） */
   project?: string;
-  /** preflight 对账的容器名清单 */
+  /** preflight 对账的容器名清单。契约：provision 必须在「首次远端写入」前完成 preflight
+   *  （归属校验被阻止时不得已改写远端目录——尤其 db 模板会覆盖在跑实例的 compose/.env） */
   containerNames: string[];
+  /** up 段的日志 writer（github 路径传脱敏版 rlog——compose up 输出理论上不含 token，纪律保持） */
+  log?: Log;
   /** 有则在 captureArtifact 里打 run tag（db 模板用官方镜像，无） */
   services?: Record<string, { image?: string }>;
   /** up 的 -f 参数段（含引号，逐字拼进 shell），空 = compose 默认发现 */
@@ -245,30 +248,30 @@ export function createHarness(deps: {
  *  custom 形态（逻辑库）全程自控，不穿零点、无产物。 */
 export async function executeForm(h: Harness, ctx: StageCtx, form: DeployForm): Promise<void> {
   if (form.run) return form.run(ctx, h);
-  const provision = await form.provision!(ctx, h);
+  if (!form.provision) throw new ServiceError(`部署形态 ${form.name} 未实现 provision/run 任一入口`);
+  const provision = await form.provision(ctx, h);
   await activate(h, ctx, provision);
   await captureArtifact(h, ctx, provision);
 }
 
-/** Run + Expose 共享段：preflight 对账 → up -d → 有域名则 edge 全量对账 → sha 回写 */
+/** Run + Expose 共享段：up -d → 有域名则 edge 全量对账 → sha 回写。
+ *  preflight 不在此——它是「首次远端写入前的门禁」，归 provision（见 Provision.containerNames）。 */
 export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise<void> {
   const { target, log } = ctx;
   const serverId = await h.nodeServerId(target);
   await ctx.setStatus("deploying", p.sha ? { commitSha: p.sha } : {});
-  // 对账用容器名：compose 项目名定死（远端 -p 一致），显式 container_name 优先
-  if (p.containerNames.length > 0)
-    await h.preflightCheck(target, serverId, p.containerNames, log);
 
   // 共享资源复用时只 up 业务服务子集（compose 仍会拉起 depends_on 依赖——复用场景的 compose 不应依赖被跳过的中间件）
   const upArg = p.upServices?.length ? ` ${p.upServices.join(" ")}` : "";
   if (upArg) await log(`只部署业务服务：${p.upServices!.join("、")}（中间件复用服务器共享资源）`);
-  await log("远端 docker compose up -d …");
+  const upLog = p.log ?? log;
+  await upLog("远端 docker compose up -d …");
   // 注意：-f 一旦指定就只认列出的文件，base 必须一起带上（composeArgs 由 provision 拼好）
   const up = await h.sshExec(
     serverId,
     `cd "${p.remoteDir}" && docker compose${p.project ? ` -p ${p.project}` : ""}${p.composeArgs ? ` ${p.composeArgs}` : ""} up -d${upArg}`,
   );
-  await log(up.stdout + up.stderr);
+  await upLog(up.stdout + up.stderr);
   if (up.code !== 0) throw new ServiceError(`远端 compose up 失败（exit ${up.code}）`);
 
   // 有域名绑定 → edge 全量对账（路由 + 证书状态回写）
@@ -374,7 +377,8 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
   }
 
   const upArg = target.upServices?.length ? ` ${target.upServices.join(" ")}` : "";
-  await log(`回滚到产物 #${artifact.id}（${artifact.sha ?? "无 sha"}）…`);
+  // id=0 是存量合成产物（artifactOfRun 兜底路径），没有真实编号可展示
+  await log(`回滚到${artifact.id ? `产物 #${artifact.id}` : "存量快照"}（${artifact.sha ?? "无 sha"}）…`);
   const up = await h.sshExec(
     serverId,
     `cd ${rollbackDir} && docker compose -p ${project} ${files.join(" ")} up -d${upArg}`,

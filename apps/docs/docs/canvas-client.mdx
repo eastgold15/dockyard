@@ -1,0 +1,119 @@
+---
+title: 画布 client 模式
+description: dockyard 画布是世界地图（Solid 整页 client）：物理服务器卡全局唯一、项目只是过滤透镜、本机/远程分区——三条数据通道、UiBus 模态层、自研 flow 基座。
+---
+
+# 画布 client 模式（世界地图）
+
+dockyard 画布是框架里交互最复杂的页面（拖拽、连线、实时状态、部署抽屉、容器终端）。它经历了三个阶段：
+
+1. **React 岛阶段**：htmx 壳 + 岛容器 + `htmx.ajax` 桥调服务端片段模态——754 行抽屉片段靠桥维护，成本过高
+2. **整页 React client 阶段**：岛、桥、afterSwap 挂载器全部删除，模态/表单/错误回显一套模型
+3. **Solid + 世界地图阶段（现行）**：React 弃用（VDOM 黑盒违背产物可审查哲学，见 [lowering](./lowering.md)）；画布语义从「项目边界」反转为「物理世界地图」
+
+## 世界地图语义
+
+**物理层恒定，项目是透镜**：
+
+- `canvas_nodes` 一台服务器全库一张卡（`serverId` 唯一，无 projectId）；本机也是一张卡
+- `/canvas` 默认世界地图：全部服务器 + 全部项目的部署目标；`?project=X` 是**过滤透镜**——非本项目卡片完全隐藏，只剩空服务器卡（物理事实仍在）
+- 一个项目可以跨多台服务器，跨服依赖边在世界地图上自然呈现
+- 画布分**本机/远程两区**（`server.local` 由 host 是否 loopback 派生），中间分界线——后期演化为部署通道（本机构建 → 产物推远程）
+- 建内容操作（部署本仓库/添加数据库/新建分组）只在透镜激活时可用——世界视图是观察层，创建必须知道项目归属
+
+## 结构
+
+```
+src/pages/canvas/
+  client/               # 整页 Solid（@elysiax/solid 预打包 → .elysiax/shells/canvas.client.js）
+    index.tsx           # render() 挂载
+    app.tsx             # 透镜选择器（?project= 初始透镜）+ UiContext + DrawerHost
+    board.tsx           # 世界地图：结构 fetch + SSE + 透镜过滤 + 本机/远程分区
+    flow.test.tsx       # client 测试样例（happy-dom + solid render，bunfig [test].preload）
+    nodes.tsx           # 卡片视图（部署/删除/尺寸持久化/项目徽章）
+    drawers.tsx         # 抽屉/弹窗（向导/服务抽屉/日志/域名/变量）
+    console.tsx         # xterm ←→ WS
+    live.ts             # SSE → LiveContext（Solid store，accessor 订阅）
+    lens.ts             # 透镜模块级信号（app/board/nodes 三处平级消费）
+    api.ts              # Eden Treaty 客户端 + routes.gen 路径助手
+    ui.ts               # UiBus（open/close/refresh）模态总线
+  canvas.actions.ts     # JSON API（/api/canvas/*）：board/SSE/CRUD（全部全局，无 :projectId）
+  canvas.service.ts / canvas.repository.ts / canvas.model.ts
+  canvas.di.ts
+```
+
+## 三条数据通道
+
+| 通道 | 内容 | 传输 | 更新时机 |
+| --- | --- | --- | --- |
+| 结构数据 | 卡片/连线/位置（nodes/edges） | `GET /api/canvas/board` JSON（全局） | 挂载拉一次 + body `refresh` 事件 refetch |
+| 节点几何 | 拖拽/拉伸中的位置尺寸 | **本地权威**（Solid signal） | 合并时保留 `dragging` 节点 |
+| 实时数据 | 部署状态、容器 state | SSE `/api/canvas/events`（全局频道） | 服务端 publish 即推，进 LiveContext store |
+
+为什么分开：
+
+- **结构不进 SSE**：位置/连线是低频高价值数据，走 REST + 按需 refetch，不会因为一条状态推送把用户正在拖的节点重渲染掉
+- **实时不进 node.data**：状态灯这类高频数据进 Solid store 的细粒度订阅（`live().status` accessor），不触发 nodes 数组重算
+- **refresh 事件是约定**：结构变更后 `document.body.dispatchEvent(new Event("refresh"))`，board 监听重拉
+
+## 自研 flow 基座（已升舱 `@elysiax/flow`）
+
+画布基座已升舱为框架包 `packages/flow`（`@elysiax/flow`）：纯 DOM + SVG 实现（panzoom/拖拽/连线/拉伸全部透明指针事件，无 VDOM 无 d3）。主题色走 CSS 变量（`--flow-dot`、`--flow-handle-bg` 等，带 fallback），行为钩子是结构属性（`data-nodrag`、`data-flow-menu`、`data-handle-id`）。两个踩过的坑：
+
+1. **`<For>` 按引用渲染会把被拖节点 DOM 重建**——拖拽每帧 `setNodes` 换新对象 → 指针捕获丢、拖拽断成"每次只动一点"。解法：节点按 id 进 `createStore` + `reconcile` 原地合并，代理引用稳定，DOM 不重建；store 要同步初始化（首帧 `createEffect` 还没跑，异步初始化会 undefined 崩溃）
+2. **整页壳没有 AppLayout**：`h-full` 高度链在 `#root` 断掉（画布 0 高、fitView 算出 minZoom）。根组件必须自带 `h-screen`
+
+## 模态层：UiBus
+
+```ts
+// ui.ts：事件总线 + View 判别联合（new-app/new-db/service/env/domains/log）
+const ui = useUi();
+ui.open({ kind: "new-app", nodeId });   // 卡片/右键菜单触发
+
+// app.tsx：<Show when={view()} keyed> + <Switch>/<Match> 整体重建抽屉
+```
+
+错误回显：api.ts 的 `unwrap` 读服务端 `{ error }`（ServiceError 映射产物），抽屉内联 ErrorBanner。
+
+## client 测试约定
+
+client/ 是浏览器代码，bun test 直接跑有两个坑，都有既定解法：
+
+1. **Solid JSX 不是 React JSX**：自动运行时找不到 `solid-js/jsx-runtime` 的 `jsx` 导出——Solid 必须经 babel-preset-solid 编译。`@elysiax/solid/testing` 的 `setupClientTest()` 在测试进程挂与构建同一套 `solidPlugin`（测试里所有 .tsx 按 Solid 编译）。
+2. **solid-js/web 默认解析到 server build**：bun test 不带 browser 条件会拿到 server.js 抛 "Client-only API"。解法：测试命令带 `--conditions=browser`。
+
+落地三件套（dockyard 已配好，可直接抄）：
+
+```toml
+# bunfig.toml
+[test]
+preload = ["./test/preload.ts"]
+```
+
+```ts
+// test/preload.ts
+import { setupClientTest } from "@elysiax/solid/testing";
+// htmx + Solid 混用应用必须收窄 filter：@kitajs/html 语义的 .tsx（如 @workspace/htmx
+// 的 toast.tsx）被 Solid 编译会注入 solid-js/web 而解析失败。只放行 client/ 与 flow 包。
+setupClientTest({
+  filter: /(apps\/myapp\/src\/pages\/.*\/client|packages\/flow\/src).*\.tsx$/,
+});
+```
+
+```json
+// package.json
+"devDependencies": { "@happy-dom/global-registrator": "…" },
+"scripts": { "test": "bun test --conditions=browser" }
+```
+
+测试文件放组件旁边（`*.test.tsx`，无需 jsx pragma——编译走插件）。只断 DOM 结构与行为钩子（data-* 属性、文本），不断样式像素。样例见 `client/flow.test.tsx`。
+
+**服务端 repository 测试**（非 client，另一套约定）：内存 sqlite 跑真迁移——`new Database(":memory:")` + `PRAGMA foreign_keys = ON`（FK cascade 行为必须真实）+ `migrate(db, migrationsJournal)`，journal 从 `shared/migrations-journal.ts` 引（与生产同一份聚合，跨原子 import 只能落 shared）。裸 SQL 造上游行时注意 drizzle `$defaultFn` 列要手工给值。样例见 `deploy/deploy.repository.test.ts`——它就靠这套抓住了一个潜伏 bug：0011 迁移的 `groupId REFERENCES service_groups(id)` 是悬空外键（真名 canvas_groups），老库因改名历史无恙，全新装库 FK ON 下插入必炸。
+
+## 浏览器打包铁律
+
+client/ 是浏览器代码，Bun 打包时依赖链里**任何 Node-only 包都会让页面 500**：
+
+- **dotenv**：browser dist 里 `require("child_process")`，直接炸。解法：env 文本函数抽零依赖模块转出口
+- **.elysiax 桶文件**：会把服务端图谱（bun:sqlite）打进 bundle。routes 必须直接引 `.elysiax/routes.gen`（doctor 检查）
+- 类型 import 随意——会被擦除，不进 bundle

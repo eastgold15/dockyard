@@ -1,0 +1,54 @@
+{
+  "name": "dockyard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "elysiax dev",
+    "start": "elysiax gen && bun src/index.ts",
+    "build": "elysiax build",
+    "typecheck": "elysiax gen && tsc --noEmit",
+    "test": "bun test --conditions=browser",
+    "build:desktop": "elysiax build --desktop",
+    "package": "elysiax package"
+  },
+  "dependencies": {
+    "@elysia/eden": "^2.0.0-rc.0",
+    "@elysiax/core": "link:../../../elysiax/packages/core",
+    "@elysiax/htmx": "link:../../../elysiax/packages/htmx",
+    "@inferdi/elysia": "link:../../../elysiax/packages/elysia",
+    "@inferdi/inferdi": "^6.1.0",
+    "@kobalte/core": "^0.13.14",
+    "@meitaim/ssh": "^1.0.0",
+    "@types/dotenv": "^8.2.3",
+    "@visulima/fs": "^7.0.0",
+    "@visulima/path": "^5.0.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "bun-plugin-tailwind": "^0.1.2",
+    "dockerode": "^5.0.1",
+    "dotenv": "^18.0.4",
+    "drizzle-orm": "^1.0.0-rc.4",
+    "elysia": "catalog:",
+    "solid-js": "^1.9.17",
+    "tailwindcss": "^4.1.11",
+    "typebox": "~1.4.3",
+    "webview-bun": "^2.4.0",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@elysiax/cli": "link:../../../elysiax/packages/cli",
+    "@elysiax/flow": "link:../../../elysiax/packages/flow",
+    "@elysiax/solid": "link:../../../elysiax/packages/solid",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@kitajs/html": "^4.1.0",
+    "@types/bun": "1.4.4",
+    "@types/dockerode": "^4.0.1",
+    "drizzle-kit": "^1.0.0-rc.4",
+    "happy-dom": "^21.0.4",
+    "webview-bun": "^2.4.0"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  }
+}

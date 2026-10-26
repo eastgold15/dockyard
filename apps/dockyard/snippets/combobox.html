@@ -1,0 +1,57 @@
+<!--
+  shadcn-htmx — raw HTML combobox snippet.
+
+  Native <input list> + <datalist>. The browser handles dropdown UI,
+  filter, click + keyboard selection, focus management. Zero JS.
+
+  Two patterns:
+    1. Static options — fill the <datalist> at render time.
+    2. Server-filter — leave the <datalist> empty and let htmx populate
+       it on input. Server returns <option> tags.
+
+  Native attrs you can add to the <input> (all optional):
+    - type: `list` is valid on 13 types (text/search/url/tel/email/number/
+      date/datetime-local/month/week/time/range/color), so swap type="text"
+      for e.g. type="url" to get a URL combobox.
+      repos/mdn/files/en-us/web/html/reference/elements/input/index.md:492
+    - maxlength / minlength / pattern / title: constrain the free-typed value
+      — datalist suggestions are not requirements, the user can type anything
+      that passes validation.
+      repos/mdn/files/en-us/web/html/reference/elements/input/index.md:505
+    - readonly: focusable + copy-selectable but not editable (not on range/color).
+    - aria-describedby: id of a hint / error element announced after the name.
+  An <option> can carry `disabled` to render a non-checkable suggestion.
+    repos/mdn/files/en-us/web/html/reference/elements/option/index.md:45
+-->
+
+<!-- 1. Static options -->
+<span data-slot="combobox" class="inline-block w-full">
+  <input type="text" id="lang" name="lang" list="lang-list"
+         placeholder="Pick a language…" autocomplete="off"
+         class="flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm">
+  <datalist id="lang-list" data-slot="combobox-list">
+    <option value="JavaScript">
+    <option value="TypeScript">
+    <option value="Python">
+    <option value="Go">
+    <option value="Rust">
+    <!-- A non-checkable suggestion (greyed out, no click/focus). -->
+    <option value="COBOL" disabled>
+  </datalist>
+</span>
+
+<!-- 2. Server-filter via htmx -->
+<span data-slot="combobox" class="inline-block w-full">
+  <input type="text" id="user" name="user" list="user-list"
+         placeholder="Search users…" autocomplete="off"
+         hx-get="/api/users/search"
+         hx-trigger="input changed delay:200ms"
+         hx-target="#user-list"
+         hx-swap="innerHTML"
+         class="flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm">
+  <datalist id="user-list" data-slot="combobox-list">
+    <!-- Server returns: -->
+    <!-- <option value="Ada Lovelace"> -->
+    <!-- <option value="Grace Hopper"> -->
+  </datalist>
+</span>

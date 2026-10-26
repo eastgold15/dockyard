@@ -1,0 +1,5 @@
+{
+  "$schema": "https://github.com/productdevbook/shadcn-htmx",
+  "flavour": "html",
+  "registry": "https://shadcn-htmx.productdevbook.com/r"
+}

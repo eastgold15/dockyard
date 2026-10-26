@@ -1,0 +1,148 @@
+---
+title: dockyard 实战
+description: elysiax 页面架构在真实项目（docker 部署工具 dockyard）里的落地——CRUD 页面、纯服务模块、ServiceError、编译分发。
+---
+
+# dockyard 实战
+
+dockyard 是 elysiax 的实战项目：一个 docker 部署工具（服务器管理、GitHub/本地项目导入、compose 识别部署、画布编排、反代域名）。它验证了页面架构在**真实复杂度**下的形态——本文按页面类型讲用法，[画布单独一篇](./canvas-client.mdx)。
+
+## 页面地图
+
+```
+src/pages/
+  index              # → 重定向/项目列表
+  projects/          # htmx CRUD 页面：page + partials + actions
+  servers/           # htmx CRUD 页面（最标准的形态，脚手架照它抄）
+  canvas/            # client 模式：整页 Solid + JSON API，世界地图（见画布篇）
+  ping/              # 最小示例页面
+  deploy/ edge/ github/ resources/   # 纯服务模块（无路由，只提供 DI）
+src/shared/ui/       # L4 共享渲染：cn()、PageHeader、Empty
+src/app.layout.tsx   # L0 全局壳
+```
+
+## 标准 CRUD 页面：servers
+
+三件套 + di + service + repository，一个文件夹全齐：
+
+```tsx
+// servers.page.tsx —— 整页（L1）
+export default definePage(async ({ di }) => ({
+  title: "服务器 · Dockyard",
+  content: <ServerList servers={await di.get("serverService").list()} />,
+}));
+
+// servers.partials.tsx —— 展示组件 + GET 片段（L2）
+export const ServerList: Component<{ servers: Server[] }> = ...
+export default defineRoutes()
+  .get("/:id/card", ({ di, params }) => <ServerCard ... />);
+
+// servers.actions.tsx —— 写端点（L2）
+export default defineRoutes()
+  .post("/", { body: serverForm }, async ({ di, body, toast }) => {
+    await di.get("serverService").create(body);
+    toast(`服务器「${body.name}」已添加`);
+    return <ServerList servers={await di.get("serverService").list()} />;
+  })
+  .delete("/:id", ...);
+```
+
+要点：
+
+- **展示组件（ServerList）放 partials**，整页和写操作后的片段刷新共用同一份渲染——这就是「一块画面一个 state 一个取数函数」的页面架构版
+- hx 目标用 `routes.pages.servers.*` 类型化助手，不手写路径
+- 弹窗（共享资源 modal）也是服务端片段，hx-get 进 `#modal-root`
+
+## 纯服务模块：deploy / edge / github
+
+没有 `.page.tsx` 的文件夹不进路由表，只向容器提供服务：
+
+```ts
+// deploy/deploy.di.ts
+export default defineModule({
+  provides: {
+    deployRepository: provide(DeployRepository, ["db"]),
+    deployService: provide(DeployService, [DeployRepository, ServerService, GithubService, CanvasService, ...]),
+  },
+});
+```
+
+依赖写**类引用**（经对方 socket import），容器按图装配。canvas 的 actions 通过 `di.get("deployService")` 使用；deploy 自己的 29 个端点挂在 `/api/deploy/*`（deploy.actions.ts，按文件夹 URL 自动挂载）——**页面之间零耦合，服务共享靠 DI 图**。
+
+## 部署管线：快照回滚 / 部署策略 / 部署通道
+
+部署范式（一开始就选定的契约）：构建产物统一打成 docker 镜像；服务器预装 Caddy 占 80/443 自动证书；数据库预装或用 docker 托管，不往重里做。对标 Railway 主力功能。
+
+**回滚（镜像 + compose 快照粒度）**
+
+- 每次成功部署收尾时 `snapshotRun`：compose/override/env 加密进 `deploy_runs.snapshotJson`，逐服务 `docker tag dockyard-<targetId>-<svc>:run-<runId>` 进 `imageSnapshot`（不动用户 compose 的镜像名）。快照失败只记警告——绝不让成功的部署翻盘。
+- 回滚写独立目录 `~/dockyard/rollback/<targetId>/`：**不污染在跑的 remoteDir，更不弄脏远端 git 检出目录**（否则下次 `git checkout FETCH_HEAD` 冲突）。有 imageSnapshot 时生成 `docker-compose.rollback.yml` pin 旧镜像，`up -p <当初项目名>` 不起第二套容器。
+- 历史每 target 保留 20 条 run（`pruneRuns`，日志 chunks 靠 FK cascade 连带清）。
+
+**日志健壮性**：`logText` 单列读改写改为 `deploy_log_chunks` 分块追加（`MAX(seq)+1` 廉价查询换多写者正确性）；SSE 推送按 50 行/100ms 窗口合并（`execLongRemote` 单窗口可达千行）；客户端去轮询——HTTP 一次性回填 + SSE 增量 + 终态最后一次 HTTP 对齐。
+
+**部署策略三态**（`deploy_targets.deployPolicy`）：manual 不轮询（省 GitHub 配额）/ notify 只亮「有更新」徽章（默认）/ auto 检出更新即触发部署（`trigger=auto` 入血缘，内存记已触发 sha 防失败重试风暴）。回滚成功时 auto 自动降级为 notify——回滚是「留旧版」的明确意图，不降级的话下一轮轮询会立刻把坏 sha 部回去。
+
+**开放问题（记录在案，暂不实施）**：远端镜像 run tag 的磁盘膨胀（观察后决定是否保留 N 个超出 rmi）；宿主预装 DB 轨道（倾向检测+接管而非自动安装）；SSE log 高频若拖累画布徽章再拆独立频道；进程重启后 lastAutoSha 清空（auto 目标极端情况下可能重复触发一次，可接受）。
+
+**部署通道（本机/远程硬隔离语义化）**
+
+- 分界线不只是视觉：卡跨服务器拖拽走 `moveTargetToNode`——跨界（local↔remote）时 app 必须 `artifactShipped=true`（产物已到云端的门票），db 直接拒绝（数据不随卡走）；迁移后域名在新旧两台服务器都做 edge 对账，旧容器不自动清理。
+- 显式通道 = 「传输产物」：本地构建 + docker save/load 推远端但不起容器，成功置门票。
+- 跨架构：本地构建时远端架构（`uname -m` 缓存）与本机不同则注入 `DOCKER_DEFAULT_PLATFORM`，且前置检测 buildx——经典 builder 会静默忽略该变量产出错架构镜像。
+
+## ServiceError 实战
+
+全项目 45 处 `throw new Error("中文")` 迁成 ServiceError 后的形态：
+
+```ts
+// deploy.service.ts
+if (!target) throw new ServiceError("部署目标不存在", 404);
+
+// canvas.actions.ts —— 没有 try/catch，错误自动变成 { error } JSON
+// 或 hx 横幅片段（看请求来源），客户端 api.ts 的 errText 读 error 字段
+```
+
+actions 里保留的 try/catch 只剩**非回显用途**：JSON.parse 兜底、ws 终端把错误写进 xterm、GitHub 拉取失败的降级（错误作为数据字段返回）。
+
+## 凹凸插座实战
+
+dockyard 每个原子是完整可复制的垂直切片——schema、迁移、service、actions 都在自己文件夹里：
+
+```
+pages/
+├── servers/   schema.ts migrations.ts servers.socket.ts servers.di.ts …   ← 表: servers
+├── projects/  schema.ts migrations.ts projects.socket.ts …                ← 表: projects
+├── canvas/    schema.ts migrations.ts canvas.socket.ts …                  ← 表: canvas_nodes, service_groups
+├── resources/ schema.ts migrations.ts resources.socket.ts db-templates.ts ← 表: server_resources
+├── edge/      schema.ts migrations.ts edge.socket.ts …                    ← 表: domains
+├── github/    github.socket.ts（无表，纯服务）
+└── deploy/    schema.ts migrations.ts deploy.socket.ts deploy.di.ts …     ← 表: deploy_targets, deployments
+    ├── runtime/   runtime.di.ts runtime.socket.ts    ← 嵌套原子：console/restart/stats/logs/env
+    └── backup/    backup.di.ts backup.socket.ts      ← 嵌套原子：备份
+```
+
+三条落地要点：
+
+1. **外键 = 插头**：deploy 的表引用画布表，写的是 `import { canvasNodes } from "../canvas/canvas.socket"`——跨原子 import 只走插座，`elysiax doctor` 插座门禁强制
+2. **嵌套原子父子无特权**：runtime.di.ts 依赖 DeployService，import 的也是 `../deploy.socket`
+3. **迁移随文件夹**：每原子的 `migrations.ts` 是自己的 journal 片段，`shared/db.ts` 聚合后按 timestamp 排序重放；复制文件夹 = 连表带迁移一起带走
+
+后台轮询器也是 DI 服务：`start()` 返回 `{ app, root }`，入口 `root.get("updatePoller").start()`——轮询与请求共用同一份单例（SSH 池只有一份）。
+
+## 编译分发（已实测）
+
+```sh
+elysiax build            # → dist/dockyard（单二进制，SSR 页 + canvas HTMLBundle + 内联 CSS）
+elysiax build --desktop  # → dist/dockyard-app（webview 双进程：窗口 + --server 子进程）
+elysiax package          # → dist/packaging/（PKGBUILD + .desktop + 图标）
+```
+
+两个必须知道的点：
+
+1. **typebox 要显式 import**（`src/index.ts` 顶部）：elysia 惰性 `require("typebox/*")`，bundler 静态分析不到，编译产物启动即挂
+2. **SSR 全局样式不走 HTMLBundle**：`/api/assets/global.css` 由 codegen 内联成文本（`assets.gen.ts`），编译二进制里没有文件系统也能服务
+
+## 测试协作约定
+
+dockyard 的 CLAUDE.md 里写着「进行测试，需要询问我」——真实服务器、真实 docker，agent 不自作主张跑写操作。冒烟只读端点（GET 页面/JSON）可直接跑。

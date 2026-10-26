@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  --color-harbor-950: #0b0f14;
+  --color-harbor-900: #11161d;
+  --color-harbor-800: #1a222c;
+  --color-harbor-700: #243040;
+  --color-harbor-600: #33445a;
+  --color-brass-500: #d9a441;
+  --color-brass-600: #b98a2f;
+  --color-tide-400: #5ec4b6;
+  --color-signal-500: #d95d4e;
+}
+
+@layer base {
+  :root {
+    @apply text-neutral-300 bg-harbor-950 font-sans antialiased;
+  }
+
+  body {
+    @apply min-h-screen m-0;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-harbor-700) transparent;
+  }
+
+  code, pre, .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+}
+
+@layer utilities {
+  /* 船台蓝图点阵：画布背景 */
+  .dock-grid {
+    background-image: radial-gradient(circle, var(--color-harbor-700) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}
+
+@layer components {
+  /* 全局 toast（@workspace/htmx ToastRoot + toast 事件）：右下角堆栈，层级在模态之上 */
+  #toast-root {
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 20rem;
+    pointer-events: none;
+  }
+  .toast {
+    @apply rounded border border-harbor-700 bg-harbor-900 px-3 py-2 text-sm text-neutral-200 shadow-xl;
+  }
+  .toast-success {
+    @apply border-tide-400/40 text-tide-400;
+  }
+  .toast-error {
+    @apply border-signal-500/50 text-signal-500;
+  }
+}
+
+@layer utilities {
+  /* htmx 请求中的加载态：带 htmx-indicator 的元素平时隐藏，请求时显示 */
+  .htmx-indicator {
+    display: none;
+  }
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+    display: inline-block;
+  }
+}

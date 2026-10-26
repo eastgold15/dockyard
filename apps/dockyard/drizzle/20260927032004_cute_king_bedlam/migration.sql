@@ -1,0 +1,1 @@
+ALTER TABLE `deploy_targets` ADD `etag` text;

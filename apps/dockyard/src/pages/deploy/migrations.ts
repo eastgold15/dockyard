@@ -82,4 +82,10 @@ export const migrations: MigrationsJournal = [
     timestamp: 17,
     sql: "CREATE TABLE `deploy_artifacts` (\n\t`id` integer PRIMARY KEY AUTOINCREMENT,\n\t`targetId` integer NOT NULL,\n\t`runId` integer NOT NULL,\n\t`kind` text DEFAULT 'compose' NOT NULL,\n\t`project` text,\n\t`imageTags` text,\n\t`snapshotJson` text NOT NULL,\n\t`sha` text,\n\t`createdAt` integer NOT NULL,\n\tCONSTRAINT `fk_deploy_artifacts_targetId_deploy_targets_id_fk` FOREIGN KEY (`targetId`) REFERENCES `deploy_targets`(`id`) ON DELETE CASCADE\n);--> statement-breakpoint\nALTER TABLE `deploy_runs` ADD `artifactId` integer;--> statement-breakpoint\nINSERT INTO `deploy_artifacts` (`targetId`, `runId`, `kind`, `project`, `imageTags`, `snapshotJson`, `createdAt`) SELECT `targetId`, `id`, 'compose', `project`, `imageSnapshot`, `snapshotJson`, `startedAt` FROM `deploy_runs` WHERE `snapshotJson` IS NOT NULL;--> statement-breakpoint\nUPDATE `deploy_runs` SET `artifactId` = (SELECT `a`.`id` FROM `deploy_artifacts` `a` WHERE `a`.`runId` = `deploy_runs`.`id`);",
   },
+  // 0017 回填漏带 sha（产物回滚后要回写 lastKnownSha + 日志显示）——从产出 run 的 commitSha 补齐
+  {
+    name: "0018_artifact_sha_backfill",
+    timestamp: 18,
+    sql: "UPDATE `deploy_artifacts` SET `sha` = (SELECT `commitSha` FROM `deploy_runs` WHERE `deploy_runs`.`id` = `deploy_artifacts`.`runId`) WHERE `sha` IS NULL;",
+  },
 ];

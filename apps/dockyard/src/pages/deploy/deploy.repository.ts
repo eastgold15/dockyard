@@ -1,8 +1,19 @@
-import { and, asc, desc, eq, max, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, max, notInArray } from "drizzle-orm";
 import type { Db } from "../../shared/db";
-import { deployLogChunks, deployments, deployTargets, type Deployment, type DeployTarget } from "./schema";
+import {
+  deployArtifacts,
+  deployLogChunks,
+  deployments,
+  deployTargets,
+  type DeployArtifact,
+  type Deployment,
+  type DeployTarget,
+} from "./schema";
 
 export type NewTarget = Omit<typeof deployTargets.$inferInsert, "id" | "createdAt">;
+export type NewArtifact = Omit<typeof deployArtifacts.$inferInsert, "id" | "createdAt" | "kind">;
+/** 部署历史行 + 回滚可用性（产物快照存在即可回滚；imageTags 仅决定能否 pin 镜像，db 模板无 tag 也能回滚） */
+export type DeploymentRow = Deployment & { rollbackable: boolean };
 
 export class DeployRepository {
   constructor(private readonly db: Db) {}
@@ -51,7 +62,7 @@ export class DeployRepository {
 
   async createDeployment(
     targetId: number,
-    extra?: { trigger?: Deployment["trigger"]; rollbackOf?: number },
+    extra?: { trigger?: Deployment["trigger"]; rollbackOf?: number; artifactId?: number },
   ): Promise<Deployment> {
     const [row] = await this.db.insert(deployments).values({ targetId, ...extra }).returning();
     return row!;
@@ -66,11 +77,18 @@ export class DeployRepository {
       .then((r) => r[0]);
   }
 
-  /** 部署历史（新→旧，服务抽屉 Deployments Tab） */
-  deploymentsOfTarget(targetId: number, limit = 10): Promise<Deployment[]> {
-    return this.db.select().from(deployments)
+  /** 部署历史（新→旧，服务抽屉 Deployments Tab）；联查产物透出 rollbackable（回滚按钮 gating） */
+  async deploymentsOfTarget(targetId: number, limit = 10): Promise<DeploymentRow[]> {
+    const rows = await this.db
+      .select({ run: deployments, artifact: deployArtifacts })
+      .from(deployments)
+      .leftJoin(deployArtifacts, eq(deployments.artifactId, deployArtifacts.id))
       .where(eq(deployments.targetId, targetId))
       .orderBy(desc(deployments.id)).limit(limit);
+    return rows.map(({ run, artifact }) => ({
+      ...run,
+      rollbackable: run.status === "success" && artifact !== null,
+    }));
   }
 
   deploymentById(id: number): Promise<Deployment | undefined> {
@@ -125,7 +143,9 @@ export class DeployRepository {
     return row?.logText ?? "";
   }
 
-  /** 历史清理：每个 target 只留最近 keep 条 run（chunks 靠 ON DELETE CASCADE 连带清） */
+  /** 历史清理：每个 target 只留最近 keep 条 run（chunks 靠 ON DELETE CASCADE 连带清）。
+   *  产物连带 GC：只删「产出 run 已被清理 且 无任何存活 run 引用」的产物——
+   *  回滚 run 引用旧产物，存活回滚行会保住它指向的产物。 */
   async pruneRuns(targetId: number, keep: number) {
     const kept = await this.db
       .select({ id: deployments.id })
@@ -134,8 +154,32 @@ export class DeployRepository {
       .orderBy(desc(deployments.id))
       .limit(keep);
     if (kept.length === 0) return;
+    const keptIds = kept.map((k) => k.id);
     await this.db
       .delete(deployments)
-      .where(and(eq(deployments.targetId, targetId), notInArray(deployments.id, kept.map((k) => k.id))));
+      .where(and(eq(deployments.targetId, targetId), notInArray(deployments.id, keptIds)));
+    const referenced = (
+      await this.db
+        .select({ id: deployments.artifactId })
+        .from(deployments)
+        .where(and(eq(deployments.targetId, targetId), isNotNull(deployments.artifactId)))
+    ).map((r) => r.id!);
+    const conds = [
+      eq(deployArtifacts.targetId, targetId),
+      notInArray(deployArtifacts.runId, keptIds),
+    ];
+    if (referenced.length) conds.push(notInArray(deployArtifacts.id, referenced));
+    await this.db.delete(deployArtifacts).where(and(...conds));
+  }
+
+  // ── 部署产物（六阶段零界点；回滚 = 激活旧产物）──
+
+  async createArtifact(input: NewArtifact): Promise<DeployArtifact> {
+    const [row] = await this.db.insert(deployArtifacts).values(input).returning();
+    return row!;
+  }
+
+  artifactById(id: number): Promise<DeployArtifact | undefined> {
+    return this.db.select().from(deployArtifacts).where(eq(deployArtifacts.id, id)).limit(1).then((r) => r[0]);
   }
 }

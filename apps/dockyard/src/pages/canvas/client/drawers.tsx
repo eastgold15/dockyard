@@ -12,7 +12,7 @@
  */
 import { createEffect, createSignal, Index, For, Match, onCleanup, onMount, Show, splitProps, Switch } from "solid-js";
 import type { JSX } from "solid-js";
-import type { Deployment, DeployTarget } from "../../deploy/deploy.socket";
+import type { Deployment, DeploymentRow, DeployTarget } from "../../deploy/deploy.socket";
 import type { Domain } from "../../edge/edge.socket";
 import type { RepoBrief } from "../../github/github.socket";
 import type { DbRef } from "../../deploy/deploy.socket";
@@ -796,7 +796,7 @@ interface ServiceDrawerData {
   target: DeployTarget;
   svc?: string;
   tab: ServiceTab;
-  deployments?: Deployment[];
+  deployments?: DeploymentRow[];
   envText?: string;
   dbRefs?: DbRef[];
   sharedEnv?: { resourceId: number; name: string; dbType: string; envKey: string; url: string }[];
@@ -1072,11 +1072,11 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
               <span class="text-neutral-400">{fmtAgo(d.startedAt)}</span>
               {d.finishedAt ? <span class="mono text-neutral-600">{Math.round((new Date(d.finishedAt).getTime() - new Date(d.startedAt).getTime()) / 1000)}s</span> : null}
               <div class="ml-auto flex items-center gap-2">
-                {/* 回滚仅对有快照的成功 run 开放；旧 run（迁移前）无快照，置灰 */}
+                {/* 回滚仅对有产物的成功 run 开放（rollbackable 由历史联查 deploy_artifacts 透出）；旧 run 无产物，置灰 */}
                 <button
                   class="text-neutral-500 hover:text-brass-400 disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled={!(d.status === "success" && d.snapshotJson)}
-                  title={d.status === "success" && d.snapshotJson ? `回滚到 run #${d.id}` : "无快照，无法回滚"}
+                  disabled={!d.rollbackable}
+                  title={d.rollbackable ? `回滚到 run #${d.id}` : "无快照，无法回滚"}
                   onClick={() => {
                     void (async () => {
                       const ok = await confirmAction({

@@ -76,14 +76,37 @@ export const deployments = sqliteTable("deploy_runs", {
   // 触发来源（回滚血缘：rollbackOf 指向被回滚的 run）
   trigger: text({ enum: ["ui", "auto", "rollback"] }).notNull().default("ui"),
   rollbackOf: integer(),
-  // 部署成功的镜像快照（service → dockyard-<targetId>-<svc>:run-<id>），明文无秘密；空 = 不可回滚
+  // 旧产物列：已停止写入（产物走 deploy_artifacts + artifactId），保留仅为存量兜底读
   imageSnapshot: text({ mode: "json" }).$type<Record<string, string>>(),
-  // 当次 compose/override/env 快照（含秘密值，enc1: 加密；回滚时解密重建远端目录）
+  // 旧产物列：同上（当次 compose/override/env 快照，enc1: 加密）
   snapshotJson: text(),
   // compose 项目名快照（回滚 up -p 必须与当初一致，否则会起第二套容器）
   project: text(),
+  // 本次部署产出的产物（六阶段模型：Artifact 是一等实体，回滚 = 新 run 引用旧产物重新激活）
+  artifactId: integer(),
   startedAt: integer({ mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
   finishedAt: integer({ mode: "timestamp" }),
+});
+
+// ── 部署产物（六阶段流水线的零界点：前半段自由组合，后半段由产物形态唯一决定）──
+// 回滚 = 新 run 引用旧产物重新激活；同一产物可被多次激活。
+// runId 是产出溯源（不设外键——run 会被 pruneRuns 清理，产物只要仍被引用就存活）。
+export const deployArtifacts = sqliteTable("deploy_artifacts", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  targetId: integer().notNull().references(() => deployTargets.id, { onDelete: "cascade" }),
+  // 产出本产物的 run（溯源用；无 FK——产物寿命独立于产出它的 run）
+  runId: integer().notNull(),
+  // 产物形态（零界点扩展位：将来 fileTree/binary 等；本轮只有 compose 镜像集）
+  kind: text({ enum: ["compose"] }).notNull().default("compose"),
+  // compose 项目名（回滚 up -p 必须与当初一致，否则会起第二套容器）
+  project: text(),
+  // 镜像 pin 快照（service → dockyard-<targetId>-<svc>:run-<runId>），明文无秘密；空 = 不可 pin 回滚
+  imageTags: text({ mode: "json" }).$type<Record<string, string>>(),
+  // 当次 compose/override/env 快照（含秘密值，enc1: 加密；回滚时解密重建远端目录）
+  snapshotJson: text().notNull(),
+  // 源码版本（github sha / local 短 sha；回滚后回写 lastKnownSha）
+  sha: text(),
+  createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 // ── 部署日志分块（替代 logText 读改写；每次 log 调用一条 chunk）──
@@ -118,3 +141,4 @@ export interface DepEdge {
 
 export type DeployTarget = typeof deployTargets.$inferSelect;
 export type Deployment = typeof deployments.$inferSelect;
+export type DeployArtifact = typeof deployArtifacts.$inferSelect;

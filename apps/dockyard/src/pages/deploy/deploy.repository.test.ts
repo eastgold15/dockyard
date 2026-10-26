@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { migrationsJournal } from "../../shared/migrations-journal";
 import { DeployRepository } from "./deploy.repository";
-import { deployLogChunks } from "./schema";
+import { deployArtifacts, deployLogChunks } from "./schema";
 import { eq } from "drizzle-orm";
 
 function freshRepo() {
@@ -70,4 +70,40 @@ test("pruneRuns：只留最近 keep 条，chunks 级联清", async () => {
   expect(orphanChunks.length).toBe(0);
   // 保留的 run 日志完好
   expect(await repo.logTextOf(ids[4]!)).toBe(`run${ids[4]}-a\nrun${ids[4]}-b`);
+});
+
+test("artifacts：创建后历史联查透出 rollbackable（仅成功且有产物的 run）", async () => {
+  const ok = await repo.createDeployment(targetId);
+  await repo.updateDeployment(ok.id, { status: "success" });
+  const artifact = await repo.createArtifact({
+    targetId, runId: ok.id, project: "dockyard-1",
+    imageTags: { web: "dockyard-1-web:run-1" }, snapshotJson: "enc1:xxx", sha: "abc123",
+  });
+  await repo.updateDeployment(ok.id, { artifactId: artifact.id });
+  const failed = await repo.createDeployment(targetId);
+  await repo.updateDeployment(failed.id, { status: "failed" });
+
+  const rows = await repo.deploymentsOfTarget(targetId);
+  expect(rows.find((r) => r.id === ok.id)?.rollbackable).toBe(true);
+  expect(rows.find((r) => r.id === failed.id)?.rollbackable).toBe(false);
+  expect((await repo.artifactById(artifact.id))?.sha).toBe("abc123");
+});
+
+test("pruneRuns：产物连带 GC——产出 run 被清且无存活引用才删，回滚引用保命", async () => {
+  // r1 产出 A1；r2 是回滚 run，引用 A1
+  const r1 = await repo.createDeployment(targetId);
+  const a1 = await repo.createArtifact({ targetId, runId: r1.id, snapshotJson: "enc1:a" });
+  await repo.updateDeployment(r1.id, { artifactId: a1.id });
+  const r2 = await repo.createDeployment(targetId, { trigger: "rollback", rollbackOf: r1.id, artifactId: a1.id });
+  // r3 产出 A2（无人引用）；r4 是最新存活
+  const r3 = await repo.createDeployment(targetId);
+  const a2 = await repo.createArtifact({ targetId, runId: r3.id, snapshotJson: "enc1:b" });
+  const r4 = await repo.createDeployment(targetId);
+
+  await repo.pruneRuns(targetId, 2); // 存活：r4、r3（r2 引用 A1 但自身被清）
+  const db = (repo as unknown as { db: ReturnType<typeof drizzle> }).db;
+  const rest = await db.select().from(deployArtifacts).where(eq(deployArtifacts.targetId, targetId));
+  // A1：产出 run r1 被清 + 引用它的 r2 也被清 → 删；A2：产出 run r3 存活 → 留
+  expect(rest.map((a) => a.id)).toEqual([a2.id]);
+  expect(r2.artifactId).toBe(a1.id); // 血缘字段在创建时落库
 });

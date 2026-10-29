@@ -11,6 +11,8 @@ export type CanvasEvent =
   | { type: "status"; targetId: number; status: string; stage?: DeployStage }
   | { type: "running"; targetId: number; running: boolean }
   | { type: "state"; targetId: number; service: string; state: "running" | "exited" | "unknown" }
+  // 发现层（未纳管容器）集合变化：无载荷——客户端收到后重拉 /board（发现卡数据是现查快照）
+  | { type: "discovery" }
   // 部署日志增量（service 侧 100ms/50 行窗口合并后推送，不是逐行；日志抽屉订阅此事件免轮询）
   | { type: "log"; targetId: number; runId: number; lines: string[] };
 

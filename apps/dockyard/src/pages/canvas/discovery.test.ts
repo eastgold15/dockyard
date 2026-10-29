@@ -3,7 +3,7 @@
  * 兜底匹配（compose project 名 / 容器名前缀）、端口摘要。
  */
 import { expect, test } from "bun:test";
-import { discoverContainers, matchProjectId, portsSummary } from "./discovery";
+import { discoverContainers, discoverySignature, matchProjectId, portsSummary } from "./discovery";
 import type { RawContainer } from "./discovery";
 
 const projects = [
@@ -81,6 +81,15 @@ test("discoverContainers：过滤 dockyard 纳管与一次性容器，端口去�
     projectId: 6,
     projectName: "tradeflow",
   });
+});
+
+test("discoverySignature：未纳管容器指纹，与顺序无关（poller 变更检测用）", () => {
+  const managed: RawContainer = { Id: "managed00001", Labels: { "dockyard.managed": "true" } };
+  const other: RawContainer = { Id: "zzz", Labels: {} }; // state 缺省记 unknown
+  expect(discoverySignature([pg, managed])).toBe("abcdef123456:running");
+  expect(discoverySignature([pg, other])).toBe("abcdef123456:running,zzz:unknown");
+  expect(discoverySignature([other, pg])).toBe("abcdef123456:running,zzz:unknown");
+  expect(discoverySignature([managed])).toBe("");
 });
 
 test("portsSummary：无公网映射只写私有端口", () => {

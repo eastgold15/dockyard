@@ -89,6 +89,24 @@ export function portsSummary(ports: RawContainer["Ports"]): string {
   return [...seen].join(", ");
 }
 
+/** 发现层命中口径（卡片与变更指纹共用一个定义，避免两处漂移） */
+function isDiscoverable(c: RawContainer): boolean {
+  return c.Labels?.["dockyard.managed"] !== "true" && c.Labels?.["com.docker.compose.oneoff"] !== "True";
+}
+
+/**
+ * 发现层变更指纹：未纳管容器的 `id:state`（排序后拼接）。
+ * container-poller 每轮算一次，与上轮不同 → 推 "discovery" 事件让前端重拉 /board；
+ * 比在轮询里重建完整卡片模型便宜，也不会两处逻辑漂移（卡片仍由 /board 现查现拼）。
+ */
+export function discoverySignature(containers: RawContainer[]): string {
+  return containers
+    .filter(isDiscoverable)
+    .map((c) => `${c.Id.slice(0, 12)}:${c.State ?? "unknown"}`)
+    .sort()
+    .join(",");
+}
+
 /**
  * 原始容器列表 → 发现模型。
  * 过滤：dockyard 管理的（已有卡片）、compose one-off（docker compose run 的一次性任务）。
@@ -98,8 +116,7 @@ export function discoverContainers(
   projects: ProjectRef[],
 ): DiscoveredContainer[] {
   return containers
-    .filter((c) => c.Labels?.["dockyard.managed"] !== "true")
-    .filter((c) => c.Labels?.["com.docker.compose.oneoff"] !== "True")
+    .filter(isDiscoverable)
     .map((c) => {
       const name = (c.Names?.[0] ?? c.Id.slice(0, 12)).replace(/^\//, "");
       const projectId = matchProjectId(c, projects);

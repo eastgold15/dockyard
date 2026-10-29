@@ -361,6 +361,9 @@ export function Board(props: { lens: () => number | null }) {
           }
         } else if (msg.type === "state") {
           setLive("services", `${msg.targetId}:${msg.service}`, msg.state as never);
+        } else if (msg.type === "discovery") {
+          // 发现层集合变化（容器启停/增删）：发现卡数据是 /board 现查的快照 → 重拉结构
+          void refetch();
         } else if (msg.type === "log") {
           const id = msg.targetId as number;
           const runId = msg.runId as number;

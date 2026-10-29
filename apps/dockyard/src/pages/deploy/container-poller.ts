@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../../shared/db";
-import { canvasNodes } from "../canvas/canvas.socket";
+import { canvasNodes, discoverySignature } from "../canvas/canvas.socket";
 import type { ServerService } from "../servers/servers.socket";
 import { deployTargets, type TargetServicesDoc } from "./schema";
 import { CANVAS_CHANNEL, events, type CanvasEvent } from "./events";
@@ -18,6 +18,8 @@ type SvcState = "running" | "exited" | "unknown";
 export class ContainerPoller {
   /** key = `${targetId}:${service}`；not-found 也记 unknown，容器消失时能推出变化 */
   private readonly snapshot = new Map<string, SvcState>();
+  /** serverId → 发现层指纹（未纳管容器 id:state）；变则推 "discovery" 让前端重拉 /board */
+  private readonly discovery = new Map<number, string>();
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(
@@ -69,15 +71,31 @@ export class ContainerPoller {
     // 全局频道无观众 → 整轮不 SSH（仍保留上面的快照清理）
     if (!events.hasSubs(CANVAS_CHANNEL)) return;
 
-    for (const [serverId, targets] of byServer) {
-      const apps = targets.filter((t) => t.servicesJson?.services?.length);
-      if (!apps.length) continue;
-      let containers: { Labels?: Record<string, string>; State?: string }[];
+    // 轮询范围 = 有画布卡的服务器 ∪ 有部署目标的服务器。
+    // 发现层（未纳管容器）与部署目标无关：本机这类「只跑着外来容器」的服务器也要轮
+    const nodeServers = await this.db
+      .selectDistinct({ serverId: canvasNodes.serverId })
+      .from(canvasNodes);
+    const serverIds = new Set<number>([...byServer.keys(), ...nodeServers.map((r) => r.serverId)]);
+    // 卡片被删的服务器不再轮询，清掉指纹防泄漏（下次见面当作首轮，不误推）
+    for (const id of this.discovery.keys()) if (!serverIds.has(id)) this.discovery.delete(id);
+
+    for (const serverId of serverIds) {
+      const apps = (byServer.get(serverId) ?? []).filter((t) => t.servicesJson?.services?.length);
+      let containers: { Id: string; Labels?: Record<string, string>; State?: string }[];
       try {
         const docker = await this.serverService.docker(serverId);
         containers = await docker.listContainers({ all: true }) as typeof containers;
       } catch {
         continue; // 服务器离线/SSH 失败 → 保持上轮快照，不推
+      }
+      // 发现层：指纹变 → 推无载荷事件，前端重拉 /board（卡片数据现查现拼，不在这里复制映射逻辑）
+      const sig = discoverySignature(containers);
+      const prevSig = this.discovery.get(serverId);
+      if (sig !== prevSig) {
+        this.discovery.set(serverId, sig);
+        // 首轮指纹只做基线：前端挂载时刚拉过 /board，不必再推一轮
+        if (prevSig !== undefined) events.publish(CANVAS_CHANNEL, { type: "discovery" });
       }
       for (const t of apps) {
         const doc = t.servicesJson as TargetServicesDoc;

@@ -79,6 +79,7 @@ test("discoverContainers：过滤 dockyard 纳管与一次性容器，端口去�
     state: "running",
     ports: "5444→5432/tcp",
     projectId: 6,
+    projectName: "tradeflow",
   });
 });
 

@@ -69,6 +69,7 @@ export interface DiscoveredContainer {
   state: "running" | "exited" | "created" | "restarting" | "paused" | "dead" | "unknown";
   ports: string;           // 端口摘要（5444→5432/tcp）
   projectId: number | null; // 归属的 dockyard 项目（working_dir 反查；null = 只在世界视图）
+  projectName: string;     // 世界视图的归属徽章（无归属为空串）
 }
 
 export interface CardModel {

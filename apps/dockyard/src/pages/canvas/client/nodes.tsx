@@ -152,7 +152,11 @@ export const ContainerNodeView = (props: { id: string; data: { d: DiscoveredCont
       <div class="flex items-center gap-2">
         <span class={`h-2 w-2 shrink-0 rounded-full ${d().state === "running" ? "bg-tide-400" : "bg-signal-500"}`} />
         <span class="truncate text-sm font-medium text-neutral-200" title={d().name}>{d().name}</span>
-        <span class="ml-auto shrink-0"><Badge tone="muted">发现</Badge></span>
+        <span class="ml-auto flex shrink-0 items-center gap-1">
+          {/* 世界视图（无透镜）下标注项目归属，与部署目标卡一致 */}
+          <Show when={lens() == null && d().projectName}><Badge tone="muted">{d().projectName}</Badge></Show>
+          <Badge tone="muted">发现</Badge>
+        </span>
       </div>
       <div class="mono truncate text-[11px] text-neutral-500" title={d().image}>{d().image}</div>
       <div class="mono flex items-center justify-between gap-2 text-[11px] text-neutral-600">

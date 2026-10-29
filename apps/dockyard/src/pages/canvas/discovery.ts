@@ -102,6 +102,7 @@ export function discoverContainers(
     .filter((c) => c.Labels?.["com.docker.compose.oneoff"] !== "True")
     .map((c) => {
       const name = (c.Names?.[0] ?? c.Id.slice(0, 12)).replace(/^\//, "");
+      const projectId = matchProjectId(c, projects);
       return {
         id: c.Id.slice(0, 12),
         name,
@@ -110,7 +111,8 @@ export function discoverContainers(
         image: c.Image ?? "",
         state: (c.State ?? "unknown") as DiscoveredContainer["state"],
         ports: portsSummary(c.Ports),
-        projectId: matchProjectId(c, projects),
+        projectId,
+        projectName: projects.find((p) => p.id === projectId)?.name ?? "",
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));

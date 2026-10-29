@@ -119,11 +119,14 @@ preload = ["./test/preload.ts"]
 // test/preload.ts
 import { setupClientTest } from "@elysiax/solid/testing";
 // htmx + Solid 混用应用必须收窄 filter：@kitajs/html 语义的 .tsx（如 @workspace/htmx
-// 的 toast.tsx）被 Solid 编译会注入 solid-js/web 而解析失败。只放行 client/ 与 flow 包。
+// 的 toast.tsx）被 Solid 编译会注入 solid-js/web 而解析失败。
+// 放行「本应用 client/」+ flow 包——link: 装进来时路径可能是包名也可能是真实目录，两个都写。
 setupClientTest({
-  filter: /(apps\/myapp\/src\/pages\/.*\/client|packages\/flow\/src).*\.tsx$/,
+  filter: /(apps\/myapp\/src\/pages\/.*\/client|(packages\/flow|@elysiax\/flow)\/src).*\.tsx$/,
 });
 ```
+
+`setupClientTest` 另做了 **runtime peer 去重**：`Bun.plugin` 的 `onResolve` 在 `bun test` 运行时不生效，link: 引入的 `@elysiax/flow` 会从自己的 `node_modules` 拿到另一份 solid-js。两份实例的响应式图互不相通——外部 props 变了、flow 内部 DOM 纹丝不动，测试静默通过。现在用 `bun:test` 的 `mock.module` 把 `solid-js` / `solid-js/web` / `solid-js/store` 钉到应用根副本，和浏览器构建保持同一实例。
 
 ```json
 // package.json

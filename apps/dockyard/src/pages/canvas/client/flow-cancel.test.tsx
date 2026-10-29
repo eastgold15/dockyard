@@ -142,6 +142,103 @@ test("缩放中途拉伸：尺寸按新 k 换算，不跳变（rebase 生效）"
   el.remove();
 });
 
+test("缩放后取消：回滚到起手尺寸，而不是滚轮时刻的尺寸", () => {
+  ensureCapture();
+  const resizes: { w: number; h: number; resizing: boolean }[] = [];
+  const ends: { w: number; h: number }[] = [];
+  const nodes: N[] = [
+    { id: "n1", type: "box", position: { x: 0, y: 0 }, data: {}, width: 100, height: 100, selected: true },
+  ];
+  const views = {
+    box: (p: NodeViewProps<never>) => (
+      <div class="box">
+        <Resizer nodeId={p.id} visible minW={10} minH={10} width={p.width ?? 100} height={p.height ?? 100} onEnd={() => {}} />
+      </div>
+    ),
+  } as unknown as Record<string, (p: NodeViewProps<never>) => Element>;
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const dispose = render(
+    () => (
+      <FlowView
+        nodes={nodes}
+        edges={[]}
+        nodeViews={views}
+        onNodeMove={() => {}}
+        onNodeResize={(_id, w, h, resizing) => resizes.push({ w, h, resizing })}
+        onNodeResizeEnd={(id, w, h) => ends.push({ w, h })}
+      />
+    ),
+    el,
+  );
+
+  const pane = el.querySelector("[tabindex]") as HTMLElement;
+  const handle = el.querySelector("[data-nodrag]") as Element;
+  fire(handle, "pointerdown", 1);
+  fire(handle, "pointermove", 1, 10); // 拉到 110
+  pane.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, clientX: 0, clientY: 0, bubbles: true, cancelable: true }));
+  fire(handle, "pointermove", 1, 20); // 继续拉
+  fire(handle, "pointercancel", 1);
+
+  // 最后一次 onResize 是取消回滚：必须是起手的 100，不是滚轮时刻的 110
+  expect(resizes.at(-1)).toMatchObject({ w: 100, h: 100, resizing: false });
+  // 取消不是确认的变更：onEnd 不落库，但 onResizeEnd 用来清「拉伸中」标记
+  expect(ends).toEqual([{ w: 100, h: 100 }]);
+  dispose();
+  el.remove();
+});
+
+test("多指并发：拖节点与拉另一节点各持 rebase token，缩放后互不清基准", () => {
+  ensureCapture();
+  const [nodes, setNodes] = createSignal<N[]>([
+    { id: "n1", type: "box", position: { x: 0, y: 0 }, data: {}, width: 100, height: 100 },
+    { id: "n2", type: "box", position: { x: 300, y: 0 }, data: {}, width: 100, height: 100, selected: true },
+  ]);
+  const views = {
+    box: (p: NodeViewProps<never>) => (
+      <div class="box">
+        <Resizer nodeId={p.id} visible minW={10} minH={10} width={p.width ?? 100} height={p.height ?? 100} onEnd={() => {}} />
+      </div>
+    ),
+  } as unknown as Record<string, (p: NodeViewProps<never>) => Element>;
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const dispose = render(
+    () => (
+      <FlowView
+        nodes={nodes()}
+        edges={[]}
+        nodeViews={views}
+        onNodeMove={(id, pos) => setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, position: pos } : n)))}
+        onNodeResize={(id, w, h) => setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, width: w, height: h } : n)))}
+      />
+    ),
+    el,
+  );
+
+  const pane = el.querySelector("[tabindex]") as HTMLElement;
+  const shell1 = el.querySelector("[data-node-id='n1']") as Element;
+  const resizer2 = el.querySelector("[data-node-id='n2'] [data-nodrag]") as Element;
+
+  // 指头 1：拉伸 n2
+  fire(resizer2, "pointerdown", 1);
+  fire(resizer2, "pointermove", 1, 10); // 110
+  // 指头 2：拖 n1（后注册 rebase，旧实现会覆盖掉 n2 的基准）
+  shell1.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 2, button: 0, clientX: 0, clientY: 0, bubbles: true, cancelable: true }));
+  // 中途缩放
+  pane.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, clientX: 0, clientY: 0, bubbles: true, cancelable: true }));
+
+  fire(resizer2, "pointermove", 1, 20); // 110 + 10/1.1
+  shell1.dispatchEvent(new PointerEvent("pointermove", { pointerId: 2, button: 0, clientX: 10, clientY: 0, bubbles: true, cancelable: true }));
+
+  const n1 = nodes().find((n) => n.id === "n1")!;
+  const n2 = nodes().find((n) => n.id === "n2")!;
+  expect(n2.width!).toBeCloseTo(110 + 10 / 1.1, 5); // 拉伸基准没被拖拽覆盖
+  expect(n1.position.x).toBeCloseTo(10 / 1.1, 5); // 拖拽基准也正确
+  dispose();
+  el.remove();
+});
+
 test("滚轮缩放：JSX 监听直接挂元素（preventDefault 有效），背景点阵随 k 变化", () => {
   const { el, dispose } = mount(() => {});
   const pane = el.querySelector(".flow-node")!.parentElement!.parentElement! as HTMLElement;

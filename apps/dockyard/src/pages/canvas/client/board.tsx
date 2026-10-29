@@ -650,9 +650,11 @@ export function Board(props: { lens: () => number | null }) {
                 <MenuItem
                   label="重命名分组"
                   onClick={async () => {
+                    // Show 的 accessor 只在同步段有效：await 前先捕获（点击即关菜单，Show 随即卸载）
+                    const groupId = m().groupId!;
                     const name = await promptAction({ title: "重命名分组" });
                     if (!name?.trim()) return;
-                    await unwrap(canvasApi.groups({ id: m().groupId! }).patch({ name: name.trim() }));
+                    await unwrap(canvasApi.groups({ id: groupId }).patch({ name: name.trim() }));
                     await refetch();
                   }}
                 />
@@ -660,6 +662,7 @@ export function Board(props: { lens: () => number | null }) {
                   label="删除分组"
                   danger
                   onClick={async () => {
+                    const groupId = m().groupId!;
                     const ok = await confirmAction({
                       title: "删除分组？",
                       body: "组内服务卡会回落到服务器卡（部署不动）。",
@@ -667,7 +670,7 @@ export function Board(props: { lens: () => number | null }) {
                       danger: true,
                     });
                     if (!ok) return;
-                    await unwrap(canvasApi.groups({ id: m().groupId! }).delete());
+                    await unwrap(canvasApi.groups({ id: groupId }).delete());
                     await refetch();
                   }}
                 />
@@ -688,9 +691,11 @@ export function Board(props: { lens: () => number | null }) {
                 <MenuItem
                   label="新建分组"
                   onClick={async () => {
+                    // 同上：await 前捕获，否则 prompt 确认后 Show 已卸载，m() 抛 stale
+                    const nodeId = m().nodeId!;
                     const name = await promptAction({ title: "新建分组", initial: "group" });
                     if (!name?.trim()) return;
-                    await unwrap(canvasApi.nodes({ id: m().nodeId! }).groups.post({ name: name.trim() }));
+                    await unwrap(canvasApi.nodes({ id: nodeId }).groups.post({ name: name.trim() }));
                     await refetch();
                   }}
                 />
@@ -698,6 +703,7 @@ export function Board(props: { lens: () => number | null }) {
                   label="移除卡片"
                   danger
                   onClick={async () => {
+                    const nodeId = m().nodeId!;
                     const ok = await confirmAction({
                       title: "移除这张卡片？",
                       body: "只是从画布移除卡片，服务器与部署目标不动。",
@@ -705,7 +711,7 @@ export function Board(props: { lens: () => number | null }) {
                       danger: true,
                     });
                     if (!ok) return;
-                    await unwrap(canvasApi.nodes({ id: m().nodeId! }).delete());
+                    await unwrap(canvasApi.nodes({ id: nodeId }).delete());
                     await refetch();
                   }}
                 />
@@ -717,7 +723,9 @@ export function Board(props: { lens: () => number | null }) {
                     label={`＋ ${s.name}`}
                     onClick={async () => {
                       // 世界地图：建卡无 projectId（服务端幂等——同服务器已上画则返回已有卡）
-                      await unwrap(canvasApi.nodes.post({ serverId: s.id, x: m().flowX, y: m().flowY }));
+                      const flowX = m().flowX;
+                      const flowY = m().flowY;
+                      await unwrap(canvasApi.nodes.post({ serverId: s.id, x: flowX, y: flowY }));
                       await refetch();
                     }}
                   />

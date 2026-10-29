@@ -750,11 +750,12 @@ export function DeployLogModal(props: { targetId: number; dep?: number }) {
     }
   });
 
-  // 终态对齐：live 状态进入 success/failed 时做最后一次 HTTP 全量回填
+  // 终态对齐：live 状态进入 success/failed 时做最后一次 HTTP 全量回填。
+  // 必须确认终态属于本抽屉看的那次 run：看历史日志时，别的 run 收尾不该触发回填
   createEffect(() => {
     const s = live().status;
     const depId = data()?.dep?.id;
-    if (!depId || finalText() !== null || (s !== "success" && s !== "failed")) return;
+    if (!depId || finalText() !== null || live().runId !== depId || (s !== "success" && s !== "failed")) return;
     void (async () => {
       try {
         const head = await unwrap(api.targets({ id: props.targetId }).log.get({ query: { dep: props.dep } }));

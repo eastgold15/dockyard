@@ -5,5 +5,5 @@
 import { setupClientTest } from "@elysiax/solid/testing";
 
 setupClientTest({
-  filter: /(apps\/dockyard\/src\/pages\/.*\/client|packages\/flow\/src).*\.tsx$/,
+  filter: /(apps\/dockyard\/src\/pages\/.*\/client|(packages\/flow|@elysiax\/flow)\/src).*\.tsx$/,
 });

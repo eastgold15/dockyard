@@ -9,11 +9,13 @@ export {
   LOGICAL_DB_SUPPORT,
   containerNameOf,
   dbCompose,
+  dbProjectNameOf,
   generatePassword,
   instanceUrl,
   logicalDbCommands,
   logicalDbUrl,
   sharedContainerNameOf,
+  sharedProjectNameOf,
   suggestedEnvKey,
 } from "./db-templates";
 export type { DbType } from "./db-templates";

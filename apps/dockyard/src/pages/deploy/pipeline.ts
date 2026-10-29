@@ -42,7 +42,8 @@ export interface StageCtx {
 export interface Provision {
   /** 远端工作目录（compose 文件已就位；github 路径 = 远端检出目录） */
   remoteDir: string;
-  /** compose 项目名（cfg.name ?? dockyard-<id>）；db 模板不设（沿用目录名，与历史行为一致） */
+  /** compose 项目名（cfg.name ?? dockyard-<id>）；db 模板取模板顶层 name（dbProjectNameOf），
+   *  不依赖目录名——否则 provision 目录与回滚目录会推出两个项目名 */
   project?: string;
   /** preflight 对账的容器名清单。契约：provision 必须在「首次远端写入」前完成 preflight
    *  （归属校验被阻止时不得已改写远端目录——尤其 db 模板会覆盖在跑实例的 compose/.env） */

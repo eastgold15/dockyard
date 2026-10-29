@@ -42,13 +42,24 @@ export function sharedContainerNameOf(resourceId: number, name: string): string 
   return `dockyard-res-${resourceId}-${name}`;
 }
 
+/** 模板 compose 的项目名：由模板定死，不随目录名漂移（provision 目录与回滚目录不同名）。
+ *  与 containerNameOf 同源，部署/回滚/运行时对账才能对上同一个 compose 项目。 */
+export function dbProjectNameOf(targetId: number): string {
+  return `dockyard-${targetId}`;
+}
+
+/** 共享资源 compose 的项目名（与 sharedContainerNameOf 同源） */
+export function sharedProjectNameOf(resourceId: number): string {
+  return `dockyard-res-${resourceId}`;
+}
+
 /** 官方镜像模板：数据卷 + 自动生成的凭据（env 走 .env，compose 无 secret）
  *  所有权标签：dockyard.managed / target-id（或 shared-resource）—— 部署前对账靠它区分"我们的"和"别人的"容器 */
 export function dbCompose(
   dbType: DbType,
   name: string,
   ownership?: { targetId: number; project: string } | { resourceId: number },
-): { compose: string; env: string; port: number } {
+): { compose: string; env: string; port: number; project?: string } {
   const image = IMAGES[dbType];
   const port = PORTS[dbType];
   const password = generatePassword();
@@ -67,6 +78,11 @@ export function dbCompose(
     : "";
   const containerName = ownership
     ? `    container_name: ${"resourceId" in ownership ? sharedContainerNameOf(ownership.resourceId, name) : containerNameOf(ownership.targetId, name)}\n`
+    : "";
+  // 顶层 name 必须显式渲染：缺省时项目名 = 目录名，而回滚目录（~/dockyard/rollback/<id>）与
+  // provision 目录不同名，项目名会随目录漂移（容器靠 container_name 收养，但 compose 项目标签会变）。
+  const projectName = ownership
+    ? `name: ${"resourceId" in ownership ? sharedProjectNameOf(ownership.resourceId) : dbProjectNameOf(ownership.targetId)}\n`
     : "";
 
   const envByType: Record<DbType, { env: Record<string, string>; lines: string[] }> = {
@@ -89,7 +105,7 @@ export function dbCompose(
   const envBlock = Object.keys(env).length
     ? `    env_file: .env\n`
     : "";
-  const compose = `services:
+  const compose = `${projectName}services:
   ${name}:
     image: ${image}
     restart: unless-stopped
@@ -100,7 +116,15 @@ ${containerName}${labels}${envBlock}    ports:
 volumes:
   ${volume}:
 `;
-  return { compose, env: lines.join("\n") + "\n", port };
+  return {
+    compose,
+    env: lines.join("\n") + "\n",
+    port,
+    // 无所有权 = 裸模板（不渲染 name），调用方不应据此 -p
+    ...(ownership
+      ? { project: "resourceId" in ownership ? sharedProjectNameOf(ownership.resourceId) : dbProjectNameOf(ownership.targetId) }
+      : {}),
+  };
 }
 
 // ── 逻辑库：在已有实例里 CREATE DATABASE + 专属账号 ──

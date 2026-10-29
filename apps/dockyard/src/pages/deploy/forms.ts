@@ -230,7 +230,8 @@ export const dbContainerForm: DeployForm = {
     if (!target.containerName) throw new ServiceError("数据库目标缺少容器名（旧数据？重建该目标）");
     // 模板渲染 = 本形态的「源」段
     await ctx.setStage("sourcing");
-    const rendered = JSON.parse(decryptSecret(target.envJson)) as { compose: string; env: string };
+    // project 是渲染时写入的项目名（新模板有顶层 name:；存量模板没有 = undefined，沿用目录名）
+    const rendered = JSON.parse(decryptSecret(target.envJson)) as { compose: string; env: string; project?: string };
     const serverId = await h.nodeServerId(target);
     // preflight 门禁在任何写入之前：被阻止时绝不能覆盖在跑实例目录里的 compose/.env
     await h.preflightCheck(target, serverId, [target.containerName], ctx.log);
@@ -247,9 +248,10 @@ export const dbContainerForm: DeployForm = {
 
     return {
       remoteDir,
-      // 模板 up 不带 -p（项目名 = 目录名；dbCompose 不渲染顶层 name，ownership.project 只是标签）。
-      // 已知疣（历史逐字保留）：回滚目录名不同，activateArtifact 兜底 -p dockyard-<id>——
-      // 容器名显式定死所以换项目名 up 也能收养旧容器，可用但项目标签会变。将来要修应让模板渲染 name:。
+      // 项目名由模板顶层 name: 定死（渲染时落库），目录名不再参与；
+      // 显式传入只为了让产物记住它——回滚时 -p 与当初一致。
+      // 存量模板无此字段 = 旧行为（项目名 = 目录名），不会因升级而换项目名
+      project: rendered.project,
       containerNames: [target.containerName],
       composeArgs: "",
       snapshot: { compose: rendered.compose, override: "", env: rendered.env },

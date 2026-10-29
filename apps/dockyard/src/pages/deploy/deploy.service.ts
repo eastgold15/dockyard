@@ -719,7 +719,10 @@ export class DeployService {
       // 换任何服务器（含 remote→remote 平移）都必须先重传到目标服务器，否则 up 会 pull 不存在的镜像名
       const { type } = await this.sourceOf(target);
       const shippedHere = target.artifactServerId != null && target.artifactServerId === node.serverId;
-      const needTicket = type === "local" ? target.nodeId !== nodeId : crossing;
+      // 从未部署过的 local 应用根本没有远端产物，挪卡只是摆放（同服务器另起节点也算），
+      // 不能拿「传输票据」堵住；有产物（artifactServerId 已落点）才要求落到目标服务器
+      const hasArtifact = target.artifactServerId != null;
+      const needTicket = type === "local" ? hasArtifact && target.nodeId !== nodeId : crossing;
       if (needTicket && !shippedHere)
         throw new ServiceError("构建产物尚未传输到目标服务器——先在服务抽屉执行「传输产物」");
     }

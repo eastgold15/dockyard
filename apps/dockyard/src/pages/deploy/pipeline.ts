@@ -309,7 +309,15 @@ export async function inspectCompose(
     opts.serverId,
     `cd "${opts.remoteDir}" && docker compose -f "${opts.composeFile}" config --format json`,
   );
-  if (cfgOut.code !== 0) throw new ServiceError(redact(`远端 compose config 失败：${cfgOut.stderr}`));
+  // 这一步刻意排在 .env 写入之前（preflight 不能被秘密文件抢先覆盖目录）。代价：
+  // compose 用 `${VAR:?}` 强依赖 .env 时这里会失败——给出可操作的提示，别让用户猜
+  if (cfgOut.code !== 0)
+    throw new ServiceError(
+      redact(
+        `远端 compose config 失败：${cfgOut.stderr}\n` +
+        `（校验发生在秘密文件写入前：若 compose 的 ${"${VAR:?}"} 依赖 .env 变量，请给默认值或改用 override 注入）`,
+      ),
+    );
   const cfg = JSON.parse(cfgOut.stdout) as {
     name?: string;
     services?: Record<string, { container_name?: string; image?: string }>;
@@ -462,7 +470,12 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
   const serverId = await h.nodeServerId(target);
   const client = await h.serverService.transport(serverId);
   const rollbackDir = await h.resolveRemoteDir(client, `~/dockyard/rollback/${target.id}`);
-  await client.exec(`mkdir -p ${rollbackDir}`);
+  // 回滚目录按 target 固定复用：先清掉上一件产物留下的生成文件。否则「先回滚到带 .env
+  // 的产物 A、再回滚到无 .env 的产物 B」时，B 的 compose 会在该目录里自动加载 A 的 .env
+  //（错误数据库地址/密钥静默生效）
+  await client.exec(
+    `mkdir -p "${rollbackDir}" && cd "${rollbackDir}" && rm -f .env docker-compose.dockyard.yml docker-compose.rollback.yml docker-compose.labels.yml`,
+  );
   const sftp = await openServerSftp(client);
   await sftp.write(`${rollbackDir}/docker-compose.yml`, snapshot.compose);
   if (snapshot.env) await sftp.write(`${rollbackDir}/.env`, snapshot.env);
@@ -485,27 +498,28 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
   for (const p of envFilePaths(snapshot.compose)) {
     if (p.startsWith("..") || p.startsWith("/")) continue;
     await client.exec(
-      `cd ${rollbackDir} && mkdir -p "$(dirname "${p}")" && [ -f "${p}" ] || printf '# dockyard 占位\\n' > "${p}"`,
+      `cd "${rollbackDir}" && mkdir -p "$(dirname "${p}")" && [ -f "${p}" ] || printf '# dockyard 占位\\n' > "${p}"`,
     );
   }
 
   // -p 与当初一致才不会起第二套容器；容器名从远端 config 推导做对账
   const project = artifact.project ?? `dockyard-${target.id}`;
-  const cfgOut = await h.sshExec(serverId, `cd ${rollbackDir} && docker compose ${files.join(" ")} config --format json`);
-  if (cfgOut.code === 0) {
-    const cfg = JSON.parse(cfgOut.stdout) as {
-      services?: Record<string, { container_name?: string }>;
-    };
-    const names = Object.entries(cfg.services ?? {}).map(([svc, def]) => def.container_name ?? `${project}-${svc}-1`);
-    if (names.length) await h.preflightCheck(target, serverId, names, log);
-    // 归属标签与正常部署同一层 override：回滚重建的容器也必须带 dockyard 标签
-    const labelsYaml = ownershipCompose(target.id, Object.keys(cfg.services ?? {}));
-    if (labelsYaml) {
-      const labelSftp = await openServerSftp(client);
-      await labelSftp.write(`${rollbackDir}/docker-compose.labels.yml`, labelsYaml);
-      await labelSftp.close();
-      files.push("-f docker-compose.labels.yml");
-    }
+  const cfgOut = await h.sshExec(serverId, `cd "${rollbackDir}" && docker compose ${files.join(" ")} config --format json`);
+  // config 失败必须中止：跳过去会连 preflight 与归属标签一起跳过，up 出来的容器没有
+  // dockyard 标签，之后 container-poller/运行时对账全把它们当未纳管容器（且日志无任何提示）
+  if (cfgOut.code !== 0) throw new ServiceError(`回滚 compose config 失败（exit ${cfgOut.code}）：${cfgOut.stderr}`);
+  const cfg = JSON.parse(cfgOut.stdout) as {
+    services?: Record<string, { container_name?: string }>;
+  };
+  const names = Object.entries(cfg.services ?? {}).map(([svc, def]) => def.container_name ?? `${project}-${svc}-1`);
+  if (names.length) await h.preflightCheck(target, serverId, names, log);
+  // 归属标签与正常部署同一层 override：回滚重建的容器也必须带 dockyard 标签
+  const labelsYaml = ownershipCompose(target.id, Object.keys(cfg.services ?? {}));
+  if (labelsYaml) {
+    const labelSftp = await openServerSftp(client);
+    await labelSftp.write(`${rollbackDir}/docker-compose.labels.yml`, labelsYaml);
+    await labelSftp.close();
+    files.push("-f docker-compose.labels.yml");
   }
 
   // id=0 是存量合成产物（artifactOfRun 兜底路径），没有真实编号可展示

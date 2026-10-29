@@ -21,6 +21,8 @@ export class ContainerPoller {
   /** serverId → 发现层指纹（未纳管容器 id:state）；变则推 "discovery" 让前端重拉 /board */
   private readonly discovery = new Map<number, string>();
   private timer?: ReturnType<typeof setInterval>;
+  /** 上一轮是否还在跑：离线服务器 SSH 超时会让一轮远超 10s，setInterval 不能叠加轮次 */
+  private ticking = false;
 
   constructor(
     private readonly serverService: ServerService,
@@ -44,6 +46,18 @@ export class ContainerPoller {
   }
 
   private async tick() {
+    // 上一轮未结束就跳过本轮：否则离线服务器每次 SSH 超时都会让轮次叠加，
+    // 同一台服务器被并发连多次，挤占 sshPool 并拖慢部署用的 exec
+    if (this.ticking) return;
+    this.ticking = true;
+    try {
+      await this.tickOnce();
+    } finally {
+      this.ticking = false;
+    }
+  }
+
+  private async tickOnce() {
     const rows = await this.db
       .select({
         targetId: deployTargets.id,

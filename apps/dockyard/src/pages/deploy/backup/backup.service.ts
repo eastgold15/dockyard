@@ -134,6 +134,8 @@ export class BackupService {
 
   /** 立即备份：远端容器内 dump → gzip → base64（二进制安全过 ssh exec 的文本通道）→ 本地落盘 */
   async backupNow(targetId: number): Promise<string> {
+    // 部署/回滚中途容器正在重建：此刻 dump 得到的是偏斜快照，却会被当成可用备份留住
+    if (this.deploy.isRunning(targetId)) throw new ServiceError("部署/回滚进行中，容器可能正在重建，请结束后再备份");
     const target = await this.deploy.targetById(targetId);
     if (!target || target.kind !== "db" || target.instanceOf) throw new ServiceError("只有数据库实例支持备份");
     const node = await this.canvas.byId(target.nodeId);
@@ -165,20 +167,21 @@ export class BackupService {
    */
   async restore(targetId: number, file: string): Promise<{ safety: string; warnings: number }> {
     if (this.restoring.has(targetId)) throw new ServiceError("该实例正在恢复，请等待当前恢复结束");
-    if (this.deploy.isRunning(targetId)) throw new ServiceError("该目标正在部署/回滚，请等操作结束后再恢复");
-    const target = await this.deploy.targetById(targetId);
-    if (!target || target.kind !== "db" || target.instanceOf) throw new ServiceError("只有数据库实例支持恢复");
-    const dbType = target.dbType ?? "";
-    if (!RESTORE_SUPPORT[dbType]) throw new ServiceError(`${dbType} 暂不支持自动恢复，请下载备份后手动执行`);
-    if (!target.containerName) throw new ServiceError("数据库目标缺少容器名（旧数据？重建该目标）");
-    const abs = this.backupFilePath(targetId, file);
-    if (!abs) throw new ServiceError("备份文件不存在或文件名非法");
-    const node = await this.canvas.byId(target.nodeId);
-    if (!node) throw new ServiceError("画布节点不存在");
-    const client = await this.server.transport(node.serverId);
-
+    // 占位必须紧跟检查：中间隔着 await（查库/解析路径/建通道）时，双击或两个标签页
+    // 会在窗口里双双通过检查，随后同时往同一实例灌数据
     this.restoring.add(targetId);
     try {
+      if (this.deploy.isRunning(targetId)) throw new ServiceError("该目标正在部署/回滚，请等操作结束后再恢复");
+      const target = await this.deploy.targetById(targetId);
+      if (!target || target.kind !== "db" || target.instanceOf) throw new ServiceError("只有数据库实例支持恢复");
+      const dbType = target.dbType ?? "";
+      if (!RESTORE_SUPPORT[dbType]) throw new ServiceError(`${dbType} 暂不支持自动恢复，请下载备份后手动执行`);
+      if (!target.containerName) throw new ServiceError("数据库目标缺少容器名（旧数据？重建该目标）");
+      const abs = this.backupFilePath(targetId, file);
+      if (!abs) throw new ServiceError("备份文件不存在或文件名非法");
+      const node = await this.canvas.byId(target.nodeId);
+      if (!node) throw new ServiceError("画布节点不存在");
+      const client = await this.server.transport(node.serverId);
       // 1. 安全备份（容器不在运行会在此失败，正好挡住往死实例里灌数据）
       const safety = await this.backupNow(targetId);
       // 2. 传到宿主临时目录（0600：dump 含整库数据与口令哈希）

@@ -179,15 +179,19 @@ export function localAppForm(proj: Project): DeployForm {
       // 3. 传输（配置）：compose/.env/override 推远端工作目录
       const client = await h.serverService.transport(serverId);
       const remoteDir = await h.resolveRemoteDir(client, target.remoteDir ?? `~/dockyard/${target.name}`);
-      await client.exec(`mkdir -p ${remoteDir}`);
+      await client.exec(`mkdir -p "${remoteDir}"`);
       const sftp = await openServerSftp(client);
       const composeText = await Bun.file(join(repoDir, composePath)).text();
       await sftp.write(`${remoteDir}/docker-compose.yml`, composeText);
       // 用户 compose 的 env_file 是相对仓库的路径（远端没有目录树）——放空占位，
       // 否则 compose config/up 直接报 "env file not found"；真实值由 override 的 environment 注入
       for (const p of envFilePaths(composeText)) {
+        // 逃出工作目录的路径不创建（与 githubAppForm 同一道守卫）：
+        // `env_file: ../../etc/x` 会把占位文件写到 remoteDir 之外
+        const rel = normalize(p);
+        if (rel.startsWith("..") || rel.startsWith("/")) continue;
         await client.exec(
-          `cd ${remoteDir} && mkdir -p "${join(".", p, "..")}" && [ -f "${p}" ] || printf '# dockyard 占位：真实环境变量在 docker-compose.dockyard.yml 的 environment 里\\n' > "${p}"`,
+          `cd "${remoteDir}" && mkdir -p "${join(".", p, "..")}" && [ -f "${p}" ] || printf '# dockyard 占位：真实环境变量在 docker-compose.dockyard.yml 的 environment 里\\n' > "${p}"`,
         );
       }
 
@@ -237,7 +241,7 @@ export const dbContainerForm: DeployForm = {
     await h.preflightCheck(target, serverId, [target.containerName], ctx.log);
     const client = await h.serverService.transport(serverId);
     const remoteDir = await h.resolveRemoteDir(client, target.remoteDir ?? `~/dockyard/${target.name}`);
-    await client.exec(`mkdir -p ${remoteDir}`);
+    await client.exec(`mkdir -p "${remoteDir}"`);
     // sftp 推送 = 本形态的「传输」段（无构建：官方镜像由 up 拉取）
     await ctx.setStage("transferring");
     const sftp = await openServerSftp(client);

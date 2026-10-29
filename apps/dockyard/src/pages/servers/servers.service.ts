@@ -6,7 +6,7 @@ import { encryptSecret } from "../../shared/crypto";
 import { isLocalHost } from "./host";
 import { SshPool, UnknownHostKeyError } from "./ssh-pool";
 import { DockerRelay } from "./docker-relay";
-import { LocalTransport, type ServerTransport } from "./transport";
+import { LocalTransport, remoteTransport, type ServerTransport } from "./transport";
 import type { ServerRepository, NewServer } from "./servers.repository";
 
 export type CheckResult =
@@ -160,13 +160,8 @@ export class ServerService {
   async transport(id: number): Promise<ServerTransport> {
     const server = await this.mustGet(id);
     if (server.builtin) return this.localTransport;
-    // 远程：把 SshClient 包成窄接口（调用方不关心 SSH 细节）
-    const client = await this.sshPool.get(server);
-    return {
-      local: false,
-      exec: (cmd) => client.exec(cmd),
-      close: () => client.close(),
-    };
+    // 远程：把 SshClient 收窄成窄接口（SFTP 在 remoteTransport 闭包里，见 transport.ts）
+    return remoteTransport(await this.sshPool.get(server));
   }
 
   /** SSH 连接失效（断线）时丢弃缓存，下次 transport() 重建 */

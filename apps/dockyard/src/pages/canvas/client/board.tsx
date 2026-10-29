@@ -701,7 +701,7 @@ export function Board(props: { lens: () => number | null }) {
                 <MenuItem
                   label="添加数据库"
                   disabled={props.lens() == null}
-                  onClick={() => ui.open({ kind: "new-db", nodeId: m().nodeId! })}
+                  onClick={() => ui.open({ kind: "new-db", nodeId: m().nodeId!, projectId: props.lens() })}
                 />
                 <MenuItem
                   label="新建分组"

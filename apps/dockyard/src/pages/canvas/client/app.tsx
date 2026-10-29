@@ -34,7 +34,7 @@ function DrawerHost(props: { view: View }) {
   return (
     <Switch>
       <Match when={viewAs("new-app", props.view)}>{(v) => <NewAppWizard nodeId={v().nodeId} projectId={v().projectId ?? null} />}</Match>
-      <Match when={viewAs("new-db", props.view)}>{(v) => <NewDbModal nodeId={v().nodeId} />}</Match>
+      <Match when={viewAs("new-db", props.view)}>{(v) => <NewDbModal nodeId={v().nodeId} projectId={v().projectId ?? null} />}</Match>
       <Match when={viewAs("service", props.view)}>
         {(v) => <ServiceDrawer targetId={v().targetId} svc={v().svc} initialTab={v().tab} />}
       </Match>

@@ -15,7 +15,7 @@ import {
   guessDbType,
   type DetectedService,
 } from "./detect";
-import type { DeployService } from "./deploy.service";
+import { sourceTypeOf, type DeployService } from "./deploy.service";
 
 /** 共享资源匹配（部署前置检查）：识别出的中间件服务 vs 目标服务器的共享资源清单 */
 export type SharedMatch = { service: string; displayUrl: string } & SharedEnv;
@@ -133,6 +133,8 @@ export default defineRoutes()
     {
       body: t.Object({
         nodeId: t.Number(),
+        // 透镜项目：原样带回 carry，step2 提交时用它落 projectId（否则客户端只能按 repoUrl 猜归属）
+        projectId: t.Optional(t.Number()),
         name: t.String({ minLength: 1 }),
         repoUrl: t.String({ minLength: 1 }),
         branch: t.String({ default: "main" }),
@@ -227,6 +229,8 @@ export default defineRoutes()
     {
       body: t.Object({
         nodeId: t.Number(),
+        // 透镜项目：新建实例的归属（缺省 = 未关联）。逻辑库跟随宿主实例，忽略此字段
+        projectId: t.Optional(t.Number()),
         name: t.String({ minLength: 1 }),
         dbType: t.Union([t.Literal("postgres"), t.Literal("mysql"), t.Literal("redis"), t.Literal("mongo")]),
         instanceId: t.Optional(t.String()),
@@ -240,6 +244,7 @@ export default defineRoutes()
         ? await svc.createLogicalDbTarget({ nodeId: body.nodeId, name: body.name, instanceId })
         : await svc.createDbTarget({
           nodeId: body.nodeId,
+          projectId: body.projectId,
           name: body.name,
           dbType: body.dbType,
           remoteDir: body.remoteDir ?? "",
@@ -320,8 +325,13 @@ export default defineRoutes()
         return status(404, { error: "部署目标不存在" });
       }
       const tab = (TABS.includes(query.tab as (typeof TABS)[number]) ? query.tab : "deployments") as (typeof TABS)[number];
+      // 来源形态（与部署分派同口径）：抽屉据此决定「传输产物」按钮，不能从 repoUrl 猜
+      const project = target.projectId
+        ? await ctx.project.byId(target.projectId)
+        : (await ctx.project.list()).find((p) => p.repoUrl && p.repoUrl === target.repoUrl);
       return {
         target,
+        sourceType: sourceTypeOf(target, project),
         svc: query.svc || undefined,
         tab,
         deployments: tab === "deployments" ? await ctx.deploy.deploymentsOfTarget(params.id) : undefined,

@@ -123,6 +123,9 @@ test("坏帧不抛（JSON 解析失败/未知类型/缺 targetId 都静默跳过
     FakeES.push({ type: "state", service: "web", state: "running" });
     // targetId 存在但 service 不是字符串：state 帧丢弃
     FakeES.push({ type: "state", targetId: 1, service: 42, state: "running" });
+    // status 缺字段 / 未知值：整帧丢弃（照写会让 running 永远清不掉）
+    FakeES.push({ type: "status", targetId: 1, runId: 7 });
+    FakeES.push({ type: "status", targetId: 1, runId: 7, status: "half-done" });
   }).not.toThrow();
   expect(h.live()!.status).toBeNull();
   expect(h.log()).toBeNull();

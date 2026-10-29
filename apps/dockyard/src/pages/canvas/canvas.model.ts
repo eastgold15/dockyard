@@ -37,6 +37,9 @@ export interface TargetModel {
   name: string;
   projectId: number;   // 项目归属（deploy_targets.projectId；0 = 未关联）
   projectName: string; // 关联 projects 表的名字（未关联为空串）
+  // 构建来源形态（服务端 sourceTypeOf 判定，与部署分派同口径）：
+  // local = 本地构建+推送（传输段必走、可「传输产物」）；github = 远端拉代码构建（免传输）
+  sourceType: "local" | "github";
   logical: boolean;
   url?: string; // 逻辑库连接串（复制按钮）
   domains: DomainBadge[]; // 无 serviceName 归属的域名（有归属的下沉到 services 行）

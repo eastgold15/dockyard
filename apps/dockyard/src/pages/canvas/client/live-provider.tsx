@@ -10,6 +10,7 @@ import { createStore } from "solid-js/store";
 import { LiveContext, nextLog, nextTargetLive, type LiveState } from "./live";
 import type { ServiceState } from "../canvas.model";
 import { canvasPaths } from "./api";
+import { emitRefresh } from "./ui";
 
 /** Canvas SSE 端点（部署 status/running、容器 state、日志、发现层变化）——
  *  EventSource 走不了 Eden，但路径仍用 codegen 的 URL 助手，端点搬家不会漏改。 */
@@ -24,8 +25,9 @@ export function LiveProvider(props: { children: JSX.Element }) {
       try {
         const msg = JSON.parse(e.data) as Record<string, unknown>;
         if (msg.type === "discovery") {
-          // 发现层集合变化（容器启停/增删）：发现卡数据是 /board 现查的快照 → 重拉结构
-          document.body.dispatchEvent(new CustomEvent("refresh"));
+          // 发现层集合变化（容器启停/增删）：发现卡数据是 /board 现查的快照 → 重拉结构。
+          // 走 ui.ts 的唯一派发口：两处各发一份，改契约时必漏一处（画布静默不再更新）
+          emitRefresh();
           return;
         }
         // 其余帧都按 target 归桶：targetId 缺失/非数字的坏帧会写进不可达的幽灵桶

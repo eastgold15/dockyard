@@ -23,6 +23,16 @@ export interface TargetLive {
 /** 终态：run 已结束，running 必然为 false */
 const TERMINAL: ReadonlySet<string> = new Set<DeployStatus>(["success", "failed"]);
 
+/** 合法 status 取值域（与 schema 的 CHECK 约束一致）：坏帧整帧丢弃，不写进 store */
+const STATUSES: ReadonlySet<string> = new Set<DeployStatus>([
+  "queued",
+  "building",
+  "transferring",
+  "deploying",
+  "success",
+  "failed",
+]);
+
 export interface LiveState {
   targets: Record<number, TargetLive>;
   services: Record<string, ServiceState>; // key = `${targetId}:${svcName}`
@@ -68,9 +78,14 @@ export function nextTargetLive(
   // runId 携带即更新：新一轮 run 开播后，旧 run 的状态不再冒充当前实时状态
   const runId = typeof msg.runId === "number" ? msg.runId : t.runId;
   if (msg.type === "status") {
+    // status 必须在取值域内：缺字段/未知值（服务端升级新增状态、旧标签页未刷新）若照写，
+    // running 不会被终态推导清掉 → 按钮永久「部署中…」，而徽章把 undefined 当「未部署」，
+    // 同一张卡两个提示互相矛盾。整帧丢弃，等下一帧或重连快照自愈。
+    const raw = msg.status;
+    if (typeof raw !== "string" || !STATUSES.has(raw)) return null;
+    const status = raw as DeployStatus;
     // stage 缺省保留旧值（粗 status 事件不带细步骤）；携带才更新
     const stage = "stage" in msg ? (msg.stage as DeployStage | null) : t.stage;
-    const status = msg.status as DeployStatus;
     // 终态到了 running 必然结束。服务端 snapshot 对终态 run 只发 status、不发 running:false，
     // 不在这里推导的话，SSE 断线重连后卡片按钮会永久停在「部署中…」
     const running = TERMINAL.has(status) ? false : t.running;

@@ -10,7 +10,8 @@ import type { DiscoveredContainer } from "../canvas.model";
 export type View =
   // projectId = 当前透镜：服务端据此判定来源形态（local / github）
   | { kind: "new-app"; nodeId: number; projectId?: number | null }
-  | { kind: "new-db"; nodeId: number }
+  // projectId = 当前透镜：新建实例必须带项目归属，否则透镜过滤后卡片立即消失
+  | { kind: "new-db"; nodeId: number; projectId?: number | null }
   | { kind: "service"; targetId: number; svc?: string; tab?: string }
   | { kind: "env"; targetId: number }
   | { kind: "domains"; targetId: number }

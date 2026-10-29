@@ -31,9 +31,10 @@ export const STAGE_LABEL: Record<DeployStage, string> = {
 
 export type StepState = "done" | "active" | "failed" | "skipped" | "na" | "pending";
 
-/** 形态/trigger 推导各段的静态姿态。run.stage===null → null（降级为旧徽章行） */
+/** 形态/trigger 推导各段的静态姿态。run.stage===null → null（降级为旧徽章行）。
+ *  sourceType 由服务端判定（与部署分派同口径）；缺失时才退回 repoUrl 启发式（旧快照/单测）。 */
 export function stagePosture(
-  target: Pick<DeployTarget, "kind" | "repoUrl" | "instanceOf">,
+  target: Pick<DeployTarget, "kind" | "repoUrl" | "instanceOf"> & { sourceType?: "local" | "github" },
   run: Pick<DeploymentRow, "trigger" | "stage">,
 ): { skipped: ReadonlySet<DeployStage>; na: ReadonlySet<DeployStage> } | null {
   if (run.stage == null) return null;
@@ -48,7 +49,10 @@ export function stagePosture(
     // 仅传输：止步传输段，后三段不适用
     na.add("deploying").add("exposing").add("packaging");
   }
-  if (target.kind === "app" && target.repoUrl) skipped.add("transferring"); // github 免传输（就地构建）
+  // 免传输的是 github 来源（远端就地构建），不是「有 repoUrl」：克隆到本地再导入的项目
+  // 也带 repoUrl，但走 localAppForm（本地构建 + 推送），传输段必须显示为真实执行
+  const source = target.sourceType ?? (target.repoUrl ? "github" : "local");
+  if (target.kind === "app" && source === "github") skipped.add("transferring");
   if (target.kind === "db") skipped.add("building"); // 官方镜像无构建段
   return { skipped, na };
 }

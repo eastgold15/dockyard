@@ -1,6 +1,6 @@
 import { status, t } from "elysia";
 import { defineRoutes } from "../../../.elysiax";
-import { CANVAS_CHANNEL, events, type DeployService, type DeployTarget } from "../deploy/deploy.socket";
+import { CANVAS_CHANNEL, events, sourceTypeOf, type DeployService, type DeployTarget } from "../deploy/deploy.socket";
 import type { ProjectService } from "../projects/projects.socket";
 import type { ServerService } from "../servers/servers.socket";
 import type { EdgeService } from "../edge/edge.socket";
@@ -29,6 +29,12 @@ async function canvasData(ctx: Ctx) {
   ]);
   const byId = new Map(servers.map((s) => [s.id, s]));
   const projectNameOf = new Map(projects.map((p) => [p.id, p.name]));
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+  // 来源形态与部署 service 同口径（sourceTypeOf）：client 不再从 repoUrl 猜 local/github
+  const projectOfTarget = (target: DeployTarget) =>
+    target.projectId
+      ? projectById.get(target.projectId)
+      : projects.find((p) => p.repoUrl && p.repoUrl === target.repoUrl);
   const cards: CardModel[] = [];
   const rawTargets = new Map<number, DeployTarget>(); // 依赖边派生用（edgesOfTarget 要原始行）
   for (const node of nodes) {
@@ -57,6 +63,7 @@ async function canvasData(ctx: Ctx) {
         name: target.name,
         projectId: target.projectId ?? 0, // 0 = 未关联项目
         projectName: (target.projectId && projectNameOf.get(target.projectId)) || "",
+        sourceType: sourceTypeOf(target, projectOfTarget(target)), // app 的构建来源形态（db 无意义但一致填）
         logical: Boolean(target.instanceOf),
         url: ctx.deploy.logicalUrlOf(target), // 逻辑库连接串（复制按钮）
         // 归属到具体服务的域名下沉到服务行；无归属的留 target 顶部

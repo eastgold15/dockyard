@@ -195,7 +195,7 @@ export function NewAppWizard(props: { nodeId: number; projectId?: number | null 
         {(err) => <Drawer title="部署 app" onClose={ui.close}><ErrorBanner>{err()}</ErrorBanner></Drawer>}
       </Match>
       <Match when={githubData()}>
-        {(d) => <NewAppStep1 nodeId={props.nodeId} repos={d().repos} initialError={d().error} prefillRepo={d().prefillRepo} onDetected={setStep2} />}
+        {(d) => <NewAppStep1 nodeId={props.nodeId} projectId={props.projectId} repos={d().repos} initialError={d().error} prefillRepo={d().prefillRepo} onDetected={setStep2} />}
       </Match>
       <Match when={true}>
         <Drawer title="部署 app" onClose={ui.close}><div class="text-xs text-neutral-500">加载中…</div></Drawer>
@@ -205,7 +205,7 @@ export function NewAppWizard(props: { nodeId: number; projectId?: number | null 
 }
 
 function NewAppStep1(props: {
-  nodeId: number; repos: RepoBrief[]; initialError?: string; prefillRepo?: string;
+  nodeId: number; projectId?: number | null; repos: RepoBrief[]; initialError?: string; prefillRepo?: string;
   onDetected: (d: DetectStepData) => void;
 }) {
   const ui = useUi();
@@ -234,6 +234,8 @@ function NewAppStep1(props: {
     try {
       const d = await unwrap(api.detect.post({
         nodeId: props.nodeId,
+        // 透镜归属必须原样带回（服务端 carry: body），否则 step2 只能按 repoUrl 反查项目
+        projectId: props.projectId ?? undefined,
         name: name(),
         repoUrl: repoUrl(),
         branch: String(fd.get("branch") ?? "main") || "main",
@@ -531,7 +533,7 @@ const DbRefPicker = (props: { refs: DbRef[]; selected: number[]; onToggle: (r: D
 
 type DbType = "postgres" | "mysql" | "redis" | "mongo";
 
-export function NewDbModal(props: { nodeId: number }) {
+export function NewDbModal(props: { nodeId: number; projectId?: number | null }) {
   const ui = useUi();
   const [dbType, setDbType] = createSignal<DbType>("postgres");
   const [instances, setInstances] = createSignal<DeployTarget[]>([]);
@@ -556,6 +558,8 @@ export function NewDbModal(props: { nodeId: number }) {
     try {
       await unwrap(api.targets.db.post({
         nodeId: props.nodeId,
+        // 透镜归属：缺了它，新建实例 projectId=null，applyLens 过滤后卡在当前透镜里立即消失
+        projectId: props.projectId ?? undefined,
         name: String(fd.get("name") ?? ""),
         dbType: dbType(),
         instanceId: instanceId() || undefined,
@@ -851,6 +855,8 @@ interface Metrics { state: string; cpuPercent: number; memUsage: number; memLimi
 
 interface ServiceDrawerData {
   target: DeployTarget;
+  /** 服务端判定的构建来源形态（与部署分派同口径；null 兼容旧响应） */
+  sourceType?: "local" | "github";
   svc?: string;
   tab: ServiceTab;
   deployments?: DeploymentRow[];
@@ -964,9 +970,15 @@ export function ServiceDrawer(props: { targetId: number; svc?: string; initialTa
   const [notice, setNotice] = createSignal<string>();
   const [error, setError] = createSignal<string>();
 
+  // 请求世代：同一 tab 的 mount 与 SSE reload 也会并发，后到的旧快照不能顶掉新数据
+  let gen = 0;
   const load = async () => {
+    const my = ++gen;
     try {
       const d = await unwrap(api.targets({ id: props.targetId }).service.get({ query: { tab: tab(), svc: props.svc } }));
+      // 响应自带 tab：切 tab 与 SSE 触发的 reload 可能并发，旧响应后到时只在它自己的
+      // tab 仍是当前 tab 才写入——否则 Backups 会被不带 backups 的 deployments 载荷顶掉
+      if (my !== gen || d.tab !== tab()) return;
       setData(d);
     } catch (e) {
       setError((e as Error).message);
@@ -1105,8 +1117,10 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
         >
           重启{props.svc ? "服务" : "容器"}
         </button>
-        {/* 本地导入 app 的显式通道：构建产物推到远端（跨区移动的门票），不起容器 */}
-        <Show when={t().kind === "app" && !t().repoUrl}>
+        {/* 本地导入 app 的显式通道：构建产物推到远端（跨区移动的门票），不起容器。
+            判据用服务端给的 sourceType：local 项目也可能带 repoUrl（克隆到本地后导入），
+            按「没有 repoUrl」判会把这类 app 的传输按钮藏掉，跨区移动彻底死锁 */}
+        <Show when={t().kind === "app" && props.data.sourceType === "local"}>
           <button
             class="rounded border border-harbor-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-harbor-800"
             title={t().artifactShipped ? "产物已传输过（可再传更新）" : "跨区移动前必须先传输产物"}
@@ -1156,7 +1170,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
               </Show>
               {/* 六阶段迷你步骤条：stage=null（旁路/存量）降级不显示。
                   用合并后的 runStage 判降级——新 run 的库行 stage 还是 null，实时值已到 */}
-              <Show when={stagePosture(t(), { trigger: d.trigger, stage: runStage() })}>
+              <Show when={stagePosture({ ...t(), sourceType: props.data.sourceType }, { trigger: d.trigger, stage: runStage() })}>
                 {(posture) => (
                   <PipelineSteps states={stepStates(runStage()!, runStatus(), posture())} />
                 )}

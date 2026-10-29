@@ -56,6 +56,19 @@ export interface DbRef {
   envKey: string; // 建议注入的变量名（DATABASE_URL / REDIS_URL）
 }
 
+/**
+ * 来源形态判定（纯函数）：项目显式 sourceType 优先，旧数据按 localPath/repoUrl 推断。
+ * service 的形态分派与画布快照共用这一口径——client 不能自行从 repoUrl 猜：
+ * 「local 项目也填了 repoUrl」（克隆到本地后导入）在服务端走 localAppForm，
+ * 客户端按 repoUrl 猜会把它当成 github、把传输段误标成跳过。
+ */
+export function sourceTypeOf(
+  target: Pick<DeployTarget, "repoUrl">,
+  project?: Pick<Project, "sourceType" | "localPath"> | null,
+): "local" | "github" {
+  return project?.sourceType ?? (project?.localPath && !target.repoUrl ? "local" : "github");
+}
+
 export class DeployService {
   /** 防同 target 重入 */
   private running = new Map<number, Promise<void>>();
@@ -82,9 +95,7 @@ export class DeployService {
     const project = target.projectId
       ? await this.project.byId(target.projectId)
       : (await this.project.list()).find((p) => p.repoUrl && p.repoUrl === target.repoUrl);
-    const type: "local" | "github" =
-      project?.sourceType ?? (project?.localPath && !target.repoUrl ? "local" : "github");
-    return { type, project };
+    return { type: sourceTypeOf(target, project), project };
   }
 
   /** 形态分派（坐标解析）：kind/来源 → 六阶段前半段的组合实现 */

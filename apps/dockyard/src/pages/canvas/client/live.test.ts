@@ -73,6 +73,18 @@ test("终态 status 必然停播 running：快照只发 status 不发 running:fa
   expect(t).toMatchObject({ status: "failed", running: false });
 });
 
+test("status 坏帧：缺字段/未知值整帧丢弃，不写进 store（否则按钮永久「部署中…」）", () => {
+  const prev: TargetLive = { status: "building", running: true, stage: "building", runId: 7 };
+  expect(nextTargetLive(prev, { type: "status", runId: 7 })).toBeNull();
+  expect(nextTargetLive(prev, { type: "status", runId: 7, status: 42 })).toBeNull();
+  expect(nextTargetLive(prev, { type: "status", runId: 7, status: "half-done" })).toBeNull();
+  // 合法值照常合并（丢弃坏帧不能把好帧一起挡掉）
+  expect(nextTargetLive(prev, { type: "status", runId: 7, status: "success" })).toMatchObject({
+    status: "success",
+    running: false,
+  });
+});
+
 test("runId 携带即换主，缺省保留：日志抽屉按 runId 判断实时状态归属", () => {
   let t = step(undefined, { type: "status", runId: 7, status: "building" });
   expect(t.runId).toBe(7);

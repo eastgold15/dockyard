@@ -3,7 +3,7 @@
 export { deployTargets, deployments, deployArtifacts } from "./schema";
 export type { DeployTarget, Deployment, DeployArtifact, DeployStage, TargetService, TargetServicesDoc, DepEdge } from "./schema";
 export type { DeploymentRow } from "./deploy.repository";
-export { DeployService } from "./deploy.service";
+export { DeployService, sourceTypeOf } from "./deploy.service";
 export type { DbRef } from "./deploy.service";
 export { events, CANVAS_CHANNEL } from "./events";
 export type { CanvasEvent } from "./events";

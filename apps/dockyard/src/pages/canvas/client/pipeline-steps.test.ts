@@ -2,9 +2,11 @@
 import { expect, test } from "bun:test";
 import { mergeLiveRow, stagePosture, stepStates } from "./pipeline-steps";
 
-const githubApp = { kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null } as const;
-const localApp = { kind: "app", repoUrl: null, instanceOf: null } as const;
-const dbContainer = { kind: "db", repoUrl: null, instanceOf: null } as const;
+const githubApp = { kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null, sourceType: "github" } as const;
+const localApp = { kind: "app", repoUrl: null, instanceOf: null, sourceType: "local" } as const;
+// 克隆到本地后导入：带 repoUrl 但服务端走 localAppForm（可 ship、传输段真实执行）
+const localAppWithRepo = { kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null, sourceType: "local" } as const;
+const dbContainer = { kind: "db", repoUrl: null, instanceOf: null, sourceType: "local" } as const;
 
 test("stage=null（旁路/存量）整体降级", () => {
   expect(stagePosture(githubApp, { trigger: "ui", stage: null })).toBeNull();
@@ -18,6 +20,15 @@ test("形态推导：github 免传输 / db 容器免构建 / local 全段", () =
   expect([...db.skipped]).toEqual(["building"]);
   const local = stagePosture(localApp, { trigger: "ui", stage: "building" })!;
   expect(local.skipped.size).toBe(0);
+});
+
+test("来源形态以 sourceType 为准：local 项目带 repoUrl 时传输段不能标成跳过", () => {
+  // 服务端 sourceOf 判 local → localAppForm（本地构建 + 推送），传输段真实执行
+  const p = stagePosture(localAppWithRepo, { trigger: "ui", stage: "transferring" })!;
+  expect(p.skipped.size).toBe(0);
+  // 旧快照没有 sourceType 时才退回 repoUrl 启发式（保持旧行为，不误判为 local）
+  const legacy = stagePosture({ kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null }, { trigger: "ui", stage: "building" })!;
+  expect([...legacy.skipped]).toEqual(["transferring"]);
 });
 
 test("回滚：前三段跳过 + 不产新产物", () => {

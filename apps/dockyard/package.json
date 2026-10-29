@@ -9,6 +9,7 @@
     "build": "elysiax build",
     "typecheck": "elysiax gen && tsc --noEmit",
     "test": "bun test --conditions=browser",
+    "doctor": "elysiax doctor",
     "build:desktop": "elysiax build --desktop",
     "package": "elysiax package"
   },

@@ -6,7 +6,7 @@ import { type CanvasService } from "../canvas/canvas.socket";
 import { type ProjectService } from "../projects/projects.socket";
 import { type EdgeService } from "../edge/edge.socket";
 import { RuntimeService } from "./runtime/runtime.socket";
-import { BackupService } from "./backup/backup.socket";
+import { BackupService, RESTORE_SUPPORT } from "./backup/backup.socket";
 import {
   detectLocal,
   detectRepo,
@@ -334,6 +334,8 @@ export default defineRoutes()
         domains: tab === "network" ? await ctx.edge.domainsOfTarget(params.id) : undefined,
         resources: tab === "hardware" && query.svc ? await ctx.runtime.serviceResources(params.id, query.svc) : undefined,
         backups: tab === "backups" ? await ctx.backup.backupsOf(params.id) : undefined,
+        // 能否自动恢复由服务端判定（引擎能力单点：RESTORE_SUPPORT），client 不重复维护引擎清单
+        backupRestorable: tab === "backups" ? Boolean(RESTORE_SUPPORT[target.dbType ?? ""]) : undefined,
         metrics: tab === "monitor" ? await ctx.runtime.serviceStats(params.id, query.svc || undefined) : undefined,
       };
     },
@@ -472,6 +474,15 @@ export default defineRoutes()
     const file = await ctxOf(di).backup.backupNow(params.id);
     return { notice: `已备份：${file}` };
   })
+  // 恢复是破坏性操作：confirm 必须是字面量 true（UI 走二次确认）；服务端先自动安全备份再灌数据
+  .post(
+    "/targets/:id/restore",
+    { params: t.Object({ id: t.Number() }), body: t.Object({ file: t.String(), confirm: t.Literal(true) }) },
+    async ({ di, params, body }) => {
+      const { safety } = await ctxOf(di).backup.restore(params.id, body.file);
+      return { notice: `已恢复；恢复前安全备份：${safety}` };
+    },
+  )
   .get(
     "/backups/:id/:file",
     { params: t.Object({ id: t.Number(), file: t.String() }) },

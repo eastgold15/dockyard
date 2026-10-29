@@ -80,7 +80,7 @@ deploy 没有页面，是纯服务，文件按"阶段"拆：
 | `container-poller.ts` | 每 10s 轮询容器状态 + 发现层指纹，diff 后推 SSE |
 | `update-poller.ts` | 每 60s 查分支最新 sha，按 `deployPolicy`（manual/notify/auto）行事 |
 | `runtime/` | 子原子：容器运行时操作（compose up/logs/exec 等） |
-| `backup/` | 子原子：数据库备份列出/下载（`server_resources` 关联） |
+| `backup/` | 子原子：数据库实例备份列出/下载/恢复（本地落盘 `backups/target-<id>/`；恢复先自动安全备份，postgres/mongo 可自动恢复，mysql/redis 只下载） |
 
 父子原子（`deploy.runtime`、`deploy.backup`）也各有自己的 `*.di.ts` / `*.socket.ts`，嵌套规则一致。
 

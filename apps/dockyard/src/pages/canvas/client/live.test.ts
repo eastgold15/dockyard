@@ -8,12 +8,20 @@ const step = (prev: TargetLive | undefined, msg: Record<string, unknown>): Targe
   nextTargetLive(prev, msg) as TargetLive;
 
 test("log 帧：同 run 追加、换 run 重置", () => {
-  let cur = nextLog(undefined, { type: "log", runId: 10, lines: ["a", "b"] });
-  cur = nextLog(cur, { type: "log", runId: 10, lines: ["c"] });
+  let cur = nextLog(undefined, { type: "log", runId: 10, lines: ["a", "b"] })!;
+  cur = nextLog(cur, { type: "log", runId: 10, lines: ["c"] })!;
   expect(cur).toEqual({ runId: 10, lines: ["a", "b", "c"] });
   // 新 run 开播，旧行全部丢弃
-  cur = nextLog(cur, { type: "log", runId: 11, lines: ["x"] });
+  cur = nextLog(cur, { type: "log", runId: 11, lines: ["x"] })!;
   expect(cur).toEqual({ runId: 11, lines: ["x"] });
+});
+
+test("log 坏帧：runId 缺失时沿用当前块所属 run，连当前块都没有则丢弃", () => {
+  // 首帧就没 runId：无从归属 → null（不写一个 runId=undefined 的假块）
+  expect(nextLog(undefined, { type: "log", lines: ["a"] })).toBeNull();
+  // 已有 run 10 的块：坏帧的行仍归 10，不丢日志
+  const cur = nextLog(undefined, { type: "log", runId: 10, lines: ["a"] })!;
+  expect(nextLog(cur, { type: "log", lines: ["b"] })).toEqual({ runId: 10, lines: ["a", "b"] });
 });
 
 test("log 帧：行数超上限丢弃最旧行", () => {
@@ -21,7 +29,7 @@ test("log 帧：行数超上限丢弃最旧行", () => {
     type: "log",
     runId: 10,
     lines: Array.from({ length: LOG_TAIL_LIMIT + 100 }, (_, i) => `L${i}`),
-  });
+  })!;
   expect(cur.lines.length).toBe(LOG_TAIL_LIMIT);
   expect(cur.lines[0]).toBe("L100"); // 最旧 100 行被裁
   expect(cur.lines.at(-1)).toBe(`L${LOG_TAIL_LIMIT + 99}`);

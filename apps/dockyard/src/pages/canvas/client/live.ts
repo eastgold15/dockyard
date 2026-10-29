@@ -1,6 +1,7 @@
 /**
  * 画布三源之一：实时状态（部署 status / running、容器 state）。
- * 唯一来源是 SSE /api/canvas/projects/:id/events；只进 LiveContext，不进 node.data。
+ * 唯一来源是 SSE /api/canvas/events（全局频道，端点见 live-provider 的 EVENTS_URL）；
+ * 只进 LiveContext，不进 node.data。
  * Solid 版：LiveContext 里放的是 store 代理（由 app/board 创建），use* 返回 accessor
  * 函数——JSX 里 `live().status` 即细粒度订阅，一条 SSE 消息只让订阅的徽章重渲染。
  */
@@ -85,12 +86,14 @@ export function nextTargetLive(
 /**
  * log 帧 → 单 target 的下一日志块（纯函数，LiveProvider 按键写 store 时调用，有单测）。
  * 同 run 追加、换 run 重置；超过 LOG_TAIL_LIMIT 丢最旧行（完整日志在服务端）。
+ * runId 缺失的坏帧：沿用当前块所属 run；连当前块都没有则无从归属，返回 null 丢弃。
  */
 export function nextLog(
   cur: LiveState["logs"][number] | undefined,
   msg: Record<string, unknown>,
-): LiveState["logs"][number] {
-  const runId = msg.runId as number;
+): LiveState["logs"][number] | null {
+  const runId = typeof msg.runId === "number" ? msg.runId : cur?.runId;
+  if (runId === undefined) return null;
   const base = cur && cur.runId === runId ? cur.lines : [];
   const incoming = (msg.lines as string[]) ?? [];
   return { runId, lines: [...base, ...incoming].slice(-LOG_TAIL_LIMIT) };

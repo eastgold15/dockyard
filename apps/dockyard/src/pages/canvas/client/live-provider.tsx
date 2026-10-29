@@ -26,7 +26,8 @@ export function LiveProvider(props: { children: JSX.Element }) {
         if (msg.type === "log") {
           // 高频帧走按键写入：按 target 增量合并，不整树替换；合并语义在 nextLog（有单测）
           const id = msg.targetId as number;
-          setLive("logs", id, nextLog(live.logs[id], msg));
+          const next = nextLog(live.logs[id], msg);
+          if (next) setLive("logs", id, next);
           return;
         }
         if (msg.type === "discovery") {

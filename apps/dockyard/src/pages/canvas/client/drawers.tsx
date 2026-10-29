@@ -23,7 +23,7 @@ import { serviceEnvToText, textToEnvMap } from "../../../shared/env-text";
 import { api, deployPaths, unwrap } from "./api";
 import { ConsoleView } from "./console";
 import { emitRefresh, useUi } from "./ui";
-import { confirmAction } from "./feedback";
+import { confirmAction, toast } from "./feedback";
 import { useDeployLog, useTargetLive } from "./live";
 import { PipelineSteps, stagePosture, stepStates } from "./pipeline-steps";
 
@@ -1372,9 +1372,13 @@ export function DiscoveredModal(props: { d: DiscoveredContainer }) {
   const d = () => props.d;
   const [copied, setCopied] = createSignal(false);
   const copyId = async () => {
-    await navigator.clipboard.writeText(d().id);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await navigator.clipboard.writeText(d().id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast("复制失败，请手动选中容器 ID", "err");
+    }
   };
 
   const row = (label: string, value: JSX.Element) => (

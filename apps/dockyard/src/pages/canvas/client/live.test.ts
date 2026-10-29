@@ -31,10 +31,10 @@ test("log 事件：行数超上限丢弃最旧行", () => {
 test("status 事件：stage 携带才更新，缺省保留旧值", () => {
   let s: LiveState = emptyLive;
   s = applyLiveEvent(s, { type: "status", targetId: 1, status: "building", stage: "building" });
-  expect(s.targets[1]).toEqual({ status: "building", running: false, stage: "building" });
+  expect(s.targets[1]).toEqual({ status: "building", running: false, stage: "building", runId: null });
   // 粗 status 事件不带 stage → 保留
   s = applyLiveEvent(s, { type: "status", targetId: 1, status: "deploying" });
-  expect(s.targets[1]).toEqual({ status: "deploying", running: false, stage: "building" });
+  expect(s.targets[1]).toEqual({ status: "deploying", running: false, stage: "building", runId: null });
   // 携带即推进
   s = applyLiveEvent(s, { type: "status", targetId: 1, status: "deploying", stage: "exposing" });
   expect(s.targets[1]!.stage).toBe("exposing");
@@ -44,9 +44,33 @@ test("running 事件：开播清旧 stage（断点不污染新一轮步骤条）
   let s: LiveState = emptyLive;
   s = applyLiveEvent(s, { type: "status", targetId: 1, status: "failed", stage: "building" });
   s = applyLiveEvent(s, { type: "running", targetId: 1, running: true });
-  expect(s.targets[1]).toEqual({ status: "failed", running: true, stage: null });
+  expect(s.targets[1]).toEqual({ status: "failed", running: true, stage: null, runId: null });
   // 停播不动 stage（终态驻留段正是步骤条断点数据源）
   s = applyLiveEvent(s, { type: "status", targetId: 1, status: "failed", stage: "deploying" });
   s = applyLiveEvent(s, { type: "running", targetId: 1, running: false });
   expect(s.targets[1]!.stage).toBe("deploying");
+});
+
+test("终态 status 必然停播 running：快照只发 status 不发 running:false 也不卡「部署中」", () => {
+  let s: LiveState = emptyLive;
+  s = applyLiveEvent(s, { type: "running", targetId: 1, runId: 7, running: true });
+  expect(s.targets[1]).toEqual({ status: null, running: true, stage: null, runId: 7 });
+  // 断线重连首帧快照：只回来一条 success
+  s = applyLiveEvent(s, { type: "status", targetId: 1, runId: 7, status: "success" });
+  expect(s.targets[1]).toMatchObject({ status: "success", running: false });
+  // failed 同语义
+  s = applyLiveEvent(s, { type: "status", targetId: 1, runId: 8, status: "failed" });
+  expect(s.targets[1]).toMatchObject({ status: "failed", running: false });
+});
+
+test("runId 携带即换主，缺省保留：日志抽屉按 runId 判断实时状态归属", () => {
+  let s: LiveState = emptyLive;
+  s = applyLiveEvent(s, { type: "status", targetId: 1, runId: 7, status: "building" });
+  expect(s.targets[1]!.runId).toBe(7);
+  // 粗事件不带 runId → 沿用上一次（同一 run 的后续迁移）
+  s = applyLiveEvent(s, { type: "status", targetId: 1, status: "deploying" });
+  expect(s.targets[1]!.runId).toBe(7);
+  // 新 run 开播带上新 runId → 换主
+  s = applyLiveEvent(s, { type: "running", targetId: 1, runId: 8, running: true });
+  expect(s.targets[1]!.runId).toBe(8);
 });

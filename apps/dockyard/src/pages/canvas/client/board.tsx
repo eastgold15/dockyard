@@ -1,20 +1,15 @@
 /** @jsxImportSource solid-js */
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { createStore } from "solid-js/store";
 import type { BoardModel, CardModel, DiscoveredContainer, TargetModel } from "../canvas.model";
 import {
   AppNodeView, ContainerNodeView, DbNodeView, GroupNodeView, ServerNodeView, ServiceNodeView,
   type CanvasFlowNode,
 } from "./nodes";
 import { api, canvasApi, unwrap } from "./api";
-import { emptyLive, LiveContext, LOG_TAIL_LIMIT, type LiveState } from "./live";
 import { useUi } from "./ui";
 import { confirmAction, promptAction, toast } from "./feedback";
 import { clampCardX, laneRect } from "../zones";
 import { FlowView, type ConnectResult, type FlowEdge, type NodeViewProps } from "@elysiax/flow";
-
-/** 全局 SSE 端点（世界地图：无 projectId 路径段；routes.gen 由 dev server 再生成，这里用字面量） */
-const EVENTS_URL = "/api/canvas/events";
 
 const nodeViews = {
   server: ServerNodeView, app: AppNodeView, service: ServiceNodeView,
@@ -292,7 +287,6 @@ export function Board(props: { lens: () => number | null }) {
   // 三源：structure（/board，refresh 驱动，存普通变量）、nodes（布局，本地权威信号）、live（SSE store）
   const ui = useUi();
   const [servers, setServers] = createSignal<BoardModel["servers"]>([]);
-  const [live, setLive] = createStore<LiveState>({ targets: {}, services: {}, logs: {} });
   const [nodes, setNodes] = createSignal<CanvasFlowNode[]>([]);
   const [edges, setEdges] = createSignal<FlowEdge[]>([]);
   const [menu, setMenu] = createSignal<Menu | null>(null);
@@ -342,41 +336,8 @@ export function Board(props: { lens: () => number | null }) {
     onCleanup(() => document.body.removeEventListener("refresh", onRefresh));
   });
 
-  // 实时：全局 SSE——部署 status/running、容器 state，只进 live store（不进 nodes）
-  onMount(() => {
-    const es = new EventSource(EVENTS_URL);
-    es.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data) as Record<string, unknown>;
-        if (msg.type === "status" || msg.type === "running") {
-          const id = msg.targetId as number;
-          const t = live.targets[id] ?? { status: null, running: false, stage: null };
-          if (msg.type === "status") {
-            // stage 缺省保留旧值（与 applyLiveEvent 同语义）
-            const stage = "stage" in msg ? (msg.stage as never) : t.stage;
-            setLive("targets", id, { ...t, status: msg.status as never, stage });
-          } else {
-            // 新 run 开播清旧 stage（上一轮的断点不能污染本轮步骤条）
-            setLive("targets", id, msg.running ? { ...t, running: true, stage: null } : { ...t, running: false });
-          }
-        } else if (msg.type === "state") {
-          setLive("services", `${msg.targetId}:${msg.service}`, msg.state as never);
-        } else if (msg.type === "discovery") {
-          // 发现层集合变化（容器启停/增删）：发现卡数据是 /board 现查的快照 → 重拉结构
-          void refetch();
-        } else if (msg.type === "log") {
-          const id = msg.targetId as number;
-          const runId = msg.runId as number;
-          const incoming = (msg.lines as string[]) ?? [];
-          const cur = live.logs[id];
-          const base = cur && cur.runId === runId ? cur.lines : [];
-          setLive("logs", id, { runId, lines: [...base, ...incoming].slice(-LOG_TAIL_LIMIT) });
-        }
-      } catch { /* 忽略坏帧 */ }
-    };
-    onCleanup(() => es.close());
-  });
-
+  // 实时状态（SSE → live store）住在 App 层的 <LiveProvider>，Board 只消费 context：
+  // 发现层的 refresh 由 provider 统一派发到 body，这里原有的监听照常接住。
   // ── 节点几何变化（FlowView 回调）──
   // Resizer 拖拽中的节点 id，fitParents 对它们跳过 clamp/grow
   const resizingIds = new Set<string>();
@@ -484,9 +445,26 @@ export function Board(props: { lens: () => number | null }) {
     dragOrigin.set(node.id, { ...node.position });
   };
 
-  const onNodeDragStop = async (node: CanvasFlowNode) => {
-    interacting = false;
+  /**
+   * 拖拽收尾：无论正常落点、被拒弹回还是 pointercancel（cancelled=true），
+   * 都必须放开门闩并补拉排队的 refresh —— 否则一次中断就把画布永久冻在旧结构上。
+   */
+  const onNodeDragStop = async (node: CanvasFlowNode, cancelled?: boolean) => {
+    try {
+      await commitNodeDrag(node, cancelled);
+    } finally {
+      interacting = false;
+      flushPendingRefetch();
+    }
+  };
+
+  const commitNodeDrag = async (node: CanvasFlowNode, cancelled?: boolean) => {
     setNodes((ns) => ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)));
+    if (cancelled) {
+      // pointercancel：手势被系统夺走，位置未表态 → 一律弹回起点，不落库
+      bounce(node.id);
+      return;
+    }
     const x = Math.round(node.position.x), y = Math.round(node.position.y);
     if (node.type === "server") {
       const nodeId = Number(node.id.replace("srv-", ""));
@@ -497,7 +475,6 @@ export function Board(props: { lens: () => number | null }) {
         toast((e as Error).message, "err");
         bounce(node.id);
       }
-      flushPendingRefetch();
       return;
     } else if (node.type === "container") {
       bounce(node.id); // 发现卡只读：拖了弹回原位（不落库）
@@ -556,7 +533,6 @@ export function Board(props: { lens: () => number | null }) {
             bounce(node.id);
           }
         })();
-        flushPendingRefetch();
         return;
       }
 
@@ -589,7 +565,6 @@ export function Board(props: { lens: () => number | null }) {
       merged[data.s.name] = { x, y };
       void patchLayout(data.t.id, { serviceLayout: merged });
     }
-    flushPendingRefetch();
   };
 
   const closeMenu = () => setMenu(null);
@@ -642,7 +617,7 @@ export function Board(props: { lens: () => number | null }) {
   );
 
   return (
-    <LiveContext.Provider value={live}>
+    <>
       <FlowView
         nodes={nodes()}
         edges={edges()}
@@ -775,7 +750,7 @@ export function Board(props: { lens: () => number | null }) {
           </div>
         )}
       </Show>
-    </LiveContext.Provider>
+    </>
   );
 }
 

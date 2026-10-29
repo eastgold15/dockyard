@@ -127,10 +127,11 @@ export class DeployService {
         const dep = await this.repo.latestDeployment(t.id);
         if (!dep) continue;
         if (dep.status !== "success" && dep.status !== "failed")
-          out.push({ type: "running", targetId: t.id, running: true });
+          out.push({ type: "running", targetId: t.id, runId: dep.id, running: true });
         out.push({
           type: "status",
           targetId: t.id,
+          runId: dep.id,
           status: dep.status,
           ...(dep.stage ? { stage: dep.stage } : {}),
         });
@@ -150,7 +151,12 @@ export class DeployService {
       await this.repo
         .appendLogChunk(run.id, "\n[中断] 控制面进程重启，该次部署未完成（如需重试请重新部署）\n")
         .catch(() => {});
-      events.publish(CANVAS_CHANNEL, { type: "status", targetId: run.targetId, status: "failed" });
+      events.publish(CANVAS_CHANNEL, {
+        type: "status",
+        targetId: run.targetId,
+        runId: run.id,
+        status: "failed",
+      });
     }
     return rows.length;
   }
@@ -497,8 +503,8 @@ export class DeployService {
     const log = this.makeLog(dep.id, targetId);
     const { setStatus, setStage } = this.makeRunControls(dep, targetId, ch);
 
-    events.publish(ch, { type: "running", targetId, running: true });
-    events.publish(ch, { type: "status", targetId, status: "queued" });
+    events.publish(ch, { type: "running", targetId, runId: dep.id, running: true });
+    events.publish(ch, { type: "status", targetId, runId: dep.id, status: "queued" });
     try {
       const form = await this.resolveForm(target);
       await executeForm(this.harness, { target, run: dep, log, setStatus, setStage }, form);
@@ -510,7 +516,7 @@ export class DeployService {
       await setStatus("failed", { finishedAt: new Date() });
     } finally {
       await log.flush(); // 终态前推空缓冲，抽屉侧才能即时收尾
-      events.publish(ch, { type: "running", targetId, running: false });
+      events.publish(ch, { type: "running", targetId, runId: dep.id, running: false });
     }
   }
 
@@ -523,11 +529,11 @@ export class DeployService {
     const setStatus: SetStatus = async (status, patch = {}) => {
       current = status;
       await this.repo.updateDeployment(dep.id, { status, ...patch });
-      events.publish(ch, { type: "status", targetId, status });
+      events.publish(ch, { type: "status", targetId, runId: dep.id, status });
     };
     const setStage: SetStage = async (stage) => {
       await this.repo.updateDeployment(dep.id, { stage });
-      events.publish(ch, { type: "status", targetId, status: current, stage });
+      events.publish(ch, { type: "status", targetId, runId: dep.id, status: current, stage });
     };
     return { setStatus, setStage };
   }
@@ -613,8 +619,8 @@ export class DeployService {
     const log = this.makeLog(dep.id, targetId);
     const { setStatus, setStage } = this.makeRunControls(dep, targetId, ch);
 
-    events.publish(ch, { type: "running", targetId, running: true });
-    events.publish(ch, { type: "status", targetId, status: "queued" });
+    events.publish(ch, { type: "running", targetId, runId: dep.id, running: true });
+    events.publish(ch, { type: "status", targetId, runId: dep.id, status: "queued" });
     try {
       await setStatus("deploying", { commitSha: src.commitSha });
       await activateArtifact(this.harness, { target, run: dep, log, setStatus, setStage }, artifact);
@@ -631,7 +637,7 @@ export class DeployService {
       await setStatus("failed", { finishedAt: new Date() });
     } finally {
       await log.flush();
-      events.publish(ch, { type: "running", targetId, running: false });
+      events.publish(ch, { type: "running", targetId, runId: dep.id, running: false });
     }
   }
 
@@ -655,8 +661,8 @@ export class DeployService {
       const dep = await this.repo.createDeployment(targetId, { trigger: "ship" });
       const log = this.makeLog(dep.id, targetId);
       const { setStatus, setStage } = this.makeRunControls(dep, targetId, ch);
-      events.publish(ch, { type: "running", targetId, running: true });
-      events.publish(ch, { type: "status", targetId, status: "queued" });
+      events.publish(ch, { type: "running", targetId, runId: dep.id, running: true });
+      events.publish(ch, { type: "status", targetId, runId: dep.id, status: "queued" });
       try {
         await form.provision!({ target, run: dep, log, setStatus, setStage }, this.harness);
         await setStatus("success", { finishedAt: new Date() });
@@ -666,7 +672,7 @@ export class DeployService {
         await setStatus("failed", { finishedAt: new Date() });
       } finally {
         await log.flush();
-        events.publish(ch, { type: "running", targetId, running: false });
+        events.publish(ch, { type: "running", targetId, runId: dep.id, running: false });
       }
     })()
       .catch(() => { })

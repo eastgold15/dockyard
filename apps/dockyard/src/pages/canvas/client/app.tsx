@@ -10,6 +10,7 @@ import { Board } from "./board";
 import { DeployLogModal, DiscoveredModal, DomainsModal, EnvDrawer, NewAppWizard, NewDbModal, ServiceDrawer } from "./drawers";
 import { FeedbackHost } from "./feedback";
 import { lens, setLens } from "./lens";
+import { LiveProvider } from "./live-provider";
 import { emitRefresh, UiContext, type UiBus, type View } from "./ui";
 
 interface ProjectBrief { id: number; name: string }
@@ -83,6 +84,9 @@ export function App() {
 
   return (
     <UiContext.Provider value={bus}>
+      {/* LiveProvider 必须同时罩住 Board 与 DrawerHost：抽屉是 Board 的兄弟，
+          只包 Board 会让抽屉拿到 emptyLive——节点实时、抽屉沉默 */}
+      <LiveProvider>
       {/* 整页 client 壳没有 AppLayout：视口高度从这里开始，h-full 链条才有根 */}
       <div class="h-screen">
       <Show when={missing()}>
@@ -129,6 +133,7 @@ export function App() {
         <FeedbackHost />
       </Show>
       </div>
+      </LiveProvider>
     </UiContext.Provider>
   );
 }

@@ -8,8 +8,10 @@ import type { DeployStage } from "./schema";
  */
 export type CanvasEvent =
   // stage = 六阶段细步骤进度（可选，缺省时前端保留旧值合并；best-effort 不是状态机）
-  | { type: "status"; targetId: number; status: string; stage?: DeployStage }
-  | { type: "running"; targetId: number; running: boolean }
+  // runId = 该状态属于哪次 run：日志抽屉据此判断「实时状态是不是我看的这条」，
+  // 否则看历史 run 的日志时，当前新 run 的 building 会冒充成历史 run 的状态
+  | { type: "status"; targetId: number; status: string; stage?: DeployStage; runId?: number }
+  | { type: "running"; targetId: number; running: boolean; runId?: number }
   | { type: "state"; targetId: number; service: string; state: "running" | "exited" | "unknown" }
   // 发现层（未纳管容器）集合变化：无载荷——客户端收到后重拉 /board（发现卡数据是现查快照）
   | { type: "discovery" }

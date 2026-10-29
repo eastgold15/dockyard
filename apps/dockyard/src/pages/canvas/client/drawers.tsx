@@ -774,7 +774,14 @@ export function DeployLogModal(props: { targetId: number; dep?: number }) {
     return backfill();
   };
 
-  const depStatus = () => live().status ?? data()?.dep?.status;
+  // 实时状态只在「属于正在看的那次 run」时才算数：看历史 run 的日志时，
+  // 当前新 run 的 building 不能冒充成它的状态（服务端 status 帧带 runId）
+  const depStatus = () => {
+    const l = live();
+    const depId = data()?.dep?.id;
+    if (depId != null && l.runId !== depId) return data()?.dep?.status;
+    return l.status ?? data()?.dep?.status;
+  };
   return (
     <Modal title={`部署日志 — ${data()?.target.name ?? "…"}`} wide onClose={ui.close}>
       <Show when={depStatus()}>
@@ -1017,10 +1024,20 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
   const t = () => props.data.target;
   // 实时通道：进行中 run 的步骤条跟 SSE 脉冲，历史行回落到库值
   const live = useTargetLive(t().id);
-  // 终态后拉一次列表：SSE 只带粗状态，库里的 stage/rollbackable 需要对齐
-  // （effect 只依赖 live 状态变化，reload 不会回写 live，不会自激）
+  // 列表对齐的两个时机（effect 只依赖 live，reload 不回写 live，不会自激）：
+  // 1) runId 换主 = 新 run 开播：库里还没有这一行，不拉列表步骤条就没有宿主行；
+  // 2) 终态：SSE 只带粗状态，库里的 stage/rollbackable/finishedAt 需要对齐。
+  // 用 runId 而不是 running 判「新 run」——running 在整段执行中都为 true，
+  // 拿它当条件会变成每次 status 迁移都重拉一次列表。
+  let seenRunId: number | null = null;
   createEffect(() => {
     const s = live().status;
+    const id = live().runId;
+    if (id != null && id !== seenRunId) {
+      seenRunId = id;
+      void props.reload();
+      return;
+    }
     if (s === "success" || s === "failed") void props.reload();
   });
   return (

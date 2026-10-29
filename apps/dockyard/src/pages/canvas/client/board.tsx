@@ -3,7 +3,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show }
 import { createStore } from "solid-js/store";
 import type { BoardModel, CardModel, TargetModel } from "../canvas.model";
 import {
-  AppNodeView, DbNodeView, GroupNodeView, ServerNodeView, ServiceNodeView,
+  AppNodeView, ContainerNodeView, DbNodeView, GroupNodeView, ServerNodeView, ServiceNodeView,
   type CanvasFlowNode,
 } from "./nodes";
 import { api, canvasApi, unwrap } from "./api";
@@ -18,7 +18,7 @@ const EVENTS_URL = "/api/canvas/events";
 
 const nodeViews = {
   server: ServerNodeView, app: AppNodeView, service: ServiceNodeView,
-  db: DbNodeView, group: GroupNodeView,
+  db: DbNodeView, group: GroupNodeView, container: ContainerNodeView,
 } as unknown as Record<string, (p: NodeViewProps<never>) => Element>;
 
 // 依赖边样式（虚线黄铜 + 箭头）
@@ -34,6 +34,7 @@ const SVC_DOMAIN_H = 16;  // 服务卡里每行域名的高度
 const APP_MIN_H = 96;     // 无服务清单的 app 卡高
 const APP_TAIL_H = 46;    // 服务块之后的按钮区
 const DB_H = 84;
+const DISC_H = 66;        // 发现容器卡高（只读行：名称/镜像/端口）
 const PAD = 14, HEADER_H = 56, GAP = 12; // 服务器卡：内边距/标题/子卡间距
 const SVC_W = CHILD_W - 28;
 const GROUP_HEADER_H = 30;   // 分组卡标题高度
@@ -44,6 +45,7 @@ const appId = (targetId: number) => `app-${targetId}`;
 const svcId = (targetId: number, name: string) => `svc-${targetId}-${name}`;
 const dbId = (targetId: number) => `db-${targetId}`;
 const grpId = (groupId: number) => `grp-${groupId}`;
+const discId = (containerId: string) => `disc-${containerId}`;
 
 /** 服务卡高 = 名称行 + 域名行数 */
 const svcHeight = (s: TargetModel["services"][number]) => SVC_H + s.domains.length * SVC_DOMAIN_H;
@@ -65,7 +67,7 @@ function fitParents(ns: CanvasFlowNode[], resizingIds?: ReadonlySet<string>): Ca
       const x = Math.max(PAD, n.position.x), y = Math.max(SVC_TOP, n.position.y);
       return x === n.position.x && y === n.position.y ? n : { ...n, position: { x, y } };
     }
-    if ((n.type === "app" || n.type === "db") && n.parentId) {
+    if ((n.type === "app" || n.type === "db" || n.type === "container") && n.parentId) {
       const x = Math.max(PAD, n.position.x), y = Math.max(HEADER_H, n.position.y);
       return x === n.position.x && y === n.position.y ? n : { ...n, position: { x, y } };
     }
@@ -198,6 +200,27 @@ function deriveNodes(cards: CardModel[], local: Map<string, CanvasFlowNode>): Ca
       contentRight = Math.max(contentRight, g.x + w);
       contentBottom = Math.max(contentBottom, g.y + h);
     }
+    // 发现容器（只读）：排在部署目标/分组下方，单列自动摆；位置不持久化（刷新即归位）
+    let discCursor = contentBottom + GAP;
+    for (const d of card.discovered ?? []) {
+      const id = discId(d.id);
+      const discLocal = local.get(id);
+      const position = discLocal?.dragging ? discLocal.position : { x: PAD, y: discCursor };
+      targetNodes.push({
+        id,
+        type: "container",
+        parentId: sid,
+        position,
+        width: CHILD_W,
+        height: DISC_H,
+        selected: discLocal?.selected ?? false,
+        dragging: discLocal?.dragging,
+        data: { d },
+      } as CanvasFlowNode);
+      contentRight = Math.max(contentRight, position.x + CHILD_W);
+      contentBottom = Math.max(contentBottom, position.y + DISC_H);
+      discCursor += DISC_H + GAP;
+    }
     children.push(...targetNodes);
     nodes.push({
       id: sid,
@@ -254,7 +277,14 @@ function applyLens(cards: CardModel[], lens: number | null): CardModel[] {
     const visibleGroups = new Set(
       targets.map((t) => t.groupId).filter((g): g is number => g != null),
     );
-    return { ...card, targets, groups: (card.groups ?? []).filter((g) => visibleGroups.has(g.id)) };
+    // 发现容器同样跟透镜走：归属匹配到选中项目的才显示（无归属只在世界视图出现）
+    const discovered = (card.discovered ?? []).filter((d) => d.projectId === lens);
+    return {
+      ...card,
+      targets,
+      discovered,
+      groups: (card.groups ?? []).filter((g) => visibleGroups.has(g.id)),
+    };
   });
 }
 
@@ -465,6 +495,9 @@ export function Board(props: { lens: () => number | null }) {
         bounce(node.id);
       }
       flushPendingRefetch();
+      return;
+    } else if (node.type === "container") {
+      bounce(node.id); // 发现卡只读：拖了弹回原位（不落库）
       return;
     } else if (node.type === "group") {
       void unwrap(canvasApi.groups({ id: Number(node.id.replace("grp-", "")) }).patch({ x, y }));

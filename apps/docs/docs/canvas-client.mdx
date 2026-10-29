@@ -21,6 +21,16 @@ dockyard 画布是框架里交互最复杂的页面（拖拽、连线、实时�
 - 画布分**本机/远程两区**（`server.local` 由 host 是否 loopback 派生），中间分界线——后期演化为部署通道（本机构建 → 产物推远程）
 - 建内容操作（部署本仓库/添加数据库/新建分组）只在透镜激活时可用——世界视图是观察层，创建必须知道项目归属
 
+### 发现层（只读）
+
+服务器上 docker 里跑着、但不归 dockyard 管的容器，也会画在服务器卡内（虚框 + 「发现」徽章）。
+
+- **发现 ≠ 纳管**：发现卡没有部署/回滚/备份/删除入口，拖拽即弹回原位、位置不落库；纳管仍走「部署本仓库/添加数据库」
+- **过滤口径**：排除 `dockyard.managed=true` 的容器（已有卡片）与 compose 一次性容器（`com.docker.compose.oneoff=True`）
+- **项目归属**按 compose 的 `working_dir` 反查 `projects.localPath`（最长前缀胜出）；兜底依次为 `dockyard.project` 标签 → compose project 名 → 容器名前缀。匹配不到 `projectId=null`，只在世界视图出现
+- **数据是快照**：`/board` 拉取时经服务器 `docker.listContainers({all:true})` 现查（本机走本地 socket，远程经 SSH）；不进 SSE，容器启停后刷新页面才更新。docker 未检测/报错 → 空数组，不阻塞画布
+- 纯函数在 `discovery.ts`（`matchProjectId`/`portsSummary`/`discoverContainers`），单测不依赖 docker
+
 ## 结构
 
 ```
@@ -39,6 +49,7 @@ src/pages/canvas/
     ui.ts               # UiBus（open/close/refresh）模态总线
   canvas.actions.ts     # JSON API（/api/canvas/*）：board/SSE/CRUD（全部全局，无 :projectId）
   canvas.service.ts / canvas.repository.ts / canvas.model.ts
+  discovery.ts          # 发现层纯函数（未纳管容器 → 卡片模型，按项目 localPath 归属）
   canvas.di.ts
 ```
 

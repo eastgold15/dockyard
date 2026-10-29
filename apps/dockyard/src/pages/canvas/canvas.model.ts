@@ -56,6 +56,21 @@ export interface GroupModel {
   x: number; y: number; w: number; h: number;
 }
 
+/**
+ * 发现的外部容器（只读）：服务器上 docker 里跑着、但不归 dockyard 管的容器。
+ * 发现 ≠ 纳管——不参与部署/回滚/备份，只做世界地图的诚实呈现。
+ */
+export interface DiscoveredContainer {
+  id: string;              // docker 容器 id 前 12 位
+  name: string;            // tradeflow_postgres
+  service: string;         // compose service 名（postgres）
+  composeProject: string;  // compose 项目名（deploy）
+  image: string;
+  state: "running" | "exited" | "created" | "restarting" | "paused" | "dead" | "unknown";
+  ports: string;           // 端口摘要（5444→5432/tcp）
+  projectId: number | null; // 归属的 dockyard 项目（working_dir 反查；null = 只在世界视图）
+}
+
 export interface CardModel {
   node: { id: number; x: number; y: number; w: number; h: number };
   server: {
@@ -65,6 +80,7 @@ export interface CardModel {
   };
   targets: TargetModel[];
   groups: GroupModel[]; // 服务器卡内的服务分组容器
+  discovered: DiscoveredContainer[]; // 未纳管容器（只读发现，world/lens 都可见）
 }
 
 /** /board 载荷：结构 + 布局（无实时）——实时状态见 /events（SSE） */

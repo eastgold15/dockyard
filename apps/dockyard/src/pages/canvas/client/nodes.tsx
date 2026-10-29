@@ -5,7 +5,7 @@
  * 卡内全部交互元素带 data-nodrag，避免触发节点拖拽。
  */
 import { For, Show, type JSX } from "solid-js";
-import type { CardModel, DomainBadge, GroupModel, ServiceRow, TargetModel } from "../canvas.model";
+import type { CardModel, DiscoveredContainer, DomainBadge, GroupModel, ServiceRow, TargetModel } from "../canvas.model";
 import { api, canvasApi, unwrap } from "./api";
 import { lens } from "./lens";
 import { useServiceState, useTargetLive } from "./live";
@@ -18,7 +18,9 @@ export type AppFlowNode = FlowNodeBase & { type: "app"; data: { t: TargetModel }
 export type ServiceFlowNode = FlowNodeBase & { type: "service"; data: { t: TargetModel; s: ServiceRow } };
 export type DbFlowNode = FlowNodeBase & { type: "db"; data: { t: TargetModel } };
 export type GroupFlowNode = FlowNodeBase & { type: "group"; data: { g: GroupModel } };
-export type CanvasFlowNode = ServerFlowNode | AppFlowNode | ServiceFlowNode | DbFlowNode | GroupFlowNode;
+/** 发现容器卡：只读（不参与部署/拖拽持久化） */
+export type DiscFlowNode = FlowNodeBase & { type: "container"; data: { d: DiscoveredContainer } };
+export type CanvasFlowNode = ServerFlowNode | AppFlowNode | ServiceFlowNode | DbFlowNode | GroupFlowNode | DiscFlowNode;
 
 const STATUS_LABEL: Record<string, string> = {
   queued: "排队", building: "构建中", transferring: "传输中",
@@ -136,6 +138,26 @@ export const ServerNodeView = (props: { id: string; data: { server: CardModel["s
       </div>
       <div class="mono px-3 py-1 text-[11px] text-neutral-600">
         {server().local ? "本地进程直连" : `${server().user}@${server().host}:${server().port}`}
+      </div>
+    </div>
+  );
+};
+
+// ── 发现容器卡（只读）：服务器上 docker 里跑着、但不归 dockyard 管的容器。
+//    虚框 + 「发现」徽章，明确它与部署目标卡不同：没有部署/回滚/备份入口 ──
+export const ContainerNodeView = (props: { id: string; data: { d: DiscoveredContainer }; selected: boolean; width?: number; height?: number }) => {
+  const d = () => props.data.d;
+  return (
+    <div class="flex h-full w-full flex-col justify-center gap-1 rounded-lg border border-dashed border-harbor-600 bg-harbor-950/70 px-3 py-2">
+      <div class="flex items-center gap-2">
+        <span class={`h-2 w-2 shrink-0 rounded-full ${d().state === "running" ? "bg-tide-400" : "bg-signal-500"}`} />
+        <span class="truncate text-sm font-medium text-neutral-200" title={d().name}>{d().name}</span>
+        <span class="ml-auto shrink-0"><Badge tone="muted">发现</Badge></span>
+      </div>
+      <div class="mono truncate text-[11px] text-neutral-500" title={d().image}>{d().image}</div>
+      <div class="mono flex items-center justify-between gap-2 text-[11px] text-neutral-600">
+        <span class="truncate">{d().service || d().composeProject || "独立容器"}</span>
+        <Show when={d().ports}><span class="shrink-0">{d().ports}</span></Show>
       </div>
     </div>
   );

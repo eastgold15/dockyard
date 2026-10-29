@@ -4,9 +4,10 @@ import { CANVAS_CHANNEL, events, type DeployService, type DeployTarget } from ".
 import type { ProjectService } from "../projects/projects.socket";
 import type { ServerService } from "../servers/servers.socket";
 import type { EdgeService } from "../edge/edge.socket";
-import type { BoardModel, CardModel } from "./canvas.model";
+import type { BoardModel, CardModel, DiscoveredContainer } from "./canvas.model";
 import type { CanvasService } from "./canvas.service";
 import { isLocalHost } from "./canvas.socket";
+import { discoverContainers } from "./discovery";
 import { clampCardX, violatesLane } from "./zones";
 
 interface Ctx {
@@ -79,11 +80,22 @@ async function canvasData(ctx: Ctx) {
     const groups = (await ctx.canvas.groupsOf(node.id)).map((g) => ({
       id: g.id, name: g.name, x: g.x, y: g.y, w: g.w, h: g.h,
     }));
+    // 发现层（只读）：docker 里非 dockyard 管理的容器。探测失败/未检测 → 空，不阻塞画布
+    let discovered: DiscoveredContainer[] = [];
+    if (dockerStatus === "ok") {
+      try {
+        const docker = await ctx.server.docker(server.id);
+        discovered = discoverContainers(await docker.listContainers({ all: true }), projects);
+      } catch {
+        discovered = [];
+      }
+    }
     cards.push({
       node: { id: node.id, x: node.x, y: node.y, w: node.w, h: node.h },
       server: { id, name, user, host, port, dockerStatus, dockerVersion, local: isLocalHost(host) },
       targets,
       groups,
+      discovered,
     });
   }
   // 服务级依赖边（client 派生 React Flow 边）；存量 dependsOn 由门面惰性派生为 service=null 的边

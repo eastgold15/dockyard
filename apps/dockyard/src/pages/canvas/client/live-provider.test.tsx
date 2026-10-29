@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { render } from "solid-js/web";
 import { LiveProvider } from "./live-provider";
-import { useDeployLog, useTargetLive } from "./live";
+import { useDeployLog, useServiceState, useTargetLive } from "./live";
 
 /** 假 EventSource：手动推帧，记录实例数（断言「只有一条连接」） */
 class FakeES {
@@ -30,6 +30,7 @@ function mount() {
   document.body.appendChild(el);
   let live!: ReturnType<typeof useTargetLive>;
   let log!: ReturnType<typeof useDeployLog>;
+  let svc!: ReturnType<typeof useServiceState>;
   const dispose = render(
     () => (
       <LiveProvider>
@@ -37,6 +38,7 @@ function mount() {
           {(() => {
             live = useTargetLive(1);
             log = useDeployLog(1);
+            svc = useServiceState(1, "web");
             return null;
           })()}
           <span class="status">{live()?.status ?? "-"}</span>
@@ -49,6 +51,7 @@ function mount() {
     el,
     live: () => live(),
     log: () => log(),
+    svc: () => svc(),
     dispose: () => {
       dispose();
       el.remove();
@@ -70,6 +73,17 @@ test("只有一条 SSE 连接，状态按 target 键写入", () => {
   // 别的 target 的帧不污染 1
   FakeES.push({ type: "status", targetId: 2, runId: 8, status: "failed" });
   expect(h.live()!.status).toBe("building");
+  h.dispose();
+});
+
+test("state 坏帧：未知容器状态不写 store（否则运行中容器显示灰色未知）", () => {
+  const h = mount();
+  FakeES.push({ type: "state", targetId: 1, service: "web", state: "running" });
+  expect(h.svc()).toBe("running");
+  FakeES.push({ type: "state", targetId: 1, service: "web", state: "removing" });
+  expect(h.svc()).toBe("running");
+  FakeES.push({ type: "state", targetId: 1, service: "web", state: 42 });
+  expect(h.svc()).toBe("running");
   h.dispose();
 });
 

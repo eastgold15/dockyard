@@ -49,8 +49,15 @@ test("兜底：compose project 名 / 容器名前缀匹配", () => {
     Labels: { "com.docker.compose.project": "elysiax" },
   };
   expect(matchProjectId(byProject, projects)).toBe(7);
-  const byPrefix: RawContainer = { Id: "z", Names: ["/tradeflow_redis"] };
+  const byPrefix: RawContainer = { Id: "z", Names: ["/tradeflow_redis"] }; // 无 compose 标签的裸容器
   expect(matchProjectId(byPrefix, projects)).toBe(6);
+  // 有 compose 标签但项目名不匹配：不能再按名字前缀猜（否则会被挂到同名项目下）
+  const composeMismatch: RawContainer = {
+    Id: "z2",
+    Names: ["/tradeflow_redis"],
+    Labels: { "com.docker.compose.project": "deploy" },
+  };
+  expect(matchProjectId(composeMismatch, projects)).toBeNull();
 });
 
 test("匹配不到 → null（只在世界视图显示）", () => {

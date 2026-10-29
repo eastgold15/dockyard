@@ -1,6 +1,6 @@
 import { status, t } from "elysia";
 import { defineRoutes } from "../../../.elysiax";
-import { CANVAS_CHANNEL, events, sourceTypeOf, type DeployService, type DeployTarget } from "../deploy/deploy.socket";
+import { CANVAS_CHANNEL, events, type DeployService, type DeployTarget } from "../deploy/deploy.socket";
 import type { ProjectService } from "../projects/projects.socket";
 import type { ServerService } from "../servers/servers.socket";
 import type { EdgeService } from "../edge/edge.socket";
@@ -17,6 +17,27 @@ interface Ctx {
   edge: EdgeService;
 }
 
+/** /board 请求路径上的 docker 探测上限：半死的 SSH 中继没有自带超时，不能把整张画布挂住 */
+const PROBE_TIMEOUT_MS = 5_000;
+/** 探测失败时的上一轮发现层快照（serverId → 容器）：失败不清空发现卡，与轮询器同策略 */
+const lastDiscovered = new Map<number, DiscoveredContainer[]>();
+
+/** 超时竞速；超时后原 promise 的失败也要接住，避免变成 unhandled rejection */
+async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  p.catch(() => {});
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("docker 探测超时")), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /** 跨上下文组合：canvas 只存节点，服务器/部署信息在此拼装；
  *  部署侧的视图整形（连接串解密、compose 清单、依赖边）在 DeployService。
  *  世界地图：无项目边界，返回全部服务器卡；target 的项目归属（projectId/projectName）逐个补齐 */
@@ -28,82 +49,85 @@ async function canvasData(ctx: Ctx) {
   ]);
   const byId = new Map(servers.map((s) => [s.id, s]));
   const projectNameOf = new Map(projects.map((p) => [p.id, p.name]));
-  const projectById = new Map(projects.map((p) => [p.id, p]));
-  // 来源形态与部署 service 同口径（sourceTypeOf）：client 不再从 repoUrl 猜 local/github
-  const projectOfTarget = (target: DeployTarget) =>
-    target.projectId
-      ? projectById.get(target.projectId)
-      : projects.find((p) => p.repoUrl && p.repoUrl === target.repoUrl);
-  const cards: CardModel[] = [];
   const rawTargets = new Map<number, DeployTarget>(); // 依赖边派生用（edgesOfTarget 要原始行）
-  for (const node of nodes) {
-    const server = byId.get(node.serverId);
-    if (!server) continue;
-    const targets = [];
-    for (const target of await ctx.deploy.targetsOfNode(node.id)) {
-      rawTargets.set(target.id, target);
-      // app 的域名绑定（edge 反代 + 证书状态徽章）；serviceName 用于下沉到 compose 服务行
-      const domains = target.kind === "app"
-        ? (await ctx.edge.domainsOfTarget(target.id)).map((d) => ({
-          hostname: d.hostname,
-          sslStatus: d.sslStatus,
-          dnsStatus: d.dnsStatus,
-          serviceName: d.serviceName,
-          targetPort: d.targetPort,
-        }))
-        : [];
-      // compose 服务清单（创建落库/存量惰性补全）；容器状态在下方按服务器聚合后填入
-      const svcDoc = target.kind === "app"
-        ? await ctx.deploy.servicesOfTarget(target)
-        : { project: null, services: [] };
-      targets.push({
-        id: target.id,
-        kind: target.kind,
-        name: target.name,
-        projectId: target.projectId ?? 0, // 0 = 未关联项目
-        projectName: (target.projectId && projectNameOf.get(target.projectId)) || "",
-        sourceType: sourceTypeOf(target, projectOfTarget(target)), // app 的构建来源形态（db 无意义但一致填）
-        logical: Boolean(target.instanceOf),
-        url: ctx.deploy.logicalUrlOf(target), // 逻辑库连接串（复制按钮）
-        // 归属到具体服务的域名下沉到服务行；无归属的留 target 顶部
-        domains: domains.filter((d) => !d.serviceName || !svcDoc.services.some((s) => s.name === d.serviceName)),
-        services: svcDoc.services.map((s) => ({
-          ...s,
-          domains: domains.filter((d) => d.serviceName === s.name),
-          ...(target.serviceLayout?.[s.name] ?? {}),
-        })),
-        edges: [], // 下方知道全部 target 名字后回填
-        groupId: target.groupId,
-        x: target.x,
-        y: target.y,
-        w: target.w,
-        h: target.h,
-        updateAvailable: target.updateAvailable,
-        artifactShipped: target.artifactShipped,
-      });
-    }
-    const { id, name, user, host, port, dockerStatus, dockerVersion, builtin } = server;
-    const groups = (await ctx.canvas.groupsOf(node.id)).map((g) => ({
-      id: g.id, name: g.name, x: g.x, y: g.y, w: g.w, h: g.h,
-    }));
-    // 发现层（只读）：docker 里非 dockyard 管理的容器。探测失败/未检测 → 空，不阻塞画布
-    let discovered: DiscoveredContainer[] = [];
-    if (dockerStatus === "ok") {
-      try {
-        const docker = await ctx.server.docker(server.id);
-        discovered = discoverContainers(await docker.listContainers({ all: true }), projects);
-      } catch {
-        discovered = [];
+  // 逐服务器卡并行组装：docker 探测串行时，一台 SSH 半死的服务器会拖死整个 /board
+  const cards = (
+    await Promise.all(nodes.map(async (node): Promise<CardModel | null> => {
+      const server = byId.get(node.serverId);
+      if (!server) return null;
+      const targets = [];
+      for (const target of await ctx.deploy.targetsOfNode(node.id)) {
+        rawTargets.set(target.id, target);
+        // app 的域名绑定（edge 反代 + 证书状态徽章）；serviceName 用于下沉到 compose 服务行
+        const domains = target.kind === "app"
+          ? (await ctx.edge.domainsOfTarget(target.id)).map((d) => ({
+            hostname: d.hostname,
+            sslStatus: d.sslStatus,
+            dnsStatus: d.dnsStatus,
+            serviceName: d.serviceName,
+            targetPort: d.targetPort,
+          }))
+          : [];
+        // compose 服务清单（创建落库/存量惰性补全）；容器状态在下方按服务器聚合后填入
+        const svcDoc = target.kind === "app"
+          ? await ctx.deploy.servicesOfTarget(target)
+          : { project: null, services: [] };
+        targets.push({
+          id: target.id,
+          kind: target.kind,
+          name: target.name,
+          projectId: target.projectId ?? 0, // 0 = 未关联项目
+          projectName: (target.projectId && projectNameOf.get(target.projectId)) || "",
+          logical: Boolean(target.instanceOf),
+          url: ctx.deploy.logicalUrlOf(target), // 逻辑库连接串（复制按钮）
+          // 归属到具体服务的域名下沉到服务行；无归属的留 target 顶部
+          domains: domains.filter((d) => !d.serviceName || !svcDoc.services.some((s) => s.name === d.serviceName)),
+          services: svcDoc.services.map((s) => ({
+            ...s,
+            domains: domains.filter((d) => d.serviceName === s.name),
+            ...(target.serviceLayout?.[s.name] ?? {}),
+          })),
+          edges: [], // 下方知道全部 target 名字后回填
+          groupId: target.groupId,
+          x: target.x,
+          y: target.y,
+          w: target.w,
+          h: target.h,
+          updateAvailable: target.updateAvailable,
+          artifactShipped: target.artifactShipped,
+        });
       }
-    }
-    cards.push({
-      node: { id: node.id, x: node.x, y: node.y, w: node.w, h: node.h },
-      server: { id, name, user, host, port, dockerStatus, dockerVersion, local: builtin },
-      targets,
-      groups,
-      discovered,
-    });
-  }
+      const { id, name, user, host, port, dockerStatus, dockerVersion, builtin } = server;
+      const groups = (await ctx.canvas.groupsOf(node.id)).map((g) => ({
+        id: g.id, name: g.name, x: g.x, y: g.y, w: g.w, h: g.h,
+      }));
+      // 发现层（只读）：docker 里非 dockyard 管理的容器。
+      // 未检测/daemon 不可用 → 空；探测失败（超时/断线）→ 沿用上一轮快照，
+      // 不能把发现卡静默清空（轮询器对失败也是保持上轮快照）。
+      let discovered: DiscoveredContainer[] = [];
+      if (dockerStatus === "ok") {
+        try {
+          // 连 SSH + 列容器整体限时：sshPool 的建连超时是 30s，只包 listContainers 挡不住
+          discovered = await withTimeout((async () => {
+            const docker = await ctx.server.docker(server.id);
+            return discoverContainers(await docker.listContainers({ all: true }), projects);
+          })(), PROBE_TIMEOUT_MS);
+          lastDiscovered.set(server.id, discovered);
+        } catch {
+          discovered = lastDiscovered.get(server.id) ?? [];
+        }
+      }
+      return {
+        node: { id: node.id, x: node.x, y: node.y, w: node.w, h: node.h },
+        server: { id, name, user, host, port, dockerStatus, dockerVersion, local: builtin },
+        targets,
+        groups,
+        discovered,
+      };
+    }))
+  ).filter((c): c is CardModel => c !== null);
+  // 服务器已删除 → 清掉快照，避免 serverId 复用后把旧容器挂到新服务器上
+  for (const id of lastDiscovered.keys()) if (!byId.has(id)) lastDiscovered.delete(id);
   // 服务级依赖边（client 派生 React Flow 边）；存量 dependsOn 由门面惰性派生为 service=null 的边
   const nameOfTarget = new Map<number, string>();
   for (const c of cards)

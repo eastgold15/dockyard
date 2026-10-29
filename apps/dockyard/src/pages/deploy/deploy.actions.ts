@@ -156,11 +156,18 @@ export default defineRoutes()
   // query 显式声明（Eden 客户端类型需要）
   .get(
     "/instances",
-    { query: t.Object({ nodeId: t.Numeric(), dbType: t.Optional(t.String()) }) },
+    {
+      query: t.Object({
+        nodeId: t.Numeric(),
+        dbType: t.Optional(t.String()),
+        // 透镜项目：只列同项目实例（逻辑库跟随宿主归属，跨项目建库会从当前透镜消失）
+        projectId: t.Optional(t.Numeric()),
+      }),
+    },
     async ({ di, query }) => {
       const dbType = (query.dbType ?? "postgres") as DbType;
       const instances = LOGICAL_DB_SUPPORT[dbType]
-        ? await ctxOf(di).deploy.instancesOfNode(query.nodeId, dbType)
+        ? await ctxOf(di).deploy.instancesOfNode(query.nodeId, dbType, query.projectId ?? null)
         : [];
       return { instances };
     },

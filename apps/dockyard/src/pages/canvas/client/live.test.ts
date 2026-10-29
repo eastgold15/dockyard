@@ -52,6 +52,17 @@ test("status 帧：stage 携带才更新，缺省保留旧值", () => {
   expect(t.stage).toBe("exposing");
 });
 
+test("stage 坏帧：未知阶段保留旧值（否则步骤条 indexOf=-1 六段全 pending）", () => {
+  let t = step(undefined, { type: "status", status: "building", stage: "building" });
+  t = step(t, { type: "status", status: "deploying", stage: "half-done" });
+  expect(t.stage).toBe("building");
+  t = step(t, { type: "status", status: "deploying", stage: 42 });
+  expect(t.stage).toBe("building");
+  // 显式 null 是合法语义：清空（running 帧同样走这条）
+  t = step(t, { type: "status", status: "queued", stage: null });
+  expect(t.stage).toBeNull();
+});
+
 test("running 帧：开播清旧 stage（断点不污染新一轮步骤条）", () => {
   let t = step(undefined, { type: "status", status: "failed", stage: "building" });
   t = step(t, { type: "running", running: true });

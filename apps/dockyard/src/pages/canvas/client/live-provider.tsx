@@ -16,6 +16,9 @@ import { emitRefresh } from "./ui";
  *  EventSource 走不了 Eden，但路径仍用 codegen 的 URL 助手，端点搬家不会漏改。 */
 export const EVENTS_URL = canvasPaths.events();
 
+/** 容器状态取值域（与 container-poller 的 SvcState 一致）：坏帧整帧丢弃 */
+const SERVICE_STATES: ReadonlySet<string> = new Set<ServiceState>(["running", "exited", "unknown"]);
+
 export function LiveProvider(props: { children: JSX.Element }) {
   const [live, setLive] = createStore<LiveState>({ targets: {}, services: {}, logs: {} });
 
@@ -42,6 +45,8 @@ export function LiveProvider(props: { children: JSX.Element }) {
         }
         if (msg.type === "state") {
           if (typeof msg.service !== "string") return;
+          // state 与 status 同标准：未知值照写会把运行中的容器渲染成灰色「状态未知」
+          if (typeof msg.state !== "string" || !SERVICE_STATES.has(msg.state)) return;
           setLive("services", `${id}:${msg.service}`, msg.state as ServiceState);
           return;
         }

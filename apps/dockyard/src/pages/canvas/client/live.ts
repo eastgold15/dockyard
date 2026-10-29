@@ -8,6 +8,7 @@
 import { createContext, useContext } from "solid-js";
 import type { ServiceState } from "../canvas.model";
 import type { DeployStage } from "../../deploy/deploy.socket";
+import { STAGES } from "./pipeline-steps";
 
 export type DeployStatus = "queued" | "building" | "transferring" | "deploying" | "success" | "failed";
 
@@ -84,8 +85,10 @@ export function nextTargetLive(
     const raw = msg.status;
     if (typeof raw !== "string" || !STATUSES.has(raw)) return null;
     const status = raw as DeployStatus;
-    // stage 缺省保留旧值（粗 status 事件不带细步骤）；携带才更新
-    const stage = "stage" in msg ? (msg.stage as DeployStage | null) : t.stage;
+    // stage 同样要过取值域：服务端升级新增/改名阶段后，未知值会让步骤条六段全 pending
+    // （indexOf=-1），failed 时连红叉都标不出来。非法值保留旧 stage，等下一帧自愈。
+    // 缺省（粗 status 事件不带细步骤）也保留旧值。
+    const stage = "stage" in msg ? parseStage(msg.stage, t.stage) : t.stage;
     // 终态到了 running 必然结束。服务端 snapshot 对终态 run 只发 status、不发 running:false，
     // 不在这里推导的话，SSE 断线重连后卡片按钮会永久停在「部署中…」
     const running = TERMINAL.has(status) ? false : t.running;
@@ -96,6 +99,13 @@ export function nextTargetLive(
     return msg.running ? { ...t, running: true, stage: null, runId } : { ...t, running: false, runId };
   }
   return null;
+}
+
+/** stage 帧值 → 合法 DeployStage；null 表示显式清空；未知值丢弃（保留旧值） */
+function parseStage(raw: unknown, prev: DeployStage | null): DeployStage | null {
+  if (raw === null) return null;
+  if (typeof raw === "string" && (STAGES as readonly string[]).includes(raw)) return raw as DeployStage;
+  return prev;
 }
 
 /**

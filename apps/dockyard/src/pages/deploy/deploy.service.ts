@@ -425,10 +425,13 @@ export class DeployService {
     await this.repo.updateTarget(targetId, { deployPolicy });
   }
 
-  /** 该节点上可托管逻辑库的实例（kind=db、同类型、非逻辑库） */
-  async instancesOfNode(nodeId: number, dbType: DbType): Promise<DeployTarget[]> {
+  /** 该节点上可托管逻辑库的实例（kind=db、同类型、非逻辑库）。
+   *  给了 projectId 就只留同项目实例：逻辑库跟随宿主实例的项目归属，
+   *  选了别的项目的实例建出来的库会立刻从当前透镜里消失。 */
+  async instancesOfNode(nodeId: number, dbType: DbType, projectId?: number | null): Promise<DeployTarget[]> {
     return (await this.repo.targetsOfNode(nodeId)).filter(
-      (t) => t.kind === "db" && !t.instanceOf && t.dbType === dbType,
+      (t) => t.kind === "db" && !t.instanceOf && t.dbType === dbType &&
+        (projectId == null || t.projectId === projectId),
     );
   }
 

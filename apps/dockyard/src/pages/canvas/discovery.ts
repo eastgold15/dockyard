@@ -6,7 +6,7 @@
  *
  * 项目归属不是猜名字，而是用 compose 的 working_dir 反查项目的 localPath
  * （tradeflow 的容器 working_dir = <repo>/deploy → 归到 tradeflow）。
- * 名字前缀/ compose project 名只作兜底。
+ * compose project 名精确匹配作兜底；容器名前缀只用于没有任何 compose 标签的裸容器。
  */
 import type { DiscoveredContainer } from "./canvas.model";
 
@@ -65,7 +65,10 @@ export function matchProjectId(
     if (hit) return hit.id;
   }
 
-  // 4) 容器名前缀：tradeflow_postgres → tradeflow
+  // 4) 裸容器（docker run --name tradeflow_redis）：名字前缀兜底。
+  // 带 compose 标签却走到这里 = compose 项目名与 dockyard 项目对不上，不能再按名字猜：
+  // 通用前缀（db/api/redis）会把别人的容器挂到同名项目上，透镜里凭空多出发现卡。
+  if (composeProject || workDir) return null;
   const prefix = name.split(/[_-]/)[0];
   if (prefix) {
     const hit = projects.find(

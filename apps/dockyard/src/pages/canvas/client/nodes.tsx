@@ -82,13 +82,20 @@ const StateDot = (props: { targetId: number; svcName: string }) => {
   );
 };
 
-/** Resizer 拉伸结束 → 持久化手动尺寸（refetch 后作自动收敛的下限） */
+/** Resizer 拉伸结束 → 持久化手动尺寸（refetch 后作自动收敛的下限）。
+ *  服务端会按车道规则拒绝（422，例如本机卡拉宽压到中立带）：不能静默吞掉——
+ *  提示原因并重拉 /board，把本地刚拉的尺寸回弹到库值。 */
+const persistSize = (p: Promise<unknown>) =>
+  void p.catch((e) => {
+    toast((e as Error).message, "err");
+    emitRefresh();
+  });
 const persistServerSize = (nodeId: number, w: number, h: number) =>
-  unwrap(canvasApi.nodes({ id: nodeId }).patch({ w: Math.round(w), h: Math.round(h) }));
+  persistSize(unwrap(canvasApi.nodes({ id: nodeId }).patch({ w: Math.round(w), h: Math.round(h) })));
 const persistGroupSize = (groupId: number, w: number, h: number) =>
-  unwrap(canvasApi.groups({ id: groupId }).patch({ w: Math.round(w), h: Math.round(h) }));
+  persistSize(unwrap(canvasApi.groups({ id: groupId }).patch({ w: Math.round(w), h: Math.round(h) })));
 const persistTargetSize = (targetId: number, w: number, h: number) =>
-  unwrap(api.targets({ id: targetId }).layout.patch({ w: Math.round(w), h: Math.round(h) }));
+  persistSize(unwrap(api.targets({ id: targetId }).layout.patch({ w: Math.round(w), h: Math.round(h) })));
 
 /** Railway 式体验：点部署即打开日志面板盯进度（抽屉内 1s 轮询到终态） */
 async function deployTarget(ui: ReturnType<typeof useUi>, targetId: number) {

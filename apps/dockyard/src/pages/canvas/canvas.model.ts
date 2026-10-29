@@ -37,9 +37,6 @@ export interface TargetModel {
   name: string;
   projectId: number;   // 项目归属（deploy_targets.projectId；0 = 未关联）
   projectName: string; // 关联 projects 表的名字（未关联为空串）
-  // 构建来源形态（服务端 sourceTypeOf 判定，与部署分派同口径）：
-  // local = 本地构建+推送（传输段必走、可「传输产物」）；github = 远端拉代码构建（免传输）
-  sourceType: "local" | "github";
   logical: boolean;
   url?: string; // 逻辑库连接串（复制按钮）
   domains: DomainBadge[]; // 无 serviceName 归属的域名（有归属的下沉到 services 行）
@@ -80,7 +77,7 @@ export interface CardModel {
   server: {
     id: number; name: string; user: string; host: string; port: number;
     dockerStatus: "unknown" | "ok" | "missing"; dockerVersion: string | null;
-    local: boolean; // 本机服务器（host ∈ {127.0.0.1, localhost, ::1} 派生，不落库）
+    local: boolean; // 内置本机（servers.builtin 派生；回环地址上的用户 SSH 隧道不算）
   };
   targets: TargetModel[];
   groups: GroupModel[]; // 服务器卡内的服务分组容器

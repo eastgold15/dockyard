@@ -541,13 +541,18 @@ export function NewDbModal(props: { nodeId: number; projectId?: number | null })
   const [error, setError] = createSignal<string>();
   const [busy, setBusy] = createSignal(false);
 
-  // 跟随 dbType 重拉同类型实例（等价 React 的 [nodeId, dbType] 依赖）
+  // 跟随 dbType 重拉同类型实例（等价 React 的 [nodeId, dbType] 依赖）。
+  // 请求世代：快速切 postgres→mysql→redis 时，慢的旧响应不能把新类型的列表顶掉，
+  // 否则界面显示 mysql 实例、实际按 redis 建库。项目归属一起传给服务端过滤——
+  // 选了别的项目的实例，新建的逻辑库会跟随宿主项目，在当前透镜里立即消失。
+  let instGen = 0;
   createEffect(() => {
     const t = dbType();
+    const my = ++instGen;
     setInstanceId("");
-    unwrap(api.instances.get({ query: { nodeId: props.nodeId, dbType: t } }))
-      .then((d) => setInstances(d.instances))
-      .catch(() => setInstances([]));
+    unwrap(api.instances.get({ query: { nodeId: props.nodeId, dbType: t, projectId: props.projectId ?? undefined } }))
+      .then((d) => { if (my === instGen) setInstances(d.instances); })
+      .catch(() => { if (my === instGen) setInstances([]); });
   });
 
   const submit = async (e: SubmitEvent & { currentTarget: HTMLFormElement }) => {
@@ -981,6 +986,8 @@ export function ServiceDrawer(props: { targetId: number; svc?: string; initialTa
       if (my !== gen || d.tab !== tab()) return;
       setData(d);
     } catch (e) {
+      // 世代守卫同样覆盖失败路径：切 tab 后旧请求的失败不能写进新 tab 的错误横幅
+      if (my !== gen) return;
       setError((e as Error).message);
     }
   };
@@ -1087,15 +1094,22 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
   // 用 runId 而不是 running 判「新 run」——running 在整段执行中都为 true，
   // 拿它当条件会变成每次 status 迁移都重拉一次列表。
   let seenRunId: number | null = null;
+  let prevStatus: string | null = null;
   createEffect(() => {
     const s = live().status;
     const id = live().runId;
     if (id != null && id !== seenRunId) {
       seenRunId = id;
+      prevStatus = s;
       void props.reload();
       return;
     }
-    if (s === "success" || s === "failed") void props.reload();
+    const terminal = s === "success" || s === "failed";
+    const wasTerminal = prevStatus === "success" || prevStatus === "failed";
+    prevStatus = s;
+    // 只认「非终态 → 终态」这一跳：终态之后服务端还会推一条 running:false，
+    // store 对象换新会让 effect 再跑一次，按值判断会把同一次收尾重拉两遍
+    if (terminal && !wasTerminal) void props.reload();
   });
   return (
     <>

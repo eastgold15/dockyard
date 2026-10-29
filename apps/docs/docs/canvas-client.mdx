@@ -37,8 +37,9 @@ dockyard 画布是框架里交互最复杂的页面（拖拽、连线、实时�
 src/pages/canvas/
   client/               # 整页 Solid（@elysiax/solid 预打包 → .elysiax/shells/canvas.client.js）
     index.tsx           # render() 挂载
-    app.tsx             # 透镜选择器（?project= 初始透镜）+ UiContext + DrawerHost
-    board.tsx           # 世界地图：结构 fetch + SSE + 透镜过滤 + 本机/远程分区
+    app.tsx             # 透镜选择器（?project= 初始透镜）+ UiContext + LiveProvider + DrawerHost
+    board.tsx           # 世界地图：结构 fetch + 透镜过滤 + 本机/远程分区
+    live-provider.tsx   # 唯一 SSE 连接 + live store（必须罩住 Board 与 DrawerHost）
     flow.test.tsx       # client 测试样例（happy-dom + solid render，bunfig [test].preload）
     nodes.tsx           # 卡片视图（部署/删除/尺寸持久化/项目徽章）
     drawers.tsx         # 抽屉/弹窗（向导/服务抽屉/日志/域名/变量）
@@ -69,12 +70,23 @@ src/pages/canvas/
 - **实时不进 node.data**：状态灯这类高频数据进 Solid store 的细粒度订阅（`live().status` accessor），不触发 nodes 数组重算
 - **refresh 事件是约定**：结构变更后 `document.body.dispatchEvent(new Event("refresh"))`，board 监听重拉
 
+两条与「状态归属」有关的纪律：
+
+- **Provider 作用域 = 消费方全集**：live store 建在 `LiveProvider`（App 层），`Board` 与 `DrawerHost` 都在其下。只包 Board 的后果是抽屉拿到 context 默认值 `emptyLive`——节点实时、抽屉永远不许动。`LiveProvider` 同时是 discovery 帧 → `refresh` 事件的派发点
+- **状态帧带 `runId`**：日志抽屉看的是某一条 run 的日志，实时 status 只在 `live().runId === 该 run.id` 时才敢覆盖徽章，否则当前新 run 的 `building` 会冒充历史 run 的状态。快照帧也带 runId；终态（success/failed）在合并时直接推导 `running=false`——服务端对已结束的 run 只发 status，不推导就会在断线重连后永久停在「部署中」
+
 ## 自研 flow 基座（已升舱 `@elysiax/flow`）
 
 画布基座已升舱为框架包 `packages/flow`（`@elysiax/flow`）：纯 DOM + SVG 实现（panzoom/拖拽/连线/拉伸全部透明指针事件，无 VDOM 无 d3）。主题色走 CSS 变量（`--flow-dot`、`--flow-handle-bg` 等，带 fallback），行为钩子是结构属性（`data-nodrag`、`data-flow-menu`、`data-handle-id`）。两个踩过的坑：
 
 1. **`<For>` 按引用渲染会把被拖节点 DOM 重建**——拖拽每帧 `setNodes` 换新对象 → 指针捕获丢、拖拽断成"每次只动一点"。解法：节点按 id 进 `createStore` + `reconcile` 原地合并，代理引用稳定，DOM 不重建；store 要同步初始化（首帧 `createEffect` 还没跑，异步初始化会 undefined 崩溃）
 2. **整页壳没有 AppLayout**：`h-full` 高度链在 `#root` 断掉（画布 0 高、fitView 算出 minZoom）。根组件必须自带 `h-screen`
+
+指针语义（框架层保证）：
+
+- **pointercancel 也是收尾**：手势被系统夺走（触屏接管/失焦）走 `onNodeDragStop(node, true)`，调用方必须回滚位置并放开门闩；只清状态的写法会让「交互中」永久为真、结构刷新全部被压住
+- **平移是增量累加**：滚轮在拖拽/平移中途缩放时，节点拖拽基准会重建（`rebaseActiveGesture`），平移本身因只记上一次坐标而天然免疫——存「起手坐标」的写法会在缩放后把视口跳回去
+- **平移后的 click 不算点空白**：超过 3px 的平移会抑制松手后的 click，不误清选中
 
 ## 模态层：UiBus
 

@@ -30,16 +30,19 @@ import { mergeLiveRow, PipelineSteps, stagePosture, stepStates } from "./pipelin
 // ── 壳与通用件 ──
 
 export const Modal = (props: { title: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
-  // 遮罩关闭要求「按下与松开都在遮罩上」：从面板里拖选文本、拖到遮罩松手时，
-  // 浏览器把 click 派发到公共祖先（遮罩），只比 click 的 target 会误关
+  // 遮罩关闭要求「按下与松开都在遮罩上」：两个方向都会让 click 落到公共祖先——
+  // 从面板里拖选文本拖到遮罩松手、或按住遮罩拖进面板松手——只比 click 的 target
+  // 会误关弹窗，丢掉用户正在编辑的内容
   let downOnOverlay = false;
   return (
     <div
+      data-shell="overlay"
       class="fixed inset-0 z-40 flex items-center justify-center bg-black/70"
       onPointerDown={(e) => { downOnOverlay = e.target === e.currentTarget; }}
+      onPointerUp={(e) => { if (e.target !== e.currentTarget) downOnOverlay = false; }}
       onClick={(e) => { if (downOnOverlay && e.target === e.currentTarget) props.onClose(); }}
     >
-      <div class={`${props.wide ? "w-[42rem]" : "w-96"} max-h-[85vh] overflow-y-auto rounded border border-harbor-700 bg-harbor-900 p-5 shadow-2xl`}>
+      <div data-shell="panel" class={`${props.wide ? "w-[42rem]" : "w-96"} max-h-[85vh] overflow-y-auto rounded border border-harbor-700 bg-harbor-900 p-5 shadow-2xl`}>
         <div class="mb-4 flex items-center justify-between">
           <h3 class="text-sm font-semibold text-neutral-100">{props.title}</h3>
           <button class="text-neutral-500 hover:text-neutral-200" onClick={props.onClose}>✕</button>
@@ -52,14 +55,17 @@ export const Modal = (props: { title: string; wide?: boolean; children: JSX.Elem
 
 /** 右侧抽屉（Railway 式配置面板） */
 export const Drawer = (props: { title: string; sub?: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
+  // 同 Modal：按下与松开都必须落在遮罩上（见 Modal 的注释）
   let downOnOverlay = false;
   return (
     <div
+      data-shell="overlay"
       class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
       onPointerDown={(e) => { downOnOverlay = e.target === e.currentTarget; }}
+      onPointerUp={(e) => { if (e.target !== e.currentTarget) downOnOverlay = false; }}
       onClick={(e) => { if (downOnOverlay && e.target === e.currentTarget) props.onClose(); }}
     >
-      <div class={`fixed inset-y-0 right-0 left-auto flex h-full ${props.wide ? "w-[50vw]" : "w-[36rem]"} max-w-full flex-col border-l border-harbor-700 bg-harbor-900 shadow-2xl`}>
+      <div data-shell="panel" class={`fixed inset-y-0 right-0 left-auto flex h-full ${props.wide ? "w-[50vw]" : "w-[36rem]"} max-w-full flex-col border-l border-harbor-700 bg-harbor-900 shadow-2xl`}>
         <div class="flex items-start justify-between border-b border-harbor-800 px-5 py-4">
           <div class="flex flex-col gap-1">
             <h3 class="text-sm font-semibold text-neutral-100">{props.title}</h3>

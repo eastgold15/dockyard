@@ -57,7 +57,7 @@ function mount(onStop: (n: N, cancelled?: boolean) => void) {
 const fire = (el: Element, type: string, pointerId: number, clientX = 0) =>
   el.dispatchEvent(new PointerEvent(type, { pointerId, button: 0, clientX, bubbles: true, cancelable: true }));
 
-test("pointercancel 上报 dragStop(cancelled=true)，正常松手为 false/undefined", () => {
+test("pointercancel 上报 dragStop(cancelled=true)（系统夺走手势）", () => {
   const calls: { id: string; cancelled: boolean | undefined }[] = [];
   const { el, dispose } = mount((n, cancelled) => calls.push({ id: n.id, cancelled }));
 
@@ -65,18 +65,21 @@ test("pointercancel 上报 dragStop(cancelled=true)，正常松手为 false/unde
   fire(node, "pointerdown", 1);
   fire(node, "pointercancel", 1);
   expect(calls).toEqual([{ id: "n1", cancelled: true }]);
-
-  // 正常松手：cancelled 缺省
-  fire(node, "pointerdown", 2);
-  fire(node, "pointerup", 2);
-  expect(calls).toEqual([
-    { id: "n1", cancelled: true },
-    { id: "n1", cancelled: undefined },
-  ]);
   dispose();
 });
 
-test("非 owner 指针的取消不影响当前拖拽（第二根指头抬起不结束第一根的手势）", () => {
+test("正常松手上报 dragStop 且 cancelled 缺省（不是取消）", () => {
+  const calls: { id: string; cancelled: boolean | undefined }[] = [];
+  const { el, dispose } = mount((n, cancelled) => calls.push({ id: n.id, cancelled }));
+
+  const node = el.querySelector(".flow-node")!;
+  fire(node, "pointerdown", 2);
+  fire(node, "pointerup", 2);
+  expect(calls).toEqual([{ id: "n1", cancelled: undefined }]);
+  dispose();
+});
+
+test("非 owner 指针的 cancel 不影响当前拖拽（第二根指头被取消不结束第一根的手势）", () => {
   const calls: unknown[] = [];
   const { el, dispose } = mount((n, cancelled) => calls.push([n.id, cancelled]));
 

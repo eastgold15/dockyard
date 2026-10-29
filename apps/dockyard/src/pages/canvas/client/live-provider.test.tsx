@@ -73,7 +73,7 @@ test("只有一条 SSE 连接，状态按 target 键写入", () => {
   h.dispose();
 });
 
-test("终态帧直接停播（断线重连快照不发 running:false）", () => {
+test("终态 status 帧顺带清 running（服务端快照只发 status 的语义）", () => {
   const h = mount();
   FakeES.push({ type: "running", targetId: 1, runId: 7, running: true });
   expect(h.live()).toMatchObject({ running: true, runId: 7 });

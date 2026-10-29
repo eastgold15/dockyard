@@ -4,6 +4,7 @@
  * 细粒度订阅发生在 JSX 读取处。
  */
 import { createContext, useContext } from "solid-js";
+import type { DiscoveredContainer } from "../canvas.model";
 
 /** 模态视图描述：App 层的 DrawerHost 按 kind 渲染对应抽屉 */
 export type View =
@@ -12,7 +13,9 @@ export type View =
   | { kind: "service"; targetId: number; svc?: string; tab?: string }
   | { kind: "env"; targetId: number }
   | { kind: "domains"; targetId: number }
-  | { kind: "log"; targetId: number; dep?: number };
+  | { kind: "log"; targetId: number; dep?: number }
+  // 发现容器（只读）：卡片数据已在 /board 快照里，无需再拉接口
+  | { kind: "discovered"; d: DiscoveredContainer };
 
 export interface UiBus {
   open(view: View): void;

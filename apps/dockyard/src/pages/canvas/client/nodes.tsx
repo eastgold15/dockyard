@@ -148,7 +148,10 @@ export const ServerNodeView = (props: { id: string; data: { server: CardModel["s
 export const ContainerNodeView = (props: { id: string; data: { d: DiscoveredContainer }; selected: boolean; width?: number; height?: number }) => {
   const d = () => props.data.d;
   return (
-    <div class="flex h-full w-full flex-col justify-center gap-1 rounded-lg border border-dashed border-harbor-600 bg-harbor-950/70 px-3 py-2">
+    <div
+      class="flex h-full w-full cursor-pointer flex-col justify-center gap-1 rounded-lg border border-dashed border-harbor-600 bg-harbor-950/70 px-3 py-2 transition-colors hover:border-harbor-500"
+      title="点击查看容器详情（只读）"
+    >
       <div class="flex items-center gap-2">
         <span class={`h-2 w-2 shrink-0 rounded-full ${d().state === "running" ? "bg-tide-400" : "bg-signal-500"}`} />
         <span class="truncate text-sm font-medium text-neutral-200" title={d().name}>{d().name}</span>

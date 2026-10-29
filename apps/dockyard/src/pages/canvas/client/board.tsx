@@ -1,7 +1,7 @@
 /** @jsxImportSource solid-js */
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { createStore } from "solid-js/store";
-import type { BoardModel, CardModel, TargetModel } from "../canvas.model";
+import type { BoardModel, CardModel, DiscoveredContainer, TargetModel } from "../canvas.model";
 import {
   AppNodeView, ContainerNodeView, DbNodeView, GroupNodeView, ServerNodeView, ServiceNodeView,
   type CanvasFlowNode,
@@ -603,6 +603,10 @@ export function Board(props: { lens: () => number | null }) {
     } else if (node.type === "db") {
       const { t } = node.data as { t: TargetModel };
       ui.open({ kind: "service", targetId: t.id });
+    } else if (node.type === "container") {
+      // 发现容器：只读详情（不部署/不回滚）；数据已在 /board 快照里，直接开弹窗
+      const { d } = node.data as { d: DiscoveredContainer };
+      ui.open({ kind: "discovered", d });
     }
   };
 

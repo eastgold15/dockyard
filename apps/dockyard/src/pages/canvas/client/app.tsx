@@ -7,7 +7,7 @@
 import { createSignal, Match, onMount, Show, Switch } from "solid-js";
 import { canvasApi, unwrap } from "./api";
 import { Board } from "./board";
-import { DeployLogModal, DomainsModal, EnvDrawer, NewAppWizard, NewDbModal, ServiceDrawer } from "./drawers";
+import { DeployLogModal, DiscoveredModal, DomainsModal, EnvDrawer, NewAppWizard, NewDbModal, ServiceDrawer } from "./drawers";
 import { FeedbackHost } from "./feedback";
 import { lens, setLens } from "./lens";
 import { emitRefresh, UiContext, type UiBus, type View } from "./ui";
@@ -40,6 +40,7 @@ function DrawerHost(props: { view: View }) {
       <Match when={viewAs("env", props.view)}>{(v) => <EnvDrawer targetId={v().targetId} />}</Match>
       <Match when={viewAs("domains", props.view)}>{(v) => <DomainsModal targetId={v().targetId} />}</Match>
       <Match when={viewAs("log", props.view)}>{(v) => <DeployLogModal targetId={v().targetId} dep={v().dep} />}</Match>
+      <Match when={viewAs("discovered", props.view)}>{(v) => <DiscoveredModal d={v().d} />}</Match>
     </Switch>
   );
 }

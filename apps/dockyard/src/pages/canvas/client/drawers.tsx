@@ -17,6 +17,7 @@ import type { Domain } from "../../edge/edge.socket";
 import type { RepoBrief } from "../../github/github.socket";
 import type { DbRef } from "../../deploy/deploy.socket";
 import type { DetectResult, DetectedService } from "../../deploy/deploy.socket";
+import type { DiscoveredContainer } from "../canvas.model";
 // env 文本函数从零依赖模块引（detect.ts 依赖链里的 dotenv 无法进浏览器包）
 import { serviceEnvToText, textToEnvMap } from "../../../shared/env-text";
 import { api, deployPaths, unwrap } from "./api";
@@ -1355,5 +1356,73 @@ function BackupsTab(props: { data: ServiceDrawerData; mutate: Mutate }) {
       </div>
       <p class="text-[11px] text-neutral-600">备份保存在控制面本地（~/.local/share/dockyard/backups/）。恢复请下载后在服务器上手动执行，避免误覆盖。</p>
     </>
+  );
+}
+
+// ── 发现容器详情（只读）：docker 里跑着、但 dockyard 没纳管的容器 ──
+// 数据来自 /board 快照（点卡片时已在本机），不额外请求；没有部署/回滚/备份入口。
+
+const STATE_LABEL: Record<string, string> = {
+  running: "运行中", exited: "已停止", created: "已创建", restarting: "重启中",
+  paused: "已暂停", dead: "已失效", unknown: "未知",
+};
+
+export function DiscoveredModal(props: { d: DiscoveredContainer }) {
+  const ui = useUi();
+  const d = () => props.d;
+  const [copied, setCopied] = createSignal(false);
+  const copyId = async () => {
+    await navigator.clipboard.writeText(d().id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  const row = (label: string, value: JSX.Element) => (
+    <>
+      <span class={labelCls}>{label}</span>
+      <span class="min-w-0 text-neutral-300">{value}</span>
+    </>
+  );
+
+  return (
+    <Modal title={`容器详情 — ${d().name}`} onClose={ui.close}>
+      <div class="flex flex-col gap-5">
+        <Notice>发现容器未纳入 dockyard 管理：这里只做只读呈现，不提供部署、回滚或备份。要纳管请走「部署本仓库 / 添加数据库」。</Notice>
+
+        <Section title="容器">
+          <div class="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-2 text-xs">
+            {row("状态", d().state === "running"
+              ? <Chip tone="ok">{STATE_LABEL.running}</Chip>
+              : <Chip tone="warn">{STATE_LABEL[d().state] ?? d().state}</Chip>)}
+            {row("镜像", <span class="mono break-all text-neutral-200">{d().image || "—"}</span>)}
+            {row("容器 ID", (
+              <span class="flex items-center gap-2">
+                <code class="mono select-all text-neutral-400">{d().id}</code>
+                <button class="shrink-0 text-tide-400 hover:text-tide-300" onClick={() => void copyId()}>
+                  {copied() ? "已复制" : "复制"}
+                </button>
+              </span>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="compose">
+          <div class="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-2 text-xs">
+            {row("服务", <span class="mono">{d().service || "—"}</span>)}
+            {row("项目名", <span class="mono">{d().composeProject || "—"}</span>)}
+          </div>
+        </Section>
+
+        <Section title="端口" hint="公网映射 → 容器端口">
+          <span class="mono text-xs text-neutral-300">{d().ports || "无端口映射"}</span>
+        </Section>
+
+        <Section title="项目归属">
+          <span class="text-xs text-neutral-300">
+            {d().projectName ? `按 compose working_dir 归属到 ${d().projectName}` : "未匹配到 dockyard 项目（只在世界视图显示）"}
+          </span>
+        </Section>
+      </div>
+    </Modal>
   );
 }

@@ -97,6 +97,13 @@ export class DeployService {
     return githubAppForm;
   }
 
+  /** 本地来源的仓库目录（更新轮询用）；GitHub 来源/项目缺失 → null。
+   *  与 resolveForm 的形态分派同源：localAppForm 就是在这个目录跑 git sha 和构建。 */
+  async localDirOf(target: DeployTarget): Promise<string | null> {
+    const { type, project } = await this.sourceOf(target);
+    return type === "local" && project?.localPath ? join(project.localPath, project.rootDir ?? "") : null;
+  }
+
   targetsOfNode(nodeId: number) {
     return this.repo.targetsOfNode(nodeId);
   }

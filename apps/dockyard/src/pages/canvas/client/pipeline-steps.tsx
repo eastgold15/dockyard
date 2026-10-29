@@ -69,6 +69,22 @@ export function stepStates(
   });
 }
 
+/** 进行中的粗状态（与 DeployStatus 一致）：只有这些行才吃 SSE 实时值 */
+const ACTIVE_STATUSES = new Set(["queued", "building", "transferring", "deploying"]);
+
+/**
+ * 行内状态合并：只有「在跑的那一行」吃 SSE 实时值，历史行永远回落到库值。
+ * 若历史行也读 live，当前 run 的 status/stage 会串到每一行上（步骤条假脉冲、
+ * 徽章显示成别人家的状态）。
+ */
+export function mergeLiveRow(
+  row: Pick<DeploymentRow, "status" | "stage">,
+  live: { status: string | null; stage: DeployStage | null },
+): { status: string; stage: DeployStage | null } {
+  if (!ACTIVE_STATUSES.has(row.status)) return { status: row.status, stage: row.stage };
+  return { status: live.status ?? row.status, stage: live.stage ?? row.stage };
+}
+
 const DOT: Record<StepState, string> = {
   done: "bg-tide-400",
   active: "bg-brass-500 animate-pulse",

@@ -1,6 +1,6 @@
 // 步骤条纯函数（无 DOM），直接跑 bun test。
 import { expect, test } from "bun:test";
-import { stagePosture, stepStates } from "./pipeline-steps";
+import { mergeLiveRow, stagePosture, stepStates } from "./pipeline-steps";
 
 const githubApp = { kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null } as const;
 const localApp = { kind: "app", repoUrl: null, instanceOf: null } as const;
@@ -56,4 +56,24 @@ test("ship 成功：前三段绿、后三段 na（不是 pending 假象）", () 
   expect(stepStates("transferring", "success", p)).toEqual([
     "done", "done", "done", "na", "na", "na",
   ]);
+});
+
+test("实时合并：在跑的行吃 SSE（库行 stage 还是 null 也能出步骤条）", () => {
+  expect(mergeLiveRow({ status: "queued", stage: null }, { status: "building", stage: "building" })).toEqual({
+    status: "building",
+    stage: "building",
+  });
+});
+
+test("实时合并：历史行不被当前 run 污染", () => {
+  expect(
+    mergeLiveRow({ status: "success", stage: "packaging" }, { status: "deploying", stage: "deploying" }),
+  ).toEqual({ status: "success", stage: "packaging" });
+});
+
+test("实时合并：live 缺省时回落库值（未收到 SSE 也不抖动）", () => {
+  expect(mergeLiveRow({ status: "transferring", stage: "transferring" }, { status: null, stage: null })).toEqual({
+    status: "transferring",
+    stage: "transferring",
+  });
 });

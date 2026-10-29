@@ -25,7 +25,7 @@ import { ConsoleView } from "./console";
 import { emitRefresh, useUi } from "./ui";
 import { confirmAction, toast } from "./feedback";
 import { useDeployLog, useTargetLive } from "./live";
-import { PipelineSteps, stagePosture, stepStates } from "./pipeline-steps";
+import { mergeLiveRow, PipelineSteps, stagePosture, stepStates } from "./pipeline-steps";
 
 // ── 壳与通用件 ──
 
@@ -978,7 +978,7 @@ export function ServiceDrawer(props: { targetId: number; svc?: string; initialTa
         <Show when={data()}>
           {(d) => (
             <>
-              <Show when={tab() === "deployments"}><DeploymentsTab data={d()} svc={props.svc} mutate={mutate} /></Show>
+              <Show when={tab() === "deployments"}><DeploymentsTab data={d()} svc={props.svc} mutate={mutate} reload={load} /></Show>
               <Show when={tab() === "monitor"}>
                 <MetricsPanel targetId={props.targetId} svc={props.svc} />
                 <Section title="日志" hint="2s 轮询">
@@ -1012,11 +1012,17 @@ export function ServiceDrawer(props: { targetId: number; svc?: string; initialTa
 
 type Mutate = (fn: () => Promise<{ notice?: string }>, opts?: { refreshBoard?: boolean; reload?: boolean }) => Promise<void>;
 
-function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: Mutate }) {
+function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: Mutate; reload: () => Promise<void> }) {
   const ui = useUi();
   const t = () => props.data.target;
   // 实时通道：进行中 run 的步骤条跟 SSE 脉冲，历史行回落到库值
   const live = useTargetLive(t().id);
+  // 终态后拉一次列表：SSE 只带粗状态，库里的 stage/rollbackable 需要对齐
+  // （effect 只依赖 live 状态变化，reload 不会回写 live，不会自激）
+  createEffect(() => {
+    const s = live().status;
+    if (s === "success" || s === "failed") void props.reload();
+  });
   return (
     <>
       <div class="flex items-center gap-2">
@@ -1024,6 +1030,8 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
           class="rounded bg-brass-500 px-3 py-1.5 text-xs font-semibold text-harbor-950 hover:bg-brass-600"
           onClick={async () => {
             await unwrap(api.targets({ id: t().id }).deploy.post());
+            // 部署是后台任务：先拉一次让 queued 行出现在列表，后续段位由 SSE 驱动
+            await props.reload();
             ui.open({ kind: "log", targetId: t().id });
           }}
         >
@@ -1042,6 +1050,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
             title={t().artifactShipped ? "产物已传输过（可再传更新）" : "跨区移动前必须先传输产物"}
             onClick={async () => {
               await unwrap(api.targets({ id: t().id }).ship.post());
+              await props.reload();
               ui.open({ kind: "log", targetId: t().id });
             }}
           >
@@ -1068,9 +1077,14 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
           <div class="py-4 text-center text-xs text-neutral-600">还没有部署记录</div>
         </Show>
         <For each={props.data.deployments ?? []}>
-          {(d) => (
+          {(d) => {
+            // 只有「在跑的那一行」吃实时值：历史行若也读 live，会显示成当前 run 的状态/段位
+            const run = () => mergeLiveRow(d, live());
+            const runStatus = () => run().status;
+            const runStage = () => run().stage;
+            return (
             <div class="flex items-center gap-3 border-b border-harbor-800/60 py-2 text-xs">
-              <Chip tone={d.status === "success" ? "ok" : d.status === "failed" ? "warn" : "muted"}>{d.status}</Chip>
+              <Chip tone={runStatus() === "success" ? "ok" : runStatus() === "failed" ? "warn" : "muted"}>{runStatus()}</Chip>
               <span class="text-neutral-500">#{d.id}</span>
               {/* 触发来源：手动/自动/回滚/仅传输（回滚带血缘号） */}
               <Show when={d.trigger && d.trigger !== "ui"}>
@@ -1078,12 +1092,11 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
                   {d.trigger === "rollback" ? `回滚←#${d.rollbackOf}` : d.trigger === "ship" ? "仅传输" : "自动"}
                 </span>
               </Show>
-              {/* 六阶段迷你步骤条：stage=null（旁路/存量）降级不显示 */}
-              <Show when={stagePosture(t(), d)}>
+              {/* 六阶段迷你步骤条：stage=null（旁路/存量）降级不显示。
+                  用合并后的 runStage 判降级——新 run 的库行 stage 还是 null，实时值已到 */}
+              <Show when={stagePosture(t(), { trigger: d.trigger, stage: runStage() })}>
                 {(posture) => (
-                  <PipelineSteps
-                    states={stepStates(live().stage ?? d.stage!, live().status ?? d.status, posture())}
-                  />
+                  <PipelineSteps states={stepStates(runStage()!, runStatus(), posture())} />
                 )}
               </Show>
               <span class="text-neutral-400">{fmtAgo(d.startedAt)}</span>
@@ -1104,6 +1117,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
                       });
                       if (!ok) return;
                       await unwrap(api.targets({ id: t().id }).rollback.post({ runId: d.id }));
+                      await props.reload();
                       ui.open({ kind: "log", targetId: t().id });
                     })();
                   }}
@@ -1118,7 +1132,8 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
                 </button>
               </div>
             </div>
-          )}
+            );
+          }}
         </For>
       </div>
     </>

@@ -1,5 +1,5 @@
 
-import { ensureDir, ensureDirSync } from "@visulima/fs";
+import { ensureDirSync } from "@visulima/fs";
 import { join } from "@visulima/path";
 
 // 数据目录：装进 /usr/bin 后 cwd 不可写，必须走 XDG
@@ -20,10 +20,10 @@ export const appPaths = {
 
 export type AppPaths = typeof appPaths;
 
-export async function ensureDirs() {
-  await Promise.all(
-    [appPaths.dataDir, appPaths.cacheDir, appPaths.reposDir, appPaths.relayDir].map((dir) =>
-      ensureDir(dir)
-    )
-  );
+// 必须是同步的：db.ts 在模块顶层打开 SQLite，异步创建目录会与打开形成竞态
+// （全新 XDG 数据目录上直接 SQLITE_CANTOPEN）
+export function ensureDirs() {
+  for (const dir of [appPaths.dataDir, appPaths.cacheDir, appPaths.reposDir, appPaths.relayDir]) {
+    ensureDirSync(dir);
+  }
 }

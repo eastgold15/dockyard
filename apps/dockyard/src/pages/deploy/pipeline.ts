@@ -7,6 +7,7 @@
 // - 回滚 = 激活旧产物（activateArtifact），与正常部署共用 Run/Expose 语义。
 // 逻辑库不穿零点（无产物），由 forms.ts 的 custom run 旁路承接。
 import { ServiceError } from "@elysiax/core";
+import { stringify as stringifyYaml } from "yaml";
 import { decryptSecret, encryptSecret } from "../../shared/crypto";
 import type { AppPaths } from "../../shared/paths";
 import type { CanvasService } from "../canvas/canvas.socket";
@@ -52,6 +53,9 @@ export interface Provision {
   services?: Record<string, { image?: string }>;
   /** up 的 -f 参数段（含引号，逐字拼进 shell），空 = compose 默认发现 */
   composeArgs: string;
+  /** 归属标签 override 内容（dockyard.managed/target-id）：必须写盘并以 -f 叠加，
+   *  否则 up 出来的容器不带标签，重部署 preflight 会把它当成「别人的容器」拒绝 */
+  labelsCompose?: string;
   /** 实际 up 的服务子集（共享资源复用过滤中间件；undefined = 全量） */
   upServices?: string[];
   /** 源码版本（github 短 sha / local 短 sha）；有则回写 lastKnownSha 并进产物 */
@@ -107,6 +111,32 @@ export async function run(cmd: string[], cwd: string, log: Log, env?: Record<str
   await Promise.all([pump(proc.stdout), pump(proc.stderr)]);
   const code = await proc.exited;
   if (code !== 0) throw new ServiceError(`命令失败（exit ${code}）: ${cmd.join(" ")}`);
+}
+
+/** 归属标签 override：容器标签创建后不可变，必须在 up 的同一批 -f 里带上 */
+export function ownershipCompose(targetId: number, serviceNames: string[]): string | undefined {
+  if (!serviceNames.length) return undefined;
+  return stringifyYaml({
+    services: Object.fromEntries(
+      serviceNames.map((svc) => [
+        svc,
+        { labels: { "dockyard.managed": "true", "dockyard.target-id": String(targetId) } },
+      ]),
+    ),
+  });
+}
+
+/** compose up 命令（正常部署/回滚共用）：
+ *  --force-recreate 必须——config hash 只看镜像名不看 digest，同名 tag 重建后 up 会继续跑旧容器。 */
+export function composeUpCommand(opts: {
+  dir: string;
+  project?: string | null;
+  /** -f 参数段（已含引号），空 = compose 默认发现 */
+  files?: string;
+  upServices?: string[];
+}): string {
+  const upArg = opts.upServices?.length ? ` ${opts.upServices.join(" ")}` : "";
+  return `cd "${opts.dir}" && docker compose${opts.project ? ` -p ${opts.project}` : ""}${opts.files ? ` ${opts.files}` : ""} up -d --force-recreate${upArg}`;
 }
 
 /** uname -m / process.arch → docker 架构名 */
@@ -265,7 +295,7 @@ export async function inspectCompose(
     /** github 路径的 token 脱敏（config 输出理论上不含 token，纪律保持） */
     redact?: (s: string) => string;
   },
-): Promise<Pick<Provision, "project" | "containerNames" | "services" | "composeArgs">> {
+): Promise<Pick<Provision, "project" | "containerNames" | "services" | "composeArgs" | "labelsCompose">> {
   const redact = opts.redact ?? ((s: string) => s);
   const cfgOut = await h.sshExec(
     opts.serverId,
@@ -283,14 +313,18 @@ export async function inspectCompose(
   );
   if (containerNames.length > 0)
     await h.preflightCheck(opts.target, opts.serverId, containerNames, opts.log);
+  // 归属标签必须随 up 一起创建（容器标签不可变）：单独一层 override，放在最后保证压过用户 override
+  const labelsCompose = ownershipCompose(opts.target.id, Object.keys(cfg.services ?? {}));
+  const files = [`-f "${opts.composeFile}"`];
+  if (opts.hasOverride) files.push("-f docker-compose.dockyard.yml");
+  if (labelsCompose) files.push("-f docker-compose.dockyard-labels.yml");
   return {
     project,
     containerNames,
     services: cfg.services,
     // 注意：-f 一旦指定就只认列出的文件，base 必须一起带上
-    composeArgs: opts.hasOverride
-      ? `-f "${opts.composeFile}" -f docker-compose.dockyard.yml`
-      : `-f "${opts.composeFile}"`,
+    composeArgs: files.join(" "),
+    labelsCompose,
   };
 }
 
@@ -314,17 +348,30 @@ export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise
   await ctx.setStatus("deploying", p.sha ? { commitSha: p.sha } : {});
 
   // 共享资源复用时只 up 业务服务子集（compose 仍会拉起 depends_on 依赖——复用场景的 compose 不应依赖被跳过的中间件）
-  const upArg = p.upServices?.length ? ` ${p.upServices.join(" ")}` : "";
-  if (upArg) await log(`只部署业务服务：${p.upServices!.join("、")}（中间件复用服务器共享资源）`);
+  if (p.upServices?.length) await log(`只部署业务服务：${p.upServices.join("、")}（中间件复用服务器共享资源）`);
   const upLog = p.log ?? log;
   await upLog("远端 docker compose up -d …");
   // 注意：-f 一旦指定就只认列出的文件，base 必须一起带上（composeArgs 由 provision 拼好）
   const up = await h.sshExec(
     serverId,
-    `cd "${p.remoteDir}" && docker compose${p.project ? ` -p ${p.project}` : ""}${p.composeArgs ? ` ${p.composeArgs}` : ""} up -d${upArg}`,
+    composeUpCommand({ dir: p.remoteDir, project: p.project, files: p.composeArgs, upServices: p.upServices }),
   );
   await upLog(up.stdout + up.stderr);
   if (up.code !== 0) throw new ServiceError(`远端 compose up 失败（exit ${up.code}）`);
+
+  // 项目名回写：compose config 的 name（缺省=目录名）才是容器标签里的项目名，
+  // 创建 target 时还不知道它——不回写的话运行时按 dockyard-<id> 对账永远找不到容器
+  if (p.project) {
+    const prev = target.servicesJson?.services ?? [];
+    const services = Object.entries(p.services ?? {}).map(([name, def]) => ({
+      name,
+      image: def.image,
+      port: prev.find((s) => s.name === name)?.port,
+    }));
+    await h.repo.updateTarget(target.id, {
+      servicesJson: { project: p.project, services: services.length ? services : prev },
+    });
+  }
 
   // 有域名绑定 → edge 全量对账（路由 + 证书状态回写）。
   // 无域名也埋 exposing（埋点成本为零）：否则进行中视图里「暴露」段会假性 pending
@@ -431,14 +478,21 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
     };
     const names = Object.entries(cfg.services ?? {}).map(([svc, def]) => def.container_name ?? `${project}-${svc}-1`);
     if (names.length) await h.preflightCheck(target, serverId, names, log);
+    // 归属标签与正常部署同一层 override：回滚重建的容器也必须带 dockyard 标签
+    const labelsYaml = ownershipCompose(target.id, Object.keys(cfg.services ?? {}));
+    if (labelsYaml) {
+      const labelSftp = await openServerSftp(client);
+      await labelSftp.write(`${rollbackDir}/docker-compose.labels.yml`, labelsYaml);
+      await labelSftp.close();
+      files.push("-f docker-compose.labels.yml");
+    }
   }
 
-  const upArg = target.upServices?.length ? ` ${target.upServices.join(" ")}` : "";
   // id=0 是存量合成产物（artifactOfRun 兜底路径），没有真实编号可展示
   await log(`回滚到${artifact.id ? `产物 #${artifact.id}` : "存量快照"}（${artifact.sha ?? "无 sha"}）…`);
   const up = await h.sshExec(
     serverId,
-    `cd ${rollbackDir} && docker compose -p ${project} ${files.join(" ")} up -d${upArg}`,
+    composeUpCommand({ dir: rollbackDir, project, files: files.join(" "), upServices: target.upServices ?? undefined }),
   );
   await log(up.stdout + up.stderr);
   if (up.code !== 0) throw new ServiceError(`回滚 compose up 失败（exit ${up.code}）`);

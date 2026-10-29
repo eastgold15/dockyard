@@ -9,7 +9,7 @@ import { dirname, join, normalize } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { decryptSecret } from "../../shared/crypto";
 import { parseOwnerRepo } from "../github/github.socket";
-import { openServerSftp } from "../servers/servers.socket";
+import { isLocalHost, openServerSftp } from "../servers/servers.socket";
 import { logicalDbCommands, type DbType } from "../resources/resources.socket";
 import type { Project } from "../projects/projects.socket";
 import { envFilePaths } from "./detect";
@@ -84,6 +84,7 @@ export const githubAppForm: DeployForm = {
     // 构建期间缓存连接可能已被丢弃重建——拿当前可用连接
     const fresh = await h.serverService.transport(serverId);
     const sftp = await openServerSftp(fresh);
+    if (inspected.labelsCompose) await sftp.write(`${srcDir}/docker-compose.dockyard-labels.yml`, inspected.labelsCompose);
     if (target.envJson) await sftp.write(`${srcDir}/.env`, decryptSecret(target.envJson));
     if (target.overrideCompose)
       await sftp.write(`${srcDir}/docker-compose.dockyard.yml`, decryptSecret(target.overrideCompose));
@@ -151,11 +152,18 @@ export function localAppForm(proj: Project): DeployForm {
       const images = (await new Response(imgProc.stdout).text()).trim().split("\n").filter(Boolean);
       if (images.length === 0) throw new ServiceError("compose 没有产生任何镜像");
 
-      // 2. 传输：docker save → dockerode 经 SSH relay load 到远端
+      // 2. 传输：docker save → dockerode 经 SSH relay load 到远端。
+      // 本机目标共用同一个 daemon：构建完镜像已经在那儿，save/load 纯属自搬自（大镜像白耗分钟级）
       await ctx.setStage("transferring");
       await ctx.setStatus("transferring", { commitSha: sha });
+      const server = await h.serverService.byId(serverId);
+      const sameDaemon = Boolean(server && isLocalHost(server.host));
       const remote = await h.serverService.docker(serverId);
       for (const image of images) {
+        if (sameDaemon) {
+          await log(`镜像 ${image} 已在本机 daemon，跳过传输`);
+          continue;
+        }
         await log(`传输镜像 ${image} …`);
         const save = Bun.spawn(["docker", "save", image], { stdout: "pipe" });
         // dockerode 要 Node stream；Bun.stdout 是 Bun 扩展的 Web stream（类型不完全重合）
@@ -190,7 +198,8 @@ export function localAppForm(proj: Project): DeployForm {
         hasOverride: Boolean(target.overrideCompose), log,
       });
 
-      // 5. 传输（秘密）：.env/override 推远端
+      // 5. 传输（秘密 + 归属标签）：.env/override/labels 推远端
+      if (inspected.labelsCompose) await sftp.write(`${remoteDir}/docker-compose.dockyard-labels.yml`, inspected.labelsCompose);
       if (target.envJson) await sftp.write(`${remoteDir}/.env`, decryptSecret(target.envJson));
       // 识别出的资源限制/服务级 environment 以 override compose 叠加（不改用户原 compose）
       if (target.overrideCompose)

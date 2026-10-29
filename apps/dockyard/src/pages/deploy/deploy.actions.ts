@@ -84,11 +84,17 @@ const svcEditSchema = t.Object({
 export default defineRoutes()
   // 向导数据：gh CLI 列出账号仓库做选择器（gh 未登录时降级为空列表手填）；
   // 本地文件夹导入的项目直接给出识别结果（跳过仓库选择步）
-  .get("/new-app/:nodeId", { params: t.Object({ nodeId: t.Number() }) }, async ({ di, params }) => {
+  .get(
+    "/new-app/:nodeId",
+    {
+      params: t.Object({ nodeId: t.Number() }),
+      // 透镜项目显式传入：世界地图节点不携带项目，只靠已有 target 反推会让新节点永远落到 github 流程
+      query: t.Object({ projectId: t.Optional(t.Numeric()) }),
+    },
+    async ({ di, params, query }) => {
     const ctx = ctxOf(di);
-    // 世界地图：节点不再携带项目——从卡上已有 target 的归属推项目（新卡无归属则按通用 github 流程）
     const nodeTargets = await ctx.deploy.targetsOfNode(params.nodeId);
-    const nodeProjectId = nodeTargets.find((t) => t.projectId)?.projectId;
+    const nodeProjectId = query.projectId ?? nodeTargets.find((t) => t.projectId)?.projectId;
     const project = nodeProjectId ? await ctx.project.byId(nodeProjectId) : undefined;
     const isLocal = project?.sourceType === "local" || (!!project?.localPath && !project?.repoUrl);
     if (isLocal && project?.localPath) {
@@ -99,6 +105,7 @@ export default defineRoutes()
         mode: "local" as const,
         carry: {
           nodeId: params.nodeId,
+          projectId: project.id,
           name: project.slug,
           repoUrl: project.repoUrl ?? "",
           branch: project.branch ?? "main",
@@ -161,6 +168,8 @@ export default defineRoutes()
     {
       body: t.Object({
         nodeId: t.Number(),
+        // 透镜项目：决定来源形态（local = 本地构建推送 / github = 远端拉取构建）
+        projectId: t.Optional(t.Number()),
         name: t.String({ minLength: 1 }),
         repoUrl: t.Optional(t.String()),
         branch: t.String({ default: "main" }),
@@ -193,6 +202,7 @@ export default defineRoutes()
         : undefined;
       const target = await svc.createAppTarget({
         nodeId: body.nodeId,
+        projectId: body.projectId,
         name: body.name,
         repoUrl: body.repoUrl?.trim() || undefined,
         branch: body.branch,

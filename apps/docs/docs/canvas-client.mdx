@@ -61,6 +61,8 @@ src/pages/canvas/
 | 节点几何 | 拖拽/拉伸中的位置尺寸 | **本地权威**（Solid signal） | 合并时保留 `dragging` 节点 |
 | 实时数据 | 部署状态、容器 state | SSE `/api/canvas/events`（全局频道） | 服务端 publish 即推，进 LiveContext store |
 
+**首帧是全量快照，不是空流**：订阅即收到「最近一次部署状态（含 stage）」+「全部容器 state」，不必先等下一轮 diff。否则刷新页面后已部署的卡会短暂显示「未部署」（SSE 已连上，但还没人推事件）。快照要在请求作用域内**先取出服务**再闭包使用——`di` 随请求结束释放，异步快照跑完再 `di.get` 会撞 `Container is disposed`。
+
 为什么分开：
 
 - **结构不进 SSE**：位置/连线是低频高价值数据，走 REST + 按需 refetch，不会因为一条状态推送把用户正在拖的节点重渲染掉

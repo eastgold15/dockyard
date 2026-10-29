@@ -154,9 +154,16 @@ export default defineRoutes()
     return canvasData(ctxOf(di));
   })
   // 实时状态 SSE（全局频道）：部署 status/running（deploy.service 推）+ 容器 state（container-poller 推）。
-  // 首帧发容器状态全量快照（订阅即齐，不等下轮 diff）
-  .get("/events", ({ di }) =>
-    events.stream(CANVAS_CHANNEL, () => di.get("containerPoller").statesAll()))
+  // 首帧发部署状态 + 容器状态全量快照（订阅即齐，不等下轮 diff）。
+  // 服务在请求作用域内取出：快照是 async，等它跑完时 di 已被释放（Container is disposed）
+  .get("/events", ({ di }) => {
+    const deploy = di.get("deployService");
+    const poller = di.get("containerPoller");
+    return events.stream(CANVAS_CHANNEL, async () => [
+      ...(await deploy.statusSnapshot()),
+      ...poller.statesAll(),
+    ]);
+  })
   // 服务器卡上画：幂等——同 serverId 已存在则返回已有卡，不新建。
   // 落点钳进该服务器的车道（右键在对面车道建卡时直接归位，不报错——建卡无恶意场景）
   .post(

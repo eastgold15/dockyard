@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import type { AppPaths } from "../../shared/paths";
 import { decryptSecret, encryptSecret } from "../../shared/crypto";
-import { CANVAS_CHANNEL, events } from "./events";
+import { CANVAS_CHANNEL, events, type CanvasEvent } from "./events";
 import type { DeployArtifact, DeployTarget, Deployment, DepEdge, TargetService } from "./schema";
 import type { Project, ProjectService } from "../projects/projects.socket";
 import type { ResourceService, SharedEnv } from "../resources/resources.socket";
@@ -107,6 +107,19 @@ export class DeployService {
 
   latestDeployment(targetId: number) {
     return this.repo.latestDeployment(targetId);
+  }
+
+  /** SSE 首帧快照：每个 target 最近一次 run 的 status/stage。
+   *  没有它，页面刷新后已部署的卡会一直显示「未部署」直到下一次状态事件。 */
+  async statusSnapshot(): Promise<CanvasEvent[]> {
+    const out: CanvasEvent[] = [];
+    for (const node of await this.canvas.nodesAll()) {
+      for (const t of await this.repo.targetsOfNode(node.id)) {
+        const dep = await this.repo.latestDeployment(t.id);
+        if (dep) out.push({ type: "status", targetId: t.id, status: dep.status, stage: dep.stage ?? undefined });
+      }
+    }
+    return out;
   }
 
   /** 整段日志（分块拼接；兼容存量 logText 行） */

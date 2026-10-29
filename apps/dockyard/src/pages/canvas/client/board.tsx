@@ -721,7 +721,7 @@ export function Board(props: { lens: () => number | null }) {
                 <MenuItem
                   label="部署本仓库"
                   disabled={props.lens() == null}
-                  onClick={() => ui.open({ kind: "new-app", nodeId: m().nodeId! })}
+                  onClick={() => ui.open({ kind: "new-app", nodeId: m().nodeId!, projectId: props.lens() })}
                 />
                 <MenuItem
                   label="添加数据库"

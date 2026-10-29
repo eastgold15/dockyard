@@ -110,7 +110,7 @@ const SubmitBtn = (props: { label: string; busyLabel: string; busy: boolean }) =
 
 // ── 共享类型（与 canvas.actions 的 JSON 响应对齐）──
 
-interface Carry { nodeId: number; name: string; repoUrl?: string; branch: string; remoteDir: string }
+interface Carry { nodeId: number; projectId?: number | null; name: string; repoUrl?: string; branch: string; remoteDir: string }
 interface SharedMatch { service: string; name: string; dbType: string; envKey: string; url: string; displayUrl: string }
 interface DetectStepData { carry: Carry; detect: DetectResult; envText: string; dbRefs: DbRef[]; sharedMatches: SharedMatch[] }
 type NewAppData =
@@ -119,7 +119,7 @@ type NewAppData =
 
 // ── 部署 app 向导（Railway/openship 两步式，右侧抽屉）──
 
-export function NewAppWizard(props: { nodeId: number }) {
+export function NewAppWizard(props: { nodeId: number; projectId?: number | null }) {
   const ui = useUi();
   const [data, setData] = createSignal<NewAppData | null>(null);
   const [step2, setStep2] = createSignal<DetectStepData | null>(null);
@@ -127,7 +127,9 @@ export function NewAppWizard(props: { nodeId: number }) {
 
   // nodeId 在抽屉生命周期内不变（宿主 keyed 重建），onMount 拉一次即可
   onMount(() => {
-    unwrap(api["new-app"]({ nodeId: props.nodeId }).get())
+    unwrap(api["new-app"]({ nodeId: props.nodeId }).get({
+      query: props.projectId != null ? { projectId: props.projectId } : {},
+    }))
       .then((d) => {
         if (d.mode === "local") setStep2(d);
         else setData(d);
@@ -279,6 +281,7 @@ function AppDetectStep(props: { data: DetectStepData; onBack?: () => void }) {
     try {
       const { targetId } = await unwrap(api.targets.app.post({
         nodeId: carry.nodeId,
+        projectId: carry.projectId ?? undefined,
         name: carry.name,
         repoUrl: carry.repoUrl || undefined,
         branch: carry.branch,

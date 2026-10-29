@@ -8,7 +8,8 @@ import type { DiscoveredContainer } from "../canvas.model";
 
 /** 模态视图描述：App 层的 DrawerHost 按 kind 渲染对应抽屉 */
 export type View =
-  | { kind: "new-app"; nodeId: number }
+  // projectId = 当前透镜：服务端据此判定来源形态（local / github）
+  | { kind: "new-app"; nodeId: number; projectId?: number | null }
   | { kind: "new-db"; nodeId: number }
   | { kind: "service"; targetId: number; svc?: string; tab?: string }
   | { kind: "env"; targetId: number }

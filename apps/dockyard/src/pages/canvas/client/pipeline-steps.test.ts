@@ -59,7 +59,7 @@ test("ship 成功：前三段绿、后三段 na（不是 pending 假象）", () 
 });
 
 test("实时合并：在跑的行吃 SSE（库行 stage 还是 null 也能出步骤条）", () => {
-  expect(mergeLiveRow({ status: "queued", stage: null }, { status: "building", stage: "building" })).toEqual({
+  expect(mergeLiveRow({ id: 7, status: "queued", stage: null }, { status: "building", stage: "building", runId: 7 })).toEqual({
     status: "building",
     stage: "building",
   });
@@ -67,13 +67,23 @@ test("实时合并：在跑的行吃 SSE（库行 stage 还是 null 也能出步
 
 test("实时合并：历史行不被当前 run 污染", () => {
   expect(
-    mergeLiveRow({ status: "success", stage: "packaging" }, { status: "deploying", stage: "deploying" }),
+    mergeLiveRow({ id: 5, status: "success", stage: "packaging" }, { status: "deploying", stage: "deploying", runId: 8 }),
   ).toEqual({ status: "success", stage: "packaging" });
 });
 
 test("实时合并：live 缺省时回落库值（未收到 SSE 也不抖动）", () => {
-  expect(mergeLiveRow({ status: "transferring", stage: "transferring" }, { status: null, stage: null })).toEqual({
+  expect(mergeLiveRow({ id: 7, status: "transferring", stage: "transferring" }, { status: null, stage: null, runId: 7 })).toEqual({
     status: "transferring",
     stage: "transferring",
   });
+});
+
+test("实时合并：SSE 状态属于别的 run 时不写到本行（残留非终态行不被新 run 顶替）", () => {
+  expect(
+    mergeLiveRow({ id: 5, status: "building", stage: "building" }, { status: "deploying", stage: "exposing", runId: 8 }),
+  ).toEqual({ status: "building", stage: "building" });
+  // 不知道属于哪次 run（旧服务端事件）时按原有语义合并
+  expect(
+    mergeLiveRow({ id: 5, status: "building", stage: "building" }, { status: "deploying", stage: "exposing", runId: null }),
+  ).toEqual({ status: "deploying", stage: "exposing" });
 });

@@ -78,10 +78,13 @@ const ACTIVE_STATUSES = new Set(["queued", "building", "transferring", "deployin
  * 徽章显示成别人家的状态）。
  */
 export function mergeLiveRow(
-  row: Pick<DeploymentRow, "status" | "stage">,
-  live: { status: string | null; stage: DeployStage | null },
+  row: Pick<DeploymentRow, "id" | "status" | "stage">,
+  live: { status: string | null; stage: DeployStage | null; runId?: number | null },
 ): { status: string; stage: DeployStage | null } {
   if (!ACTIVE_STATUSES.has(row.status)) return { status: row.status, stage: row.stage };
+  // 再按 runId 收一道：在跑的可能是「上一轮残留的非终态行」，
+  // 当前 SSE 状态属于新 run 时不能写到它头上
+  if (live.runId != null && live.runId !== row.id) return { status: row.status, stage: row.stage };
   return { status: live.status ?? row.status, stage: live.stage ?? row.stage };
 }
 

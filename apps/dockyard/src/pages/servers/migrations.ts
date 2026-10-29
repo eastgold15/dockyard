@@ -12,4 +12,10 @@ export const migrations: MigrationsJournal = [
     timestamp: 3,
     sql: "ALTER TABLE `servers` ADD `machineId` text;--> statement-breakpoint\nALTER TABLE `servers` ADD `dockerId` text;",
   },
+  {
+    // 内置本机：程序自动认领的行（固定 127.0.0.1 + 当前用户），存量回环行启动时升级
+    name: "0021_server_builtin",
+    timestamp: 21,
+    sql: "ALTER TABLE `servers` ADD `builtin` integer DEFAULT 0 NOT NULL;",
+  },
 ];

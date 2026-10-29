@@ -87,6 +87,8 @@ export default defineModule({
 
 **部署通道（本机/远程硬隔离语义化）**
 
+- **本机是程序认领的内置资源**（`servers.builtin=1`）：启动时 `ensureLocal()` 自动建/归一化——固定 `127.0.0.1` + 当前系统用户，用户不可添加回环地址服务器、不可删除本机；存量回环行原地升级（保留 id，画布卡/部署目标外键不断）。
+- **本机传输不经 SSH**：`transport(id)` 对内置行返回 `LocalTransport`（本地 bash 进程），文件通道直接落盘，docker 直连 `/var/run/docker.sock`——不需要 sshd、密钥或端口。远程服务器仍走 SSH + SFTP + docker socket 中继（经 `servers.socket` 的窄接口 `ServerTransport`/`openServerSftp` 统一）。
 - 分界线不只是视觉：卡跨服务器拖拽走 `moveTargetToNode`——跨界（local↔remote）时 app 必须 `artifactShipped=true`（产物已到云端的门票），db 直接拒绝（数据不随卡走）；迁移后域名在新旧两台服务器都做 edge 对账，旧容器不自动清理。
 - 显式通道 = 「传输产物」：本地构建 + docker save/load 推远端但不起容器，成功置门票。
 - 跨架构：本地构建时远端架构（`uname -m` 缓存）与本机不同则注入 `DOCKER_DEFAULT_PLATFORM`，且前置检测 buildx——经典 builder 会静默忽略该变量产出错架构镜像。

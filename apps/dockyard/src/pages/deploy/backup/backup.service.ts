@@ -50,7 +50,7 @@ export class BackupService {
     const cmd = dumpCmd[target.dbType ?? ""] ?? dumpCmd.postgres!;
     const node = await this.canvas.byId(target.nodeId);
     if (!node) throw new ServiceError("画布节点不存在");
-    const client = await this.server.ssh(node.serverId);
+    const client = await this.server.transport(node.serverId);
     // 容器身份唯一真相 = target.containerName 列（创建时定死）；不再现算（体检病-3）
     if (!target.containerName) throw new ServiceError("数据库目标缺少容器名（旧数据？重建该目标）");
     const container = target.containerName;

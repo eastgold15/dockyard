@@ -1,5 +1,4 @@
 import { ServiceError } from "@elysiax/core";
-import { openSftp } from "@meitaim/ssh/sftp";
 import { decryptSecret, encryptSecret } from "../../shared/crypto";
 import type { ServerResource } from "./schema";
 import {
@@ -9,7 +8,7 @@ import {
   suggestedEnvKey,
   type DbType,
 } from "./db-templates";
-import type { ServerService } from "../servers/servers.socket";
+import { openServerSftp, type ServerService } from "../servers/servers.socket";
 import type { NewResource, ResourceRepository } from "./resources.repository";
 
 /** credsJson 解密后的结构：模板 compose/env + 部署成功后回填的连接串 */
@@ -82,11 +81,11 @@ export class ResourceService {
         );
     }
 
-    const client = await this.serverService.ssh(resource.serverId);
+    const client = await this.serverService.transport(resource.serverId);
     const { stdout: home } = await client.exec('printf %s "$HOME"');
     const absDir = `${home.trim()}/dockyard/shared/${resource.name}`;
     await client.exec(`mkdir -p ${absDir}`);
-    const sftp = await openSftp(client);
+    const sftp = await openServerSftp(client);
     await sftp.write(`${absDir}/docker-compose.yml`, creds.compose);
     await sftp.write(`${absDir}/.env`, creds.env);
     await sftp.close();

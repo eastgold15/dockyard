@@ -7,9 +7,9 @@
 import { ServiceError } from "@elysiax/core";
 import { dirname, join, normalize } from "node:path";
 import { Readable, Writable } from "node:stream";
-import { openSftp } from "@meitaim/ssh/sftp";
 import { decryptSecret } from "../../shared/crypto";
 import { parseOwnerRepo } from "../github/github.socket";
+import { openServerSftp } from "../servers/servers.socket";
 import { logicalDbCommands, type DbType } from "../resources/resources.socket";
 import type { Project } from "../projects/projects.socket";
 import { envFilePaths } from "./detect";
@@ -24,7 +24,7 @@ export const githubAppForm: DeployForm = {
     const ownerRepo = parseOwnerRepo(target.repoUrl);
     const branch = target.branch ?? "main";
     const serverId = await h.nodeServerId(target);
-    const client = await h.serverService.ssh(serverId);
+    const client = await h.serverService.transport(serverId);
     const authedUrl = await h.github.authedRepoUrl(ownerRepo);
     // git 报错会把整条带 token 的 URL 打进 stderr——所有日志/异常先脱敏
     const cred = authedUrl.match(/^https:\/\/([^@]+)@/)?.[1];
@@ -82,8 +82,8 @@ export const githubAppForm: DeployForm = {
     });
 
     // 构建期间缓存连接可能已被丢弃重建——拿当前可用连接
-    const fresh = await h.serverService.ssh(serverId);
-    const sftp = await openSftp(fresh);
+    const fresh = await h.serverService.transport(serverId);
+    const sftp = await openServerSftp(fresh);
     if (target.envJson) await sftp.write(`${srcDir}/.env`, decryptSecret(target.envJson));
     if (target.overrideCompose)
       await sftp.write(`${srcDir}/docker-compose.dockyard.yml`, decryptSecret(target.overrideCompose));
@@ -169,10 +169,10 @@ export function localAppForm(proj: Project): DeployForm {
       await h.repo.updateTarget(target.id, { artifactShipped: true, artifactServerId: serverId });
 
       // 3. 传输（配置）：compose/.env/override 推远端工作目录
-      const client = await h.serverService.ssh(serverId);
+      const client = await h.serverService.transport(serverId);
       const remoteDir = await h.resolveRemoteDir(client, target.remoteDir ?? `~/dockyard/${target.name}`);
       await client.exec(`mkdir -p ${remoteDir}`);
-      const sftp = await openSftp(client);
+      const sftp = await openServerSftp(client);
       const composeText = await Bun.file(join(repoDir, composePath)).text();
       await sftp.write(`${remoteDir}/docker-compose.yml`, composeText);
       // 用户 compose 的 env_file 是相对仓库的路径（远端没有目录树）——放空占位，
@@ -225,12 +225,12 @@ export const dbContainerForm: DeployForm = {
     const serverId = await h.nodeServerId(target);
     // preflight 门禁在任何写入之前：被阻止时绝不能覆盖在跑实例目录里的 compose/.env
     await h.preflightCheck(target, serverId, [target.containerName], ctx.log);
-    const client = await h.serverService.ssh(serverId);
+    const client = await h.serverService.transport(serverId);
     const remoteDir = await h.resolveRemoteDir(client, target.remoteDir ?? `~/dockyard/${target.name}`);
     await client.exec(`mkdir -p ${remoteDir}`);
     // sftp 推送 = 本形态的「传输」段（无构建：官方镜像由 up 拉取）
     await ctx.setStage("transferring");
-    const sftp = await openSftp(client);
+    const sftp = await openServerSftp(client);
     await sftp.write(`${remoteDir}/docker-compose.yml`, rendered.compose);
     await sftp.write(`${remoteDir}/.env`, rendered.env);
     await sftp.close();

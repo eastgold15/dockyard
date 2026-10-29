@@ -9,10 +9,9 @@
  */
 import { ServiceError } from "@elysiax/core";
 import { resolve4 } from "node:dns/promises";
-import { openSftp } from "@meitaim/ssh/sftp";
 import type { Domain } from "./schema";
 import type { EdgeRepository } from "./edge.repository";
-import type { ServerService } from "../servers/servers.socket";
+import { openServerSftp, type ServerService } from "../servers/servers.socket";
 
 export const EDGE_CONTAINER = "dockyard-edge";
 const EDGE_CONFIG_PATH = "/tmp/dockyard-edge-caddy.json";
@@ -92,8 +91,8 @@ export class EdgeService {
       await log("以下域名 DNS 未指向本机，先不挂路由（解析生效后重新同步即可）：");
       for (const d of rows.filter((d) => d.dnsStatus === "mismatch")) await log(`  ⚠️ ${d.hostname}`);
     }
-    const client = await this.serverService.ssh(serverId);
-    const sftp = await openSftp(client);
+    const client = await this.serverService.transport(serverId);
+    const sftp = await openServerSftp(client);
     await sftp.write(EDGE_CONFIG_PATH, caddyConfig(active));
     await sftp.close();
     const load = await client.exec(
@@ -119,7 +118,7 @@ export class EdgeService {
       return;
     }
     // 建之前确认 80/443 没被别的进程占（host 网络直接冲突）
-    const client = await this.serverService.ssh(serverId);
+    const client = await this.serverService.transport(serverId);
     const busy = await client.exec("ss -tln | grep -E ':(80|443) ' || true");
     if (busy.stdout.trim())
       throw new ServiceError(`服务器 80/443 端口被占用，无法启动 edge：\n${busy.stdout.trim()}`);
@@ -179,7 +178,7 @@ export class EdgeService {
 
   /** TLS 探测：服务器上把域名钉到 127.0.0.1 发 HTTPS 请求，握手过 = 证书已签发 */
   private async probeSsl(serverId: number, rows: Domain[], log: Log): Promise<void> {
-    const client = await this.serverService.ssh(serverId);
+    const client = await this.serverService.transport(serverId);
     for (const d of rows) {
       // --resolve 钉住本机，测的是 edge 的证书而不是公网链路；证书未签发时 Caddy 握手即失败
       const probe = await client.exec(

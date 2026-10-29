@@ -12,6 +12,9 @@ export const servers = sqliteTable("servers", {
   keyPath: text(), // authType=key 时的私钥路径
   password: text(), // authType=password 时（enc1: 加密）
   // unknown | ok | missing
+  // 内置本机（1）：程序启动时自动认领，固定 127.0.0.1 + 当前系统用户，
+  // 传输走本地进程（无 SSH）；用户不可添加回环服务器、不可删除本机
+  builtin: integer({ mode: "boolean" }).notNull().default(false),
   dockerStatus: text({ enum: ["unknown", "ok", "missing"] }).notNull().default("unknown"),
   dockerVersion: text(),
   // TOFU：首次连接确认后存储的主机密钥指纹

@@ -135,7 +135,7 @@ export const ServerNodeView = (props: { id: string; data: { server: CardModel["s
             : <Badge tone="muted">未检测</Badge>}
       </div>
       <div class="mono px-3 py-1 text-[11px] text-neutral-600">
-        {server().user}@{server().host}:{server().port}
+        {server().local ? "本地进程直连" : `${server().user}@${server().host}:${server().port}`}
       </div>
     </div>
   );

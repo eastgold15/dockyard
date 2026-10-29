@@ -24,6 +24,11 @@ const { root } = await start({
 
 // 后台轮询器与请求共用同一个根容器（DI 服务单例：SSH 连接池只有一份）
 const di = root as Container<ServiceSpecs<ServiceMap>>;
+// 内置本机：程序自己认领（固定 127.0.0.1 + 当前系统用户，本地进程直连）；
+// 旧版本用户添加的回环行原地升级为内置行（保留 id，画布卡/部署目标外键不断）
+const local = await di.get("serverService").ensureLocal();
+// 启动即检测本机 docker：徽章/画布立刻反映真实状态（check 内部吞错，不会阻塞启动失败）
+await di.get("serverService").check(local.id);
 // GitHub 更新轮询：只提示不自动部署
 di.get("updatePoller").start();
 // 容器状态轮询 → 事件总线 → SSE：SSH 频率与前端用户数无关

@@ -10,6 +10,7 @@ export type NewServer = {
   authType: "key" | "password" | "agent";
   keyPath?: string;
   password?: string;
+  builtin?: boolean;
 };
 
 export class ServerRepository {

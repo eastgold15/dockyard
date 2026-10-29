@@ -24,15 +24,21 @@ export const ServerRow: Component<{ server: Server; message?: string }> = ({ ser
     <div class="flex h-12 items-center gap-4 px-6 hover:bg-harbor-900">
       <span class="text-sm font-medium text-neutral-100">{server.name}</span>
       {scopeBadge(server)}
-      <span class="mono text-xs text-neutral-500">{server.user}@{server.host}:{server.port}</span>
-      <span class="mono text-xs text-neutral-600">{server.authType}</span>
+      {server.builtin ? <Badge label="内置" tone="muted" /> : null}
+      {/* 本机地址/用户由程序定死，不展示可编辑的 SSH 形参 */}
+      <span class="mono text-xs text-neutral-500">
+        {server.builtin ? "本地进程直连" : `${server.user}@${server.host}:${server.port}`}
+      </span>
+      {server.builtin ? null : <span class="mono text-xs text-neutral-600">{server.authType}</span>}
       <span class="ml-auto">{dockerBadge(server)}</span>
       <Button label="共享资源" variant="ghost" small hxGet={routes.pages.servers.resourcesByServerId(server.id)} hxTarget="#modal-root" hxSwap="innerHTML" />
       <Button label="检测" variant="ghost" small hxPost={routes.pages.servers.ByIdCheck(server.id)} hxTarget={`#server-${server.id}`} hxSwap="outerHTML" />
-      {server.dockerStatus === "missing" ? (
+      {!server.builtin && server.dockerStatus === "missing" ? (
         <Button label="安装 docker" small hxPost={routes.pages.servers.ByIdInstallDocker(server.id)} hxTarget={`#server-${server.id}`} hxSwap="outerHTML" />
       ) : null}
-      <Button label="删除" variant="danger" small hxDelete={routes.pages.servers.ById(server.id)} hxTarget="#main" hxSwap="innerHTML" hxConfirm={`删除服务器「${server.name}」？`} />
+      {server.builtin ? null : (
+        <Button label="删除" variant="danger" small hxDelete={routes.pages.servers.ById(server.id)} hxTarget="#main" hxSwap="innerHTML" hxConfirm={`删除服务器「${server.name}」？`} />
+      )}
     </div>
     {message ? (
       <pre class="mono mx-6 mb-3 max-h-40 overflow-auto rounded bg-harbor-950 p-2 text-xs whitespace-pre-wrap text-neutral-400">{message}</pre>
@@ -73,7 +79,7 @@ export const ServerList: Component<{ servers: Server[] }> = ({ servers }) => (
     <div id="add-server-form" class="hidden border-b border-harbor-800 bg-harbor-900 px-6 py-4">
       <form class="grid max-w-3xl grid-cols-2 gap-3" hx-post={routes.pages.servers.index()} hx-target="#main" hx-swap="innerHTML">
         <Field label="名称" name="name" placeholder="生产机" />
-        <Field label="主机" name="host" placeholder="192.168.1.10" />
+        <Field label="主机" name="host" placeholder="192.168.1.10（本机由程序自动认领）" />
         <Field label="端口" name="port" type="number" value="22" />
         <Field label="用户" name="user" placeholder="root" />
         <label class="flex flex-col gap-1 text-sm">

@@ -3,6 +3,8 @@
 export { servers } from "./schema";
 export type { Server } from "./schema";
 export { ServerService } from "./servers.service";
+export { openServerSftp } from "./transport";
+export type { ServerSftp, ServerTransport } from "./transport";
 
 /** 本机服务器判定（部署通道分界线）：回环地址派生，不落库；servers/canvas/deploy 共用正主在此 */
-export const isLocalHost = (host: string) => host === "127.0.0.1" || host === "localhost" || host === "::1";
+export { isLocalHost } from "./host";

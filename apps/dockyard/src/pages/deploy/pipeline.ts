@@ -7,8 +7,6 @@
 // - 回滚 = 激活旧产物（activateArtifact），与正常部署共用 Run/Expose 语义。
 // 逻辑库不穿零点（无产物），由 forms.ts 的 custom run 旁路承接。
 import { ServiceError } from "@elysiax/core";
-import { openSftp } from "@meitaim/ssh/sftp";
-import type { SshClient } from "@meitaim/ssh";
 import { decryptSecret, encryptSecret } from "../../shared/crypto";
 import type { AppPaths } from "../../shared/paths";
 import type { CanvasService } from "../canvas/canvas.socket";
@@ -16,6 +14,8 @@ import type { EdgeService } from "../edge/edge.socket";
 import type { GithubService } from "../github/github.socket";
 import type { ProjectService } from "../projects/projects.socket";
 import type { ServerService } from "../servers/servers.socket";
+import { openServerSftp } from "../servers/servers.socket";
+import type { ServerTransport } from "../servers/servers.socket";
 import type { DeployRepository } from "./deploy.repository";
 import { envFilePaths } from "./detect";
 import type { DeployArtifact, Deployment, DeployStage, DeployTarget } from "./schema";
@@ -67,7 +67,7 @@ export interface DeployForm {
   run?(ctx: StageCtx, h: Harness): Promise<void>;
 }
 
-type SshExecResult = Awaited<ReturnType<SshClient["exec"]>>;
+type SshExecResult = Awaited<ReturnType<ServerTransport["exec"]>>;
 
 /** 服务器能力清单（雏形：本轮只有 arch 探测 + 内存缓存；将来登记更多能力/落库） */
 export interface ServerCaps {
@@ -90,7 +90,7 @@ export interface Harness {
   execLongRemote(serverId: number, cmd: string, tag: string, log: Log): Promise<{ code: number }>;
   serverCaps(serverId: number): Promise<ServerCaps>;
   /** SFTP 不做 shell 展开，`~` 先解析成绝对路径 */
-  resolveRemoteDir(client: SshClient, dir: string): Promise<string>;
+  resolveRemoteDir(client: ServerTransport, dir: string): Promise<string>;
   /** 部署前对账：远端同名容器归属校验，绝不动别人的容器 */
   preflightCheck(target: DeployTarget, serverId: number, containerNames: string[], log: Log): Promise<void>;
   /** target → node → serverId */
@@ -135,7 +135,7 @@ export function createHarness(deps: {
   const sshExec = async (serverId: number, cmd: string, retries = 2): Promise<SshExecResult> => {
     for (;;) {
       try {
-        return await (await serverService.ssh(serverId)).exec(cmd);
+        return await (await serverService.transport(serverId)).exec(cmd);
       } catch (error) {
         if (retries-- <= 0) throw error;
         await serverService.dropSsh(serverId);
@@ -393,10 +393,10 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
     env: string;
   };
   const serverId = await h.nodeServerId(target);
-  const client = await h.serverService.ssh(serverId);
+  const client = await h.serverService.transport(serverId);
   const rollbackDir = await h.resolveRemoteDir(client, `~/dockyard/rollback/${target.id}`);
   await client.exec(`mkdir -p ${rollbackDir}`);
-  const sftp = await openSftp(client);
+  const sftp = await openServerSftp(client);
   await sftp.write(`${rollbackDir}/docker-compose.yml`, snapshot.compose);
   if (snapshot.env) await sftp.write(`${rollbackDir}/.env`, snapshot.env);
   if (snapshot.override) await sftp.write(`${rollbackDir}/docker-compose.dockyard.yml`, snapshot.override);

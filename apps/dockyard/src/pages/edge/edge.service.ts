@@ -12,6 +12,7 @@ import { resolve4 } from "node:dns/promises";
 import type { Domain } from "./schema";
 import type { EdgeRepository } from "./edge.repository";
 import { openServerSftp, type ServerService } from "../servers/servers.socket";
+import { shq } from "../../shared/shell";
 
 export const EDGE_CONTAINER = "dockyard-edge";
 const EDGE_CONFIG_PATH = "/tmp/dockyard-edge-caddy.json";
@@ -19,6 +20,16 @@ const ADMIN_URL = "http://127.0.0.1:2019";
 
 type Log = (line: string) => Promise<void>;
 const noopLog: Log = async () => {};
+
+/** 域名会进 Caddy 配置、DNS 查询和远端 curl 命令：只收 ASCII 主机名（至少一个点），统一小写去尾点 */
+const HOSTNAME = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+export function normalizeHostname(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\.$/, "");
+}
+export function assertSafeHostname(hostname: string): void {
+  if (!HOSTNAME.test(hostname))
+    throw new ServiceError(`非法域名（只允许字母/数字/连字符，且至少包含一个点）: ${hostname}`);
+}
 
 /** 域名列表 → 完整 Caddy JSON 配置（/load 是全量替换语义） */
 export function caddyConfig(rows: Pick<Domain, "hostname" | "targetPort">[]): string {
@@ -62,12 +73,17 @@ export class EdgeService {
   async addDomain(targetId: number, input: { hostname: string; targetPort: number; serviceName?: string }) {
     const target = await this.repo.targetBrief(targetId);
     if (!target || target.kind !== "app") throw new ServiceError("只有 app 目标能绑域名");
-    const taken = await this.repo.domainByHostname(input.hostname);
+    // 归一化后再查重：Example.COM. 与 example.com 是同一个域名
+    const hostname = normalizeHostname(input.hostname);
+    assertSafeHostname(hostname);
+    if (!Number.isInteger(input.targetPort) || input.targetPort < 1 || input.targetPort > 65535)
+      throw new ServiceError(`非法端口: ${input.targetPort}（应为 1-65535）`);
+    const taken = await this.repo.domainByHostname(hostname);
     if (taken) {
       const owner = await this.repo.targetBrief(taken.targetId);
-      throw new ServiceError(`域名 ${input.hostname} 已被「${owner?.name ?? `#${taken.targetId}`}」占用`);
+      throw new ServiceError(`域名 ${hostname} 已被「${owner?.name ?? `#${taken.targetId}`}」占用`);
     }
-    return this.repo.addDomain({ targetId, ...input });
+    return this.repo.addDomain({ targetId, ...input, hostname });
   }
 
   removeDomain(id: number) {
@@ -181,8 +197,9 @@ export class EdgeService {
     const client = await this.serverService.transport(serverId);
     for (const d of rows) {
       // --resolve 钉住本机，测的是 edge 的证书而不是公网链路；证书未签发时 Caddy 握手即失败
+      // 存量行可能早于 addDomain 的白名单：拼进远端 shell 前仍按参数转义
       const probe = await client.exec(
-        `curl -s -o /dev/null -m 8 -w '%{http_code}' --resolve ${d.hostname}:443:127.0.0.1 https://${d.hostname}/ || true`,
+        `curl -s -o /dev/null -m 8 -w '%{http_code}' --resolve ${shq(`${d.hostname}:443:127.0.0.1`)} ${shq(`https://${d.hostname}/`)} || true`,
       );
       const ok = probe.code === 0 && /^\d{3}$/.test(probe.stdout.trim()) && probe.stdout.trim() !== "000";
       const status = ok ? "active" : "pending";

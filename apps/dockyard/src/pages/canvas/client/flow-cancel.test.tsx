@@ -79,3 +79,14 @@ test("非 owner 指针的取消不影响当前拖拽（第二根指头抬起不�
   expect(calls).toEqual([["n1", undefined]]);
   dispose();
 });
+
+test("滚轮缩放：JSX 监听直接挂元素（preventDefault 有效），背景点阵随 k 变化", () => {
+  const { el, dispose } = mount(() => {});
+  const pane = el.querySelector(".flow-node")!.parentElement!.parentElement! as HTMLElement;
+  const before = pane.style.backgroundSize;
+  const ev = new WheelEvent("wheel", { deltaY: -100, clientX: 10, clientY: 10, bubbles: true, cancelable: true });
+  pane.dispatchEvent(ev);
+  expect(ev.defaultPrevented).toBe(true); // 元素上的 wheel 默认非 passive
+  expect(pane.style.backgroundSize).not.toBe(before); // k 变了 → 点阵尺寸变了
+  dispose();
+});

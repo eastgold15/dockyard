@@ -3,15 +3,14 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { ServiceError } from "@elysiax/core";
 import type { AppPaths } from "../../../shared/paths";
+import { shq } from "../../../shared/shell";
 import type { CanvasService } from "../../canvas/canvas.socket";
 import { openServerSftp, type ServerService } from "../../servers/servers.socket";
 // 父子之间也走插座：deploy 的服务经父原子插座引入
 import type { DeployService } from "../deploy.socket";
 
-/** POSIX 单引号转义：容器名/路径会拼进宿主 shell，用户输入必须先过这里 */
-export function shq(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
+/** POSIX 单引号转义（正主在 shared/shell）：容器名/路径拼进宿主 shell 前必须过这里 */
+export { shq };
 
 /** 各引擎的 dump 命令（在容器内执行）。postgres 带 --clean --if-exists：
  *  恢复时先 DROP 再 CREATE，才对「已有数据」的实例可重放。 */

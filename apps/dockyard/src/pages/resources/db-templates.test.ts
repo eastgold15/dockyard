@@ -5,7 +5,7 @@
  */
 import { expect, test } from "bun:test";
 import { parse as parseYaml } from "yaml";
-import { assertSafeResourceName, dbCompose } from "./db-templates";
+import { assertSafeLogicalName, assertSafeResourceName, dbCompose } from "./db-templates";
 
 type ComposeDoc = {
   name?: string;
@@ -13,7 +13,7 @@ type ComposeDoc = {
 };
 
 test("dbCompose：部署目标渲染 name 与 container_name，并返回 project", () => {
-  const rendered = dbCompose("postgres", "db", { targetId: 7, project: "project-1" });
+  const rendered = dbCompose("postgres", "db", { targetId: 7 });
   const doc = parseYaml(rendered.compose) as ComposeDoc;
   expect(doc.name).toBe("dockyard-7");
   expect(doc.services.db!.container_name).toBe("dockyard-7-db");
@@ -42,4 +42,15 @@ test("dbCompose：裸模板不渲染 name、不返回 project", () => {
   expect(doc.name).toBeUndefined();
   expect(doc.services.bare!.container_name).toBeUndefined();
   expect(rendered.project).toBeUndefined();
+});
+
+test("assertSafeLogicalName：逻辑库名会进 SQL 与连接串，连字符/空格/引号一律拒", () => {
+  for (const ok of ["app", "app_db", "_tmp", "A1"]) expect(() => assertSafeLogicalName(ok)).not.toThrow();
+  for (const bad of ["my-pg", "a b", "a;drop", "1abc", "库", ""]) {
+    expect(() => assertSafeLogicalName(bad)).toThrow(/逻辑库名/);
+  }
+});
+
+test("dbCompose：渲染器自身拒绝非法名称（调用方漏校验也不放行）", () => {
+  expect(() => dbCompose("postgres", "a; rm -rf /", { targetId: 1 })).toThrow(/名称只允许/);
 });

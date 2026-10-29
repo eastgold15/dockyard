@@ -582,7 +582,7 @@ export function NewDbModal(props: { nodeId: number; projectId?: number | null })
   return (
     <Modal title="部署数据库（官方镜像）" onClose={ui.close}>
       <form class="flex flex-col gap-3" onSubmit={submit}>
-        <Field label="名称" name="name" placeholder="my-pg" required />
+        <Field label="名称" name="name" placeholder="my_pg" required />
         <label class="flex flex-col gap-1 text-sm">
           <span class="text-neutral-400">类型</span>
           <select
@@ -611,7 +611,7 @@ export function NewDbModal(props: { nodeId: number; projectId?: number | null })
             <div class="text-xs text-neutral-500">选现有实例时无需填远端目录，凭据自动生成。</div>
           </Show>
         </div>
-        <Field label="远端目录" name="remoteDir" placeholder="~/dockyard/my-pg（新建实例时必填）" />
+        <Field label="远端目录" name="remoteDir" placeholder="~/dockyard/my_pg（新建实例时必填）" />
         {error() ? <ErrorBanner>{error()}</ErrorBanner> : null}
         <div class="text-xs text-neutral-500">凭据自动生成并加密保存，数据卷持久化。</div>
         <SubmitBtn label="创建并部署" busyLabel="创建中…" busy={busy()} />

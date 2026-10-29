@@ -29,6 +29,7 @@ import {
 } from "./pipeline";
 import { dbContainerForm, dbLogicalForm, githubAppForm, localAppForm } from "./forms";
 import {
+  assertSafeLogicalName,
   assertSafeResourceName,
   containerNameOf,
   dbCompose,
@@ -438,16 +439,16 @@ export class DeployService {
   /** 数据库目标（实例）：模板 compose + 凭据在创建时生成一次，enc1: 加密存 envJson。
    *  容器名/所有权标签依赖 target id，先建行再回填。 */
   async createDbTarget(input: { nodeId: number; name: string; dbType: DbType; remoteDir: string; projectId?: number }) {
-    assertSafeResourceName(input.name);
-    await this.assertNameFree(input.nodeId, "db", input.name);
-    if (!input.remoteDir.trim()) throw new ServiceError("新建实例需要填写远端目录");
-    const target = await this.repo.createTarget({ kind: "db", ...input });
-    const rendered = dbCompose(input.dbType, input.name, {
-      targetId: target.id,
-      // compose 项目名：有归属按项目，未关联兜底 target id（保持全局唯一）
-      project: `project-${input.projectId ?? target.id}`,
-    });
-    const containerName = containerNameOf(target.id, input.name);
+    const name = input.name.trim();
+    const remoteDir = input.remoteDir.trim();
+    assertSafeResourceName(name);
+    await this.assertNameFree(input.nodeId, "db", name);
+    if (!remoteDir) throw new ServiceError("新建实例需要填写远端目录");
+    const target = await this.repo.createTarget({ kind: "db", ...input, name, remoteDir });
+    // 所有权只用 targetId：compose 项目名由 dbCompose 内定死（与容器名前缀同源），
+    // 不再有可传的 project——项目归属只影响 UI 透镜，不该改底座身份
+    const rendered = dbCompose(input.dbType, name, { targetId: target.id });
+    const containerName = containerNameOf(target.id, name);
     await this.repo.updateTarget(target.id, {
       envJson: encryptSecret(JSON.stringify(rendered)),
       containerName,
@@ -457,20 +458,23 @@ export class DeployService {
 
   /** 逻辑库目标：不起容器，凭据创建时生成，部署 = 在宿主实例里 CREATE DATABASE */
   async createLogicalDbTarget(input: { nodeId: number; name: string; instanceId: number }) {
+    const name = input.name.trim();
+    // 名字要拼进 CREATE DATABASE/USER 的 SQL 与连接串：创建时就拒，别等异步部署才炸
+    assertSafeLogicalName(name);
     const instance = await this.repo.targetById(input.instanceId);
     if (!instance || instance.kind !== "db" || instance.instanceOf)
       throw new ServiceError("宿主实例不存在");
     if (!LOGICAL_DB_SUPPORT[instance.dbType as DbType])
       throw new ServiceError(`${instance.dbType} 不支持逻辑库`);
-    await this.assertNameFree(input.nodeId, "db", input.name);
+    await this.assertNameFree(input.nodeId, "db", name);
     const serverId = await this.harness.nodeServerId(instance);
     const server = await this.serverService.byId(serverId);
     const password = generatePassword();
-    const url = logicalDbUrl(instance.dbType as DbType, server!.host, input.name, password);
+    const url = logicalDbUrl(instance.dbType as DbType, server!.host, name, password);
     return this.repo.createTarget({
       kind: "db",
       nodeId: input.nodeId,
-      name: input.name,
+      name,
       dbType: instance.dbType,
       instanceOf: instance.id,
       projectId: instance.projectId, // 逻辑库跟随宿主实例的项目归属

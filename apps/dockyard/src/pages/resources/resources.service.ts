@@ -1,5 +1,6 @@
 import { ServiceError } from "@elysiax/core";
 import { decryptSecret, encryptSecret } from "../../shared/crypto";
+import { shq } from "../../shared/shell";
 import type { ServerResource } from "./schema";
 import {
   assertSafeResourceName,
@@ -17,6 +18,25 @@ export interface ResourceCreds {
   compose: string;
   env: string;
   url: string | null;
+  /** 模板定死的 compose 项目名（新资源有；存量资源缺失 = 沿用目录名） */
+  project?: string;
+  port?: number;
+}
+
+/** 解析 credsJson：null = 还没写模板（跳过即可）；损坏（密钥变更/行截断）= ServiceError，
+ *  不能把 SyntaxError 漏给 actions。 */
+function credsOf(resource: ServerResource): ResourceCreds | null {
+  if (!resource.credsJson) return null;
+  try {
+    return JSON.parse(decryptSecret(resource.credsJson)) as ResourceCreds;
+  } catch {
+    throw new ServiceError(`共享资源「${resource.name}」的凭据损坏（密钥变更或数据截断），请删除后重建`);
+  }
+}
+
+/** 键名会原样写进业务 app 的 .env：含空白/等号/换行就能注入额外变量 */
+function assertEnvKey(key: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new ServiceError(`非法的环境变量名: ${key}`);
 }
 
 /** 共享环境变量（注入业务 app 的 .env / Env 下拉引用用） */
@@ -44,17 +64,21 @@ export class ResourceService {
 
   /** 创建共享资源：模板 compose + 凭据创建时生成一次，enc1: 加密存 credsJson（url 部署成功后回填） */
   async create(input: { serverId: number; name: string; dbType: DbType; envKey?: string }) {
-    assertSafeResourceName(input.name);
+    const name = input.name.trim();
+    assertSafeResourceName(name);
     const existing = await this.repo.ofServer(input.serverId);
-    if (existing.some((r) => r.name === input.name))
-      throw new ServiceError(`服务器上已存在同名共享资源「${input.name}」`);
+    if (existing.some((r) => r.name === name))
+      throw new ServiceError(`服务器上已存在同名共享资源「${name}」`);
+    const envKey = input.envKey?.trim() || suggestedEnvKey(input.dbType);
+    assertEnvKey(envKey);
     const resource = await this.repo.create({
       ...input,
-      envKey: input.envKey?.trim() || suggestedEnvKey(input.dbType),
+      name,
+      envKey,
     } satisfies NewResource);
-    const rendered = dbCompose(input.dbType, input.name, { resourceId: resource.id });
+    const rendered = dbCompose(input.dbType, name, { resourceId: resource.id });
     await this.repo.update(resource.id, {
-      containerName: sharedContainerNameOf(resource.id, input.name),
+      containerName: sharedContainerNameOf(resource.id, name),
       credsJson: encryptSecret(JSON.stringify({ ...rendered, url: null } satisfies ResourceCreds & { port: number })),
     });
     return (await this.repo.byId(resource.id))!;
@@ -63,8 +87,11 @@ export class ResourceService {
   /** 部署中间件到服务器（视角 B）：对账 → SFTP 推模板 → compose up → 生成连接串 */
   async deploy(id: number): Promise<void> {
     const resource = await this.mustGet(id);
-    if (!resource.credsJson || !resource.containerName) throw new ServiceError("共享资源缺少模板内容");
-    const creds = JSON.parse(decryptSecret(resource.credsJson)) as ResourceCreds;
+    if (!resource.containerName) throw new ServiceError("共享资源缺少容器名，请删除后重建");
+    // 存量行可能早于创建时白名单：名字要拼进远端路径，部署前再验一次
+    assertSafeResourceName(resource.name);
+    const creds = credsOf(resource);
+    if (!creds) throw new ServiceError("共享资源缺少模板内容，请删除后重建");
     const server = await this.serverService.byId(resource.serverId);
     if (!server) throw new ServiceError("服务器不存在");
 
@@ -84,14 +111,22 @@ export class ResourceService {
     }
 
     const client = await this.serverService.transport(resource.serverId);
-    const { stdout: home } = await client.exec('printf %s "$HOME"');
-    const absDir = `${home.trim()}/dockyard/shared/${resource.name}`;
-    await client.exec(`mkdir -p ${absDir}`);
+    const { stdout } = await client.exec('printf %s "$HOME"');
+    const home = stdout.trim();
+    if (!home) throw new ServiceError("无法解析远端家目录，共享资源部署中止");
+    const absDir = `${home}/dockyard/shared/${resource.name}`;
+    await client.exec(`mkdir -p ${shq(absDir)}`);
     const sftp = await openServerSftp(client);
-    await sftp.write(`${absDir}/docker-compose.yml`, creds.compose);
-    await sftp.write(`${absDir}/.env`, creds.env);
-    await sftp.close();
-    const up = await client.exec(`cd ${absDir} && docker compose up -d`);
+    try {
+      await sftp.write(`${absDir}/docker-compose.yml`, creds.compose);
+      await sftp.write(`${absDir}/.env`, creds.env);
+    } finally {
+      // 失败也要关：远程 SFTP 是共享 SSH 连接上的通道，泄漏会越攒越多
+      await sftp.close();
+    }
+    // 不补 -p：新资源的项目名由模板顶层 name 定死；存量资源 compose 无 name，
+    // 沿用目录名——强行 -p dockyard-res-<id> 会换 project，卷名跟着变，旧数据留在旧卷里
+    const up = await client.exec(`cd ${shq(absDir)} && docker compose up -d`);
     if (up.code !== 0) throw new ServiceError(`远端 compose up 失败（exit ${up.code}）\n${up.stdout}${up.stderr}`);
 
     // 部署成功：生成连接串，写入共享清单（服务器级共享变量）
@@ -108,23 +143,21 @@ export class ResourceService {
 
   /** 更新 envKey（共享变量键名） */
   async updateEnvKey(id: number, envKey: string) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(envKey)) throw new ServiceError(`非法的环境变量名: ${envKey}`);
-    return this.repo.update(id, { envKey });
+    const key = envKey.trim();
+    assertEnvKey(key);
+    return this.repo.update(id, { envKey: key });
   }
 
   /** 连接串（仅本机控制面回显/注入用） */
   async urlOf(id: number): Promise<string | null> {
-    const resource = await this.mustGet(id);
-    if (!resource.credsJson) return null;
-    return (JSON.parse(decryptSecret(resource.credsJson)) as ResourceCreds).url;
+    return credsOf(await this.mustGet(id))?.url ?? null;
   }
 
   /** 某台服务器全部可注入的共享变量（url 已解密；只含部署成功的资源） */
   async sharedEnvOf(serverId: number): Promise<SharedEnv[]> {
     const out: SharedEnv[] = [];
     for (const r of await this.repo.ofServer(serverId)) {
-      if (!r.credsJson) continue;
-      const { url } = JSON.parse(decryptSecret(r.credsJson)) as ResourceCreds;
+      const url = credsOf(r)?.url;
       if (url) out.push({ resourceId: r.id, name: r.name, dbType: r.dbType, envKey: r.envKey, url });
     }
     return out;

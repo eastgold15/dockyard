@@ -66,8 +66,10 @@ export function sharedProjectNameOf(resourceId: number): string {
 export function dbCompose(
   dbType: DbType,
   name: string,
-  ownership?: { targetId: number; project: string } | { resourceId: number },
+  ownership?: { targetId: number } | { resourceId: number },
 ): { compose: string; env: string; port: number; project?: string } {
+  // 渲染器是服务名/容器名/卷名/YAML 的最后一道门：即使调用方漏了校验，也不让非法字符进来
+  assertSafeResourceName(name);
   const image = IMAGES[dbType];
   const port = PORTS[dbType];
   const password = generatePassword();
@@ -81,7 +83,6 @@ export function dbCompose(
       : `    labels:
       dockyard.managed: "true"
       dockyard.target-id: "${ownership.targetId}"
-      dockyard.project: "${ownership.project}"
 `
     : "";
   const containerName = ownership
@@ -89,9 +90,11 @@ export function dbCompose(
     : "";
   // 顶层 name 必须显式渲染：缺省时项目名 = 目录名，而回滚目录（~/dockyard/rollback/<id>）与
   // provision 目录不同名，项目名会随目录漂移（容器靠 container_name 收养，但 compose 项目标签会变）。
-  const projectName = ownership
-    ? `name: ${"resourceId" in ownership ? sharedProjectNameOf(ownership.resourceId) : dbProjectNameOf(ownership.targetId)}\n`
-    : "";
+  // 项目名只算一次：YAML 顶层 name 与返回的 project 必须同源，否则 -p 与卷名会各说各话
+  const project = ownership
+    ? ("resourceId" in ownership ? sharedProjectNameOf(ownership.resourceId) : dbProjectNameOf(ownership.targetId))
+    : undefined;
+  const projectName = project ? `name: ${project}\n` : "";
 
   const envByType: Record<DbType, { env: Record<string, string>; lines: string[] }> = {
     postgres: {
@@ -129,9 +132,7 @@ volumes:
     env: lines.join("\n") + "\n",
     port,
     // 无所有权 = 裸模板（不渲染 name），调用方不应据此 -p
-    ...(ownership
-      ? { project: "resourceId" in ownership ? sharedProjectNameOf(ownership.resourceId) : dbProjectNameOf(ownership.targetId) }
-      : {}),
+    ...(project ? { project } : {}),
   };
 }
 
@@ -147,7 +148,8 @@ export const LOGICAL_DB_SUPPORT: Record<DbType, boolean> = {
 
 // SQL 标识符注入防护：逻辑库名只允许安全字符
 const SAFE_NAME = /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/;
-function assertSafeName(name: string) {
+/** 逻辑库名会拼进 CREATE DATABASE/USER 的 SQL 与连接串：创建时就要拒，别等异步部署才炸 */
+export function assertSafeLogicalName(name: string) {
   if (!SAFE_NAME.test(name))
     throw new ServiceError(`逻辑库名只允许字母/数字/下划线且以字母开头: ${name}`);
 }
@@ -160,7 +162,7 @@ export function logicalDbCommands(
   name: string,
   password: string,
 ): { exists: string[]; create: string[][] } {
-  assertSafeName(name);
+  assertSafeLogicalName(name);
   if (!LOGICAL_DB_SUPPORT[dbType]) throw new ServiceError(`${dbType} 不支持逻辑库`);
   switch (dbType) {
     case "postgres":

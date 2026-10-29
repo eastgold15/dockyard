@@ -10,7 +10,7 @@ import type { DeployStage } from "../../deploy/deploy.socket";
 
 export type DeployStatus = "queued" | "building" | "transferring" | "deploying" | "success" | "failed";
 
-/** 单 target 的实时态（store 按键写入 / applyLiveEvent 整体合并共用） */
+/** 单 target 的实时态（LiveProvider 按键写入 store 时使用） */
 export interface TargetLive {
   status: DeployStatus | null;
   running: boolean;
@@ -57,7 +57,7 @@ export const useDeployLog = (targetId: number) => {
 
 /**
  * status/running 帧 → 单 target 的下一状态；其它帧返回 null。
- * 合并语义只此一份：applyLiveEvent（整体替换）与 LiveProvider（按键写 store）都调它。
+ * 合并语义只此一份，LiveProvider 按键写 store 时调用（有单测）。
  */
 export function nextTargetLive(
   prev: TargetLive | undefined,
@@ -82,28 +82,16 @@ export function nextTargetLive(
   return null;
 }
 
-/** SSE 消息 → LiveState 增量（纯函数；store 侧可配 produce 用，也可整体替换） */
-export function applyLiveEvent(prev: LiveState, msg: Record<string, unknown>): LiveState {
-  const next = nextTargetLive(prev.targets[msg.targetId as number], msg);
-  if (next) {
-    return { ...prev, targets: { ...prev.targets, [msg.targetId as number]: next } };
-  }
-  if (msg.type === "state") {
-    return {
-      ...prev,
-      services: { ...prev.services, [`${msg.targetId}:${msg.service}`]: msg.state as ServiceState },
-    };
-  }
-  if (msg.type === "log") {
-    const targetId = msg.targetId as number;
-    const runId = msg.runId as number;
-    const incoming = (msg.lines as string[]) ?? [];
-    const cur = prev.logs[targetId];
-    const base = cur && cur.runId === runId ? cur.lines : [];
-    return {
-      ...prev,
-      logs: { ...prev.logs, [targetId]: { runId, lines: [...base, ...incoming].slice(-LOG_TAIL_LIMIT) } },
-    };
-  }
-  return prev;
+/**
+ * log 帧 → 单 target 的下一日志块（纯函数，LiveProvider 按键写 store 时调用，有单测）。
+ * 同 run 追加、换 run 重置；超过 LOG_TAIL_LIMIT 丢最旧行（完整日志在服务端）。
+ */
+export function nextLog(
+  cur: LiveState["logs"][number] | undefined,
+  msg: Record<string, unknown>,
+): LiveState["logs"][number] {
+  const runId = msg.runId as number;
+  const base = cur && cur.runId === runId ? cur.lines : [];
+  const incoming = (msg.lines as string[]) ?? [];
+  return { runId, lines: [...base, ...incoming].slice(-LOG_TAIL_LIMIT) };
 }

@@ -7,11 +7,13 @@
  */
 import { onCleanup, onMount, type JSX } from "solid-js";
 import { createStore } from "solid-js/store";
-import { LiveContext, LOG_TAIL_LIMIT, nextTargetLive, type LiveState } from "./live";
+import { LiveContext, nextLog, nextTargetLive, type LiveState } from "./live";
 import type { ServiceState } from "../canvas.model";
+import { canvasPaths } from "./api";
 
-/** Canvas SSE 端点（部署 status/running、容器 state、日志、发现层变化） */
-export const EVENTS_URL = "/api/canvas/events";
+/** Canvas SSE 端点（部署 status/running、容器 state、日志、发现层变化）——
+ *  EventSource 走不了 Eden，但路径仍用 codegen 的 URL 助手，端点搬家不会漏改。 */
+export const EVENTS_URL = canvasPaths.events();
 
 export function LiveProvider(props: { children: JSX.Element }) {
   const [live, setLive] = createStore<LiveState>({ targets: {}, services: {}, logs: {} });
@@ -22,13 +24,9 @@ export function LiveProvider(props: { children: JSX.Element }) {
       try {
         const msg = JSON.parse(e.data) as Record<string, unknown>;
         if (msg.type === "log") {
-          // 高频帧走按键写入：按 target 增量合并，不整树替换
+          // 高频帧走按键写入：按 target 增量合并，不整树替换；合并语义在 nextLog（有单测）
           const id = msg.targetId as number;
-          const runId = msg.runId as number;
-          const incoming = (msg.lines as string[]) ?? [];
-          const cur = live.logs[id];
-          const base = cur && cur.runId === runId ? cur.lines : [];
-          setLive("logs", id, { runId, lines: [...base, ...incoming].slice(-LOG_TAIL_LIMIT) });
+          setLive("logs", id, nextLog(live.logs[id], msg));
           return;
         }
         if (msg.type === "discovery") {

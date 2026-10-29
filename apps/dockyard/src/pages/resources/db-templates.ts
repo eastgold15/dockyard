@@ -32,6 +32,14 @@ export function generatePassword(): string {
 
 export { PORTS as DB_PORTS };
 
+/** 资源名/容器名/服务名共用的字符集：compose 服务名、docker 容器名、卷名都只允许这些字符；
+ *  备份/恢复命令会把容器名拼进宿主 shell，这里也是注入防护的第一道门。 */
+const SAFE_RESOURCE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+export function assertSafeResourceName(name: string): void {
+  if (!SAFE_RESOURCE_NAME.test(name))
+    throw new ServiceError(`名称只允许字母/数字/下划线/点/连字符，且以字母或数字开头: ${name}`);
+}
+
 /** 容器命名规范：定死，部署前对账和 docker exec 都靠它 */
 export function containerNameOf(targetId: number, name: string): string {
   return `dockyard-${targetId}-${name}`;

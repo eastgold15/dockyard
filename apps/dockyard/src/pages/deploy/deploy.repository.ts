@@ -107,6 +107,14 @@ export class DeployRepository {
     return this.db.update(deployments).set(patch).where(eq(deployments.id, id));
   }
 
+  /** 非终态 run（启动对账用：这些是上次进程中断的残留，内存里已无人推进） */
+  unfinishedDeployments(): Promise<Deployment[]> {
+    return this.db
+      .select()
+      .from(deployments)
+      .where(notInArray(deployments.status, ["success", "failed"]));
+  }
+
   /**
    * 日志分块追加（替代 logText 读改写——长构建日志数 MB，全列重写既慢又放大 WAL）。
    * seq 取库内 MAX+1：pipeline 生命周期内可能多段写（execLongRemote 回调），

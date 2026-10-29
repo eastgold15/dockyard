@@ -7,6 +7,7 @@ export type { SharedEnv } from "./resources.service";
 export {
   DB_PORTS,
   LOGICAL_DB_SUPPORT,
+  assertSafeResourceName,
   containerNameOf,
   dbCompose,
   dbProjectNameOf,

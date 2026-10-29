@@ -30,6 +30,7 @@ import {
 } from "./pipeline";
 import { dbContainerForm, dbLogicalForm, githubAppForm, localAppForm } from "./forms";
 import {
+  assertSafeResourceName,
   containerNameOf,
   dbCompose,
   generatePassword,
@@ -117,16 +118,41 @@ export class DeployService {
   }
 
   /** SSE 首帧快照：每个 target 最近一次 run 的 status/stage。
-   *  没有它，页面刷新后已部署的卡会一直显示「未部署」直到下一次状态事件。 */
+   *  没有它，页面刷新后已部署的卡会一直显示「未部署」直到下一次状态事件。
+   *  进行中的 run 先发 running（前端据此显示「部署中」并清旧 stage），再发 status（带回 stage）。 */
   async statusSnapshot(): Promise<CanvasEvent[]> {
     const out: CanvasEvent[] = [];
     for (const node of await this.canvas.nodesAll()) {
       for (const t of await this.repo.targetsOfNode(node.id)) {
         const dep = await this.repo.latestDeployment(t.id);
-        if (dep) out.push({ type: "status", targetId: t.id, status: dep.status, stage: dep.stage ?? undefined });
+        if (!dep) continue;
+        if (dep.status !== "success" && dep.status !== "failed")
+          out.push({ type: "running", targetId: t.id, running: true });
+        out.push({
+          type: "status",
+          targetId: t.id,
+          status: dep.status,
+          ...(dep.stage ? { stage: dep.stage } : {}),
+        });
       }
     }
     return out;
+  }
+
+  /**
+   * 启动对账：非终态 run 是上次进程中断的残留（流水线只在内存里，重启后已无人推进）。
+   * 标记 failed 并推 SSE，避免画布永远卡在「部署中」、按钮被一个不存在的进行中部署挡住。
+   */
+  async reconcileInterrupted(): Promise<number> {
+    const rows = await this.repo.unfinishedDeployments();
+    for (const run of rows) {
+      await this.repo.updateDeployment(run.id, { status: "failed", finishedAt: new Date() });
+      await this.repo
+        .appendLogChunk(run.id, "\n[中断] 控制面进程重启，该次部署未完成（如需重试请重新部署）\n")
+        .catch(() => {});
+      events.publish(CANVAS_CHANNEL, { type: "status", targetId: run.targetId, status: "failed" });
+    }
+    return rows.length;
   }
 
   /** 整段日志（分块拼接；兼容存量 logText 行） */
@@ -393,6 +419,7 @@ export class DeployService {
   /** 数据库目标（实例）：模板 compose + 凭据在创建时生成一次，enc1: 加密存 envJson。
    *  容器名/所有权标签依赖 target id，先建行再回填。 */
   async createDbTarget(input: { nodeId: number; name: string; dbType: DbType; remoteDir: string; projectId?: number }) {
+    assertSafeResourceName(input.name);
     await this.assertNameFree(input.nodeId, "db", input.name);
     if (!input.remoteDir.trim()) throw new ServiceError("新建实例需要填写远端目录");
     const target = await this.repo.createTarget({ kind: "db", ...input });

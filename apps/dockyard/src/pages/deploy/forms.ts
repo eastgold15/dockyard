@@ -254,6 +254,8 @@ export const dbContainerForm: DeployForm = {
       project: rendered.project,
       containerNames: [target.containerName],
       composeArgs: "",
+      // 模板不构建、镜像/配置都没变：重部署不该把数据库容器重建重启
+      forceRecreate: false,
       snapshot: { compose: rendered.compose, override: "", env: rendered.env },
     };
   },

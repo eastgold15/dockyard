@@ -1332,9 +1332,18 @@ function NetworkTab(props: { data: ServiceDrawerData; svc?: string; mutate: Muta
 
 function BackupsTab(props: { data: ServiceDrawerData; mutate: Mutate }) {
   const t = () => props.data.target;
-  // 待确认恢复的备份文件：恢复是破坏性操作，点「恢复」先进入二次确认，不直接提交
-  const [pending, setPending] = createSignal<string | null>(null);
   const restorable = () => Boolean(props.data.backupRestorable);
+  // 恢复是破坏性操作：统一走应用内确认框（Esc/遮罩=取消），确认后才提交
+  const restore = async (file: string) => {
+    const ok = await confirmAction({
+      title: "从备份恢复？",
+      body: `将用 ${file} 覆盖当前实例的数据。恢复前会自动做一次安全备份，但恢复过程仍可能影响正在使用该库的服务。`,
+      confirmLabel: "确认恢复",
+      danger: true,
+    });
+    if (!ok) return;
+    await props.mutate(() => unwrap(api.targets({ id: t().id }).restore.post({ file, confirm: true })));
+  };
   return (
     <>
       <div>
@@ -1345,35 +1354,6 @@ function BackupsTab(props: { data: ServiceDrawerData; mutate: Mutate }) {
           立即备份
         </button>
       </div>
-      <Show when={pending()}>
-        {(file) => (
-          <div class="rounded border border-signal-500/40 bg-signal-500/10 p-3 text-xs text-neutral-200">
-            <p class="mb-2">
-              确认用 <span class="mono text-brass-400">{file()}</span> 覆盖当前实例的数据？
-              恢复前会自动做一次安全备份，但恢复过程仍可能影响正在使用该库的服务。
-            </p>
-            <div class="flex gap-2">
-              <button
-                class="rounded bg-signal-500 px-3 py-1.5 text-xs font-semibold text-harbor-950 hover:bg-signal-600"
-                onClick={() => {
-                  // mutate 自行吞错（抽屉顶部显示 error）；确认条先收起，失败时错误仍可见
-                  const target = file();
-                  setPending(null);
-                  void props.mutate(() => unwrap(api.targets({ id: t().id }).restore.post({ file: target, confirm: true })));
-                }}
-              >
-                确认恢复
-              </button>
-              <button
-                class="rounded border border-harbor-700 px-3 py-1.5 text-xs text-neutral-300 hover:border-harbor-600"
-                onClick={() => setPending(null)}
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        )}
-      </Show>
       <div class="flex flex-col">
         <Show when={(props.data.backups ?? []).length === 0}>
           <div class="py-4 text-center text-xs text-neutral-600">还没有备份</div>
@@ -1386,7 +1366,7 @@ function BackupsTab(props: { data: ServiceDrawerData; mutate: Mutate }) {
               <span class="text-neutral-500">{fmtAgo(b.at)}</span>
               <div class="ml-auto flex items-center gap-3">
                 <Show when={restorable()}>
-                  <button class="text-signal-400 hover:text-signal-300" onClick={() => setPending(b.file)}>
+                  <button class="text-signal-400 hover:text-signal-300" onClick={() => void restore(b.file)}>
                     恢复
                   </button>
                 </Show>

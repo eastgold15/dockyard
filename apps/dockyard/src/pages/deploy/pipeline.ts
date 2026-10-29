@@ -59,6 +59,9 @@ export interface Provision {
   labelsCompose?: string;
   /** 实际 up 的服务子集（共享资源复用过滤中间件；undefined = 全量） */
   upServices?: string[];
+  /** 是否 --force-recreate（默认 true）。只构建镜像的形态需要它（同名 tag 内容会变）；
+   *  db 模板不构建、镜像/配置都不变，重部署不该无谓重启数据库容器 */
+  forceRecreate?: boolean;
   /** 源码版本（github 短 sha / local 短 sha）；有则回写 lastKnownSha 并进产物 */
   sha?: string;
   /** 产物快照原料（captureArtifact 加密落 deploy_artifacts） */
@@ -128,16 +131,20 @@ export function ownershipCompose(targetId: number, serviceNames: string[]): stri
 }
 
 /** compose up 命令（正常部署/回滚共用）：
- *  --force-recreate 必须——config hash 只看镜像名不看 digest，同名 tag 重建后 up 会继续跑旧容器。 */
+ *  --force-recreate 必须——config hash 只看镜像名不看 digest，同名 tag 重建后 up 会继续跑旧容器。
+ *  不构建镜像的形态（db 模板）可显式关掉：配置没变时重建容器 = 无谓重启数据库。 */
 export function composeUpCommand(opts: {
   dir: string;
   project?: string | null;
   /** -f 参数段（已含引号），空 = compose 默认发现 */
   files?: string;
   upServices?: string[];
+  /** 默认 true；只有明确「本次镜像/配置没变」才传 false */
+  forceRecreate?: boolean;
 }): string {
   const upArg = opts.upServices?.length ? ` ${opts.upServices.join(" ")}` : "";
-  return `cd "${opts.dir}" && docker compose${opts.project ? ` -p ${opts.project}` : ""}${opts.files ? ` ${opts.files}` : ""} up -d --force-recreate${upArg}`;
+  const force = opts.forceRecreate === false ? "" : " --force-recreate";
+  return `cd "${opts.dir}" && docker compose${opts.project ? ` -p ${opts.project}` : ""}${opts.files ? ` ${opts.files}` : ""} up -d${force}${upArg}`;
 }
 
 /** uname -m / process.arch → docker 架构名 */
@@ -355,7 +362,13 @@ export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise
   // 注意：-f 一旦指定就只认列出的文件，base 必须一起带上（composeArgs 由 provision 拼好）
   const up = await h.sshExec(
     serverId,
-    composeUpCommand({ dir: p.remoteDir, project: p.project, files: p.composeArgs, upServices: p.upServices }),
+    composeUpCommand({
+      dir: p.remoteDir,
+      project: p.project,
+      files: p.composeArgs,
+      upServices: p.upServices,
+      forceRecreate: p.forceRecreate,
+    }),
   );
   await upLog(up.stdout + up.stderr);
   if (up.code !== 0) throw new ServiceError(`远端 compose up 失败（exit ${up.code}）`);
@@ -369,9 +382,15 @@ export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise
       image: def.image,
       port: prev.find((s) => s.name === name)?.port,
     }));
-    await h.repo.updateTarget(target.id, {
-      servicesJson: { project: p.project, services: services.length ? services : prev },
-    });
+    // 回写失败绝不能把已成功的部署翻盘成失败（同 captureArtifact 纪律），只记警告：
+    // 回写失败时运行时对账会退回 dockyard-<id>，直到下次部署成功
+    try {
+      await h.repo.updateTarget(target.id, {
+        servicesJson: { project: p.project, services: services.length ? services : prev },
+      });
+    } catch (error) {
+      await log(`⚠️ 项目名回写失败（运行时对账可能不准）：${(error as Error).message}`);
+    }
   }
 
   // 有域名绑定 → edge 全量对账（路由 + 证书状态回写）。
@@ -497,6 +516,15 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
   );
   await log(up.stdout + up.stderr);
   if (up.code !== 0) throw new ServiceError(`回滚 compose up 失败（exit ${up.code}）`);
+
+  // 回滚也可能换项目名（旧产物的 compose 顶层 name 与当前不同）：同步回写，
+  // 否则 container-poller / RuntimeService 还在按新项目名找容器，回滚后全部对账失败
+  try {
+    const prev = target.servicesJson?.services ?? [];
+    await h.repo.updateTarget(target.id, { servicesJson: { project, services: prev } });
+  } catch (error) {
+    await log(`⚠️ 项目名回写失败（运行时对账可能不准）：${(error as Error).message}`);
+  }
 
   const domains = await h.edge.domainsOfTarget(target.id);
   await ctx.setStage("exposing");

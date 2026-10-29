@@ -5,7 +5,7 @@
  */
 import { expect, test } from "bun:test";
 import { parse as parseYaml } from "yaml";
-import { dbCompose } from "./db-templates";
+import { assertSafeResourceName, dbCompose } from "./db-templates";
 
 type ComposeDoc = {
   name?: string;
@@ -27,6 +27,13 @@ test("dbCompose：共享资源渲染 dockyard-res-<id> 项目名", () => {
   expect(doc.name).toBe("dockyard-res-3");
   expect(doc.services.cache!.container_name).toBe("dockyard-res-3-cache");
   expect(rendered.project).toBe("dockyard-res-3");
+});
+
+test("assertSafeResourceName：会拼进 shell/容器名/卷名的输入只允许安全字符", () => {
+  for (const ok of ["db", "my-db", "my_db", "a.b", "pg1"]) expect(() => assertSafeResourceName(ok)).not.toThrow();
+  for (const bad of ["my pg", "a;rm -rf /", "-lead", "$(id)", "库", ""]) {
+    expect(() => assertSafeResourceName(bad)).toThrow(/名称只允许/);
+  }
 });
 
 test("dbCompose：裸模板不渲染 name、不返回 project", () => {

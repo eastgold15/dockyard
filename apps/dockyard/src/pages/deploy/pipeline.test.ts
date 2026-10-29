@@ -31,6 +31,8 @@ test("composeUpCommand：-p/-f/服务子集都在，且强制重建", () => {
   );
   // 无项目名/文件/子集时也不能丢 --force-recreate
   expect(composeUpCommand({ dir: "/srv/db" })).toBe('cd "/srv/db" && docker compose up -d --force-recreate');
+  // 只有「本次镜像/配置没变」的形态（db 模板）才显式关掉强制重建
+  expect(composeUpCommand({ dir: "/srv/db", forceRecreate: false })).toBe('cd "/srv/db" && docker compose up -d');
 });
 
 test("inspectCompose：标签层压轴、容器名对账用 container_name 优先", async () => {

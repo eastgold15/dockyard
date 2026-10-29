@@ -479,8 +479,10 @@ export default defineRoutes()
     "/targets/:id/restore",
     { params: t.Object({ id: t.Number() }), body: t.Object({ file: t.String(), confirm: t.Literal(true) }) },
     async ({ di, params, body }) => {
-      const { safety } = await ctxOf(di).backup.restore(params.id, body.file);
-      return { notice: `已恢复；恢复前安全备份：${safety}` };
+      const { safety, warnings } = await ctxOf(di).backup.restore(params.id, body.file);
+      // 预期的重放噪声（当前用户自身的角色）已在服务端过滤；剩下的都是非预期错误，要提示人工核对
+      const warn = warnings > 0 ? `；但有 ${warnings} 条语句级错误（详情未回显，请核对数据完整性）` : "";
+      return { notice: `已恢复；恢复前安全备份：${safety}${warn}` };
     },
   )
   .get(

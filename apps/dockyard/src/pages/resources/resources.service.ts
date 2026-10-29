@@ -2,6 +2,7 @@ import { ServiceError } from "@elysiax/core";
 import { decryptSecret, encryptSecret } from "../../shared/crypto";
 import type { ServerResource } from "./schema";
 import {
+  assertSafeResourceName,
   dbCompose,
   instanceUrl,
   sharedContainerNameOf,
@@ -43,6 +44,7 @@ export class ResourceService {
 
   /** 创建共享资源：模板 compose + 凭据创建时生成一次，enc1: 加密存 credsJson（url 部署成功后回填） */
   async create(input: { serverId: number; name: string; dbType: DbType; envKey?: string }) {
+    assertSafeResourceName(input.name);
     const existing = await this.repo.ofServer(input.serverId);
     if (existing.some((r) => r.name === input.name))
       throw new ServiceError(`服务器上已存在同名共享资源「${input.name}」`);

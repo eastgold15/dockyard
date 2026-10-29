@@ -29,6 +29,9 @@ const di = root as Container<ServiceSpecs<ServiceMap>>;
 const local = await di.get("serverService").ensureLocal();
 // 启动即检测本机 docker：徽章/画布立刻反映真实状态（check 内部吞错，不会阻塞启动失败）
 await di.get("serverService").check(local.id);
+// 启动对账：上次进程中断留下的非终态 run 标记失败（否则画布永远显示「部署中」）
+const interrupted = await di.get("deployService").reconcileInterrupted();
+if (interrupted > 0) console.warn(`[deploy] 已将 ${interrupted} 个中断的部署标记为失败`);
 // GitHub 更新轮询：只提示不自动部署
 di.get("updatePoller").start();
 // 容器状态轮询 → 事件总线 → SSE：SSH 频率与前端用户数无关

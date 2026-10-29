@@ -29,7 +29,7 @@ import { mergeLiveRow, PipelineSteps, stagePosture, stepStates } from "./pipelin
 
 // ── 壳与通用件 ──
 
-const Modal = (props: { title: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
+export const Modal = (props: { title: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
   // 遮罩关闭要求「按下与松开都在遮罩上」：从面板里拖选文本、拖到遮罩松手时，
   // 浏览器把 click 派发到公共祖先（遮罩），只比 click 的 target 会误关
   let downOnOverlay = false;
@@ -51,7 +51,7 @@ const Modal = (props: { title: string; wide?: boolean; children: JSX.Element; on
 };
 
 /** 右侧抽屉（Railway 式配置面板） */
-const Drawer = (props: { title: string; sub?: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
+export const Drawer = (props: { title: string; sub?: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
   let downOnOverlay = false;
   return (
     <div

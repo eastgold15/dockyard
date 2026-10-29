@@ -112,11 +112,19 @@ test("discovery 帧转成 body 的 refresh 事件（结构变更走重拉）", (
   h.dispose();
 });
 
-test("坏帧不抛（JSON 解析失败/未知类型都静默跳过）", () => {
+test("坏帧不抛（JSON 解析失败/未知类型/缺 targetId 都静默跳过）", () => {
   const h = mount();
   expect(() => {
     FakeES.instances[0]!.onmessage?.(new MessageEvent("message", { data: "{" }));
     FakeES.push({ type: "unknown" });
+    // 缺 targetId：不能写进 logs["undefined"] 之类的幽灵桶，也不能污染 target 1
+    FakeES.push({ type: "log", runId: 7, lines: ["x"] });
+    FakeES.push({ type: "status", runId: 7, status: "failed" });
+    FakeES.push({ type: "state", service: "web", state: "running" });
+    // targetId 存在但 service 不是字符串：state 帧丢弃
+    FakeES.push({ type: "state", targetId: 1, service: 42, state: "running" });
   }).not.toThrow();
+  expect(h.live()!.status).toBeNull();
+  expect(h.log()).toBeNull();
   h.dispose();
 });

@@ -22,6 +22,12 @@ test("log 坏帧：runId 缺失时沿用当前块所属 run，连当前块都没
   // 已有 run 10 的块：坏帧的行仍归 10，不丢日志
   const cur = nextLog(undefined, { type: "log", runId: 10, lines: ["a"] })!;
   expect(nextLog(cur, { type: "log", lines: ["b"] })).toEqual({ runId: 10, lines: ["a", "b"] });
+  // lines 不是数组（字符串/数字/对象）：不逐字符展开、不抛错，按空帧保留已有行
+  expect(nextLog(cur, { type: "log", runId: 10, lines: "x\ny" })).toEqual({ runId: 10, lines: ["a"] });
+  expect(nextLog(cur, { type: "log", runId: 10, lines: 42 })).toEqual({ runId: 10, lines: ["a"] });
+  expect(nextLog(cur, { type: "log", runId: 10, lines: { a: 1 } })).toEqual({ runId: 10, lines: ["a"] });
+  // 数组里混入非字符串：只保留字符串元素
+  expect(nextLog(cur, { type: "log", runId: 10, lines: ["b", 7, null] })).toEqual({ runId: 10, lines: ["a", "b"] });
 });
 
 test("log 帧：行数超上限丢弃最旧行", () => {

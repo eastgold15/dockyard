@@ -146,9 +146,11 @@ test("缩放后取消：回滚到起手尺寸，而不是滚轮时刻的尺寸",
   ensureCapture();
   const resizes: { w: number; h: number; resizing: boolean }[] = [];
   const ends: { w: number; h: number }[] = [];
-  const nodes: N[] = [
+  // 必须回写 width/height：否则 rebase 读到的 props.width 永远是起手的 100，
+  // 就区分不出「回滚到 origin」和「回滚到滚轮时刻尺寸」这两种实现
+  const [nodes, setNodes] = createSignal<N[]>([
     { id: "n1", type: "box", position: { x: 0, y: 0 }, data: {}, width: 100, height: 100, selected: true },
-  ];
+  ]);
   const views = {
     box: (p: NodeViewProps<never>) => (
       <div class="box">
@@ -161,11 +163,14 @@ test("缩放后取消：回滚到起手尺寸，而不是滚轮时刻的尺寸",
   const dispose = render(
     () => (
       <FlowView
-        nodes={nodes}
+        nodes={nodes()}
         edges={[]}
         nodeViews={views}
         onNodeMove={() => {}}
-        onNodeResize={(_id, w, h, resizing) => resizes.push({ w, h, resizing })}
+        onNodeResize={(id, w, h, resizing) => {
+          resizes.push({ w, h, resizing });
+          setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, width: w, height: h } : n)));
+        }}
         onNodeResizeEnd={(id, w, h) => ends.push({ w, h })}
       />
     ),
@@ -235,6 +240,16 @@ test("多指并发：拖节点与拉另一节点各持 rebase token，缩放后�
   const n2 = nodes().find((n) => n.id === "n2")!;
   expect(n2.width!).toBeCloseTo(110 + 10 / 1.1, 5); // 拉伸基准没被拖拽覆盖
   expect(n1.position.x).toBeCloseTo(10 / 1.1, 5); // 拖拽基准也正确
+
+  // 结束拉伸（指头 1 抬起）后再次缩放：只注销自己的 token，
+  // 拖拽的基准必须仍在——旧实现无条件清空集合时这里就会用错基准跳变
+  shell1.dispatchEvent(new PointerEvent("pointermove", { pointerId: 2, button: 0, clientX: 20, clientY: 0, bubbles: true, cancelable: true }));
+  const beforeSecondZoom = nodes().find((n) => n.id === "n1")!.position.x; // 10/1.1 + 10/1.1
+  fire(resizer2, "pointerup", 1);
+  pane.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, clientX: 0, clientY: 0, bubbles: true, cancelable: true })); // k: 1.1 → 1.21
+  shell1.dispatchEvent(new PointerEvent("pointermove", { pointerId: 2, button: 0, clientX: 30, clientY: 0, bubbles: true, cancelable: true }));
+  expect(nodes().find((n) => n.id === "n1")!.position.x).toBeCloseTo(beforeSecondZoom + 10 / 1.21, 5);
+
   dispose();
   el.remove();
 });

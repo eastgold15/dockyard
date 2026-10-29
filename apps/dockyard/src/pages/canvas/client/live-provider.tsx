@@ -23,24 +23,27 @@ export function LiveProvider(props: { children: JSX.Element }) {
     es.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data) as Record<string, unknown>;
-        if (msg.type === "log") {
-          // 高频帧走按键写入：按 target 增量合并，不整树替换；合并语义在 nextLog（有单测）
-          const id = msg.targetId as number;
-          const next = nextLog(live.logs[id], msg);
-          if (next) setLive("logs", id, next);
-          return;
-        }
         if (msg.type === "discovery") {
           // 发现层集合变化（容器启停/增删）：发现卡数据是 /board 现查的快照 → 重拉结构
           document.body.dispatchEvent(new CustomEvent("refresh"));
           return;
         }
+        // 其余帧都按 target 归桶：targetId 缺失/非数字的坏帧会写进不可达的幽灵桶
+        // （logs["undefined"]），没有 target 归属就整帧丢弃
+        if (typeof msg.targetId !== "number") return;
+        const id = msg.targetId;
+        if (msg.type === "log") {
+          // 高频帧走按键写入：按 target 增量合并，不整树替换；合并语义在 nextLog（有单测）
+          const next = nextLog(live.logs[id], msg);
+          if (next) setLive("logs", id, next);
+          return;
+        }
         if (msg.type === "state") {
-          setLive("services", `${msg.targetId}:${msg.service}`, msg.state as ServiceState);
+          if (typeof msg.service !== "string") return;
+          setLive("services", `${id}:${msg.service}`, msg.state as ServiceState);
           return;
         }
         // status/running：合并语义只有 nextTargetLive 一份实现（有单测），按 target 键写入
-        const id = msg.targetId as number;
         const next = nextTargetLive(live.targets[id], msg);
         if (next) setLive("targets", id, next);
       } catch { /* 忽略坏帧 */ }

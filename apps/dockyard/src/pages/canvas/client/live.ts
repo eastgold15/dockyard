@@ -95,6 +95,10 @@ export function nextLog(
   const runId = typeof msg.runId === "number" ? msg.runId : cur?.runId;
   if (runId === undefined) return null;
   const base = cur && cur.runId === runId ? cur.lines : [];
-  const incoming = (msg.lines as string[]) ?? [];
+  // lines 必须是字符串数组：坏帧（字符串/数字/对象）若直接展开会逐字符拆行或抛错，
+  // 整帧日志静默丢失；非数组按空帧处理（保留 base，不污染）
+  const incoming = Array.isArray(msg.lines)
+    ? (msg.lines as unknown[]).filter((l): l is string => typeof l === "string")
+    : [];
   return { runId, lines: [...base, ...incoming].slice(-LOG_TAIL_LIMIT) };
 }

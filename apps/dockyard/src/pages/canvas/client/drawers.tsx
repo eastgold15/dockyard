@@ -29,18 +29,44 @@ import { mergeLiveRow, PipelineSteps, stagePosture, stepStates } from "./pipelin
 
 // ── 壳与通用件 ──
 
+/**
+ * 遮罩点击关闭的状态机（Modal/Drawer 共用，别各写一份）：
+ * 只有「同一根指针按下与松开都落在遮罩上」才关。click 的 target 是公共祖先，
+ * 两个方向都会误判——面板内拖选文本拖到遮罩松手、或按住遮罩拖进面板松手。
+ * 按 pointerId 记录按下位置：多指时互不覆盖；pointercancel 复位（手势被系统夺走不算点击）。
+ *
+ * 注：这是手写弹层（CLAUDE.md 倾向 Kobalte Dialog）。迁移会同时带来 Esc/焦点陷阱/aria，
+ * 但涉及全部抽屉的视觉与交互验证，留作独立改动，不混在正确性修复里。
+ */
+function overlayClose(onClose: () => void) {
+  const downOn = new Map<number, boolean>(); // pointerId → 按下时是否在遮罩
+  let lastUpOnOverlay = false;
+  return {
+    onPointerDown(e: PointerEvent) {
+      downOn.set(e.pointerId, e.target === e.currentTarget);
+    },
+    onPointerUp(e: PointerEvent) {
+      lastUpOnOverlay = downOn.get(e.pointerId) === true && e.target === e.currentTarget;
+      downOn.delete(e.pointerId);
+    },
+    onPointerCancel(e: PointerEvent) {
+      downOn.delete(e.pointerId);
+      lastUpOnOverlay = false;
+    },
+    onClick(e: MouseEvent) {
+      if (!lastUpOnOverlay || e.target !== e.currentTarget) return;
+      lastUpOnOverlay = false; // 一次按下只消费一次
+      onClose();
+    },
+  };
+}
+
 export const Modal = (props: { title: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
-  // 遮罩关闭要求「按下与松开都在遮罩上」：两个方向都会让 click 落到公共祖先——
-  // 从面板里拖选文本拖到遮罩松手、或按住遮罩拖进面板松手——只比 click 的 target
-  // 会误关弹窗，丢掉用户正在编辑的内容
-  let downOnOverlay = false;
   return (
     <div
       data-shell="overlay"
       class="fixed inset-0 z-40 flex items-center justify-center bg-black/70"
-      onPointerDown={(e) => { downOnOverlay = e.target === e.currentTarget; }}
-      onPointerUp={(e) => { if (e.target !== e.currentTarget) downOnOverlay = false; }}
-      onClick={(e) => { if (downOnOverlay && e.target === e.currentTarget) props.onClose(); }}
+      {...overlayClose(() => props.onClose())}
     >
       <div data-shell="panel" class={`${props.wide ? "w-[42rem]" : "w-96"} max-h-[85vh] overflow-y-auto rounded border border-harbor-700 bg-harbor-900 p-5 shadow-2xl`}>
         <div class="mb-4 flex items-center justify-between">
@@ -55,15 +81,11 @@ export const Modal = (props: { title: string; wide?: boolean; children: JSX.Elem
 
 /** 右侧抽屉（Railway 式配置面板） */
 export const Drawer = (props: { title: string; sub?: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
-  // 同 Modal：按下与松开都必须落在遮罩上（见 Modal 的注释）
-  let downOnOverlay = false;
   return (
     <div
       data-shell="overlay"
       class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-      onPointerDown={(e) => { downOnOverlay = e.target === e.currentTarget; }}
-      onPointerUp={(e) => { if (e.target !== e.currentTarget) downOnOverlay = false; }}
-      onClick={(e) => { if (downOnOverlay && e.target === e.currentTarget) props.onClose(); }}
+      {...overlayClose(() => props.onClose())}
     >
       <div data-shell="panel" class={`fixed inset-y-0 right-0 left-auto flex h-full ${props.wide ? "w-[50vw]" : "w-[36rem]"} max-w-full flex-col border-l border-harbor-700 bg-harbor-900 shadow-2xl`}>
         <div class="flex items-start justify-between border-b border-harbor-800 px-5 py-4">

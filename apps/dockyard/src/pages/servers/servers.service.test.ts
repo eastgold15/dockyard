@@ -51,9 +51,10 @@ test("ensureLocal：幂等，重复调用不新增行且字段归一", async () 
   expect((await repo.list()).length).toBe(1);
 });
 
-test("ensureLocal：存量回环行原地升级（保留 id，画布卡/目标外键不断）", async () => {
+test("ensureLocal：默认形态的存量本机行原地升级（保留 id，画布卡/目标外键不断）", async () => {
+  const me = userInfo().username;
   sqlite.run(
-    "INSERT INTO servers (name, host, port, user, createdAt) VALUES ('本机测试', '127.0.0.1', 2222, 'pori', 0)",
+    `INSERT INTO servers (name, host, port, user, createdAt) VALUES ('本机测试', 'localhost', 22, '${me}', 0)`,
   );
   const legacy = (await repo.list())[0]!;
   const local = await svc.ensureLocal();
@@ -63,10 +64,25 @@ test("ensureLocal：存量回环行原地升级（保留 id，画布卡/目标�
   expect(local.builtin).toBe(true);
 });
 
-test("create：回环地址不允许用户添加", () => {
-  expect(() =>
-    svc.create({ name: "假本机", host: "localhost", port: 22, user: "root", authType: "key" }),
-  ).toThrow(ServiceError);
+test("ensureLocal：不回环就抢——用户自己的 SSH 隧道行（127.0.0.1:2222）原样保留", async () => {
+  // 把隧道行升成 builtin 会改写 host/port/user 且钉死不可删，用户的部署目标会突然
+  // 从「隧道那头的机器」变成「本机 daemon」
+  sqlite.run(
+    `INSERT INTO servers (name, host, port, user, authType, createdAt) VALUES ('隧道', '127.0.0.1', 2222, '${userInfo().username}', 'key', 0)`,
+  );
+  const tunnel = (await repo.list())[0]!;
+  const local = await svc.ensureLocal();
+  expect(local.id).not.toBe(tunnel.id);
+  const kept = await repo.byId(tunnel.id);
+  expect(kept).toMatchObject({ host: "127.0.0.1", port: 2222, name: "隧道", builtin: false });
+});
+
+test("create：回环地址不允许用户添加（大小写/空白/IPv6 方括号/127.0.0.2 都不能绕过）", () => {
+  for (const host of ["localhost", "LOCALHOST", " localhost ", "127.0.0.1", "127.0.0.2", "[::1]", "::1", "app.localhost."]) {
+    expect(() =>
+      svc.create({ name: "假本机", host, port: 22, user: "root", authType: "key" }),
+    ).toThrow(ServiceError);
+  }
   expect(() =>
     svc.create({ name: "远程", host: "10.0.0.5", port: 22, user: "root", authType: "key" }),
   ).not.toThrow();

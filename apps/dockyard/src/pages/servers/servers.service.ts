@@ -41,9 +41,13 @@ export class ServerService {
   /**
    * 启动即认领本机（程序管理，不是用户添加的资源）：
    * - 已有内置行：字段归一到固定值（程序说了算）；
-   * - 存量回环行（老版本用户添加的 127.0.0.1:2222 之类）：原地升级为内置行，
-   *   保留 id → 画布卡/部署目标的外键不断；
+   * - 存量「默认形态的本机行」（老版本用户添加的 localhost:22、当前用户）：
+   *   原地升级为内置行，保留 id → 画布卡/部署目标的外键不断；
    * - 都没有：新建一行。
+   *
+   * 不能见回环就抢：`pori@127.0.0.1:2222` 是用户自己的 SSH 隧道，升级会把
+   * host/port/user 全部改掉、还钉上 builtin=1 不可删。只认端口 22 + 当前用户
+   * 这种「与本地进程等价」的行（同机同用户，改走本地通道没有语义变化）。
    */
   async ensureLocal(): Promise<Server> {
     const fixed = {
@@ -55,7 +59,10 @@ export class ServerService {
       builtin: true,
     };
     const all = await this.repo.list();
-    const own = all.find((s) => s.builtin) ?? all.find((s) => isLocalHost(s.host));
+    const me = userInfo().username;
+    const own =
+      all.find((s) => s.builtin) ??
+      all.find((s) => isLocalHost(s.host) && s.port === LOCAL_PORT && s.user === me);
     if (!own) return this.repo.create(fixed);
     await this.repo.update(own.id, fixed);
     return (await this.repo.byId(own.id))!;
@@ -85,12 +92,21 @@ export class ServerService {
     const server = await this.mustGet(id);
     try {
       const client = await this.transport(server.id);
-      const { stdout, code } = await client.exec(
+      const { stdout, stderr, code } = await client.exec(
         "docker version --format '{{.Server.Version}}'",
       );
       if (code !== 0) {
         await this.repo.update(id, { dockerStatus: "missing", lastCheckedAt: new Date() });
-        return { ok: false, reason: "docker-missing", message: "远端未安装 docker" };
+        // 本机没有 SSH 这层：失败可能是 daemon 没跑 / 当前用户不在 docker 组，
+        // 说成「远端未安装」会把用户引去装第二遍 docker。把 stderr 末行带出来。
+        const detail = stderr.trim().split("\n").at(-1) ?? "";
+        return {
+          ok: false,
+          reason: "docker-missing",
+          message: server.builtin
+            ? `本机 docker 不可用（daemon 未运行或当前用户无权访问${detail ? `：${detail}` : ""}）`
+            : "远端未安装 docker",
+        };
       }
       const version = stdout.trim();
       // 机器指纹：/etc/machine-id + docker Server ID，防同机重复添加 / IP 漂移误部署
@@ -145,11 +161,14 @@ export class ServerService {
     return { code: code ?? -1, output: `${stdout}\n${stderr}`.trim() };
   }
 
-  /** 远端 dockerode（经 SSH 中继 socket）；本机直连本地 docker.sock */
+  /** 远端 dockerode（经 SSH 中继 socket）；本机直连本地 docker daemon */
   async docker(id: number): Promise<Docker> {
     const server = await this.mustGet(id);
     if (server.builtin) {
-      this.localDocker ??= new Docker({ socketPath: localDockerSocket() });
+      // 不传 socketPath：dockerode 自己读 DOCKER_HOST（unix/tcp/ssh/npipe），
+      // 无环境变量时用 findDefaultUnixSocket（含 Docker Desktop 的
+      // ~/.docker/run/docker.sock）。硬钉 /var/run/docker.sock 会连错 daemon。
+      this.localDocker ??= new Docker();
       return this.localDocker;
     }
     const client = await this.sshPool.get(server);
@@ -174,11 +193,4 @@ export class ServerService {
     if (!server) throw new ServiceError(`服务器不存在: ${id}`);
     return server;
   }
-}
-
-/** 本地 docker socket：尊重 DOCKER_HOST=unix://...，否则默认 /var/run/docker.sock */
-function localDockerSocket(): string {
-  const host = process.env.DOCKER_HOST;
-  if (host?.startsWith("unix://")) return host.slice("unix://".length);
-  return "/var/run/docker.sock";
 }

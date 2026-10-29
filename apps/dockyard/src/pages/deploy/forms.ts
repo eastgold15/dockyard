@@ -9,7 +9,7 @@ import { dirname, join, normalize } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { decryptSecret } from "../../shared/crypto";
 import { parseOwnerRepo } from "../github/github.socket";
-import { isLocalHost, openServerSftp } from "../servers/servers.socket";
+import { openServerSftp } from "../servers/servers.socket";
 import { logicalDbCommands, type DbType } from "../resources/resources.socket";
 import type { Project } from "../projects/projects.socket";
 import { envFilePaths } from "./detect";
@@ -157,7 +157,8 @@ export function localAppForm(proj: Project): DeployForm {
       await ctx.setStage("transferring");
       await ctx.setStatus("transferring", { commitSha: sha });
       const server = await h.serverService.byId(serverId);
-      const sameDaemon = Boolean(server && isLocalHost(server.host));
+      // builtin 是唯一真相：回环地址上的用户 SSH 隧道走远程通道，daemon 不是同一个
+      const sameDaemon = server?.builtin === true;
       const remote = await h.serverService.docker(serverId);
       for (const image of images) {
         if (sameDaemon) {

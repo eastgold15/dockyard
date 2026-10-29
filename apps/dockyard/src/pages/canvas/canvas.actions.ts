@@ -6,7 +6,6 @@ import type { ServerService } from "../servers/servers.socket";
 import type { EdgeService } from "../edge/edge.socket";
 import type { BoardModel, CardModel, DiscoveredContainer } from "./canvas.model";
 import type { CanvasService } from "./canvas.service";
-import { isLocalHost } from "./canvas.socket";
 import { discoverContainers } from "./discovery";
 import { clampCardX, violatesLane } from "./zones";
 
@@ -83,7 +82,7 @@ async function canvasData(ctx: Ctx) {
         artifactShipped: target.artifactShipped,
       });
     }
-    const { id, name, user, host, port, dockerStatus, dockerVersion } = server;
+    const { id, name, user, host, port, dockerStatus, dockerVersion, builtin } = server;
     const groups = (await ctx.canvas.groupsOf(node.id)).map((g) => ({
       id: g.id, name: g.name, x: g.x, y: g.y, w: g.w, h: g.h,
     }));
@@ -99,7 +98,7 @@ async function canvasData(ctx: Ctx) {
     }
     cards.push({
       node: { id: node.id, x: node.x, y: node.y, w: node.w, h: node.h },
-      server: { id, name, user, host, port, dockerStatus, dockerVersion, local: isLocalHost(host) },
+      server: { id, name, user, host, port, dockerStatus, dockerVersion, local: builtin },
       targets,
       groups,
       discovered,
@@ -179,7 +178,7 @@ export default defineRoutes()
     async ({ di, body }) => {
       const ctx = ctxOf(di);
       const server = await ctx.server.byId(body.serverId);
-      const x = server ? clampCardX(isLocalHost(server.host), body.x, 320) : body.x;
+      const x = server ? clampCardX(server.builtin, body.x, 320) : body.x;
       return ctx.canvas.addNode(body.serverId, x, body.y);
     },
   )
@@ -202,7 +201,7 @@ export default defineRoutes()
         const node = await ctx.canvas.byId(params.id);
         const server = node ? await ctx.server.byId(node.serverId) : undefined;
         if (node && server) {
-          const local = isLocalHost(server.host);
+          const local = server.builtin;
           const x = body.x ?? node.x, w = body.w ?? node.w;
           if (violatesLane(local, x, w)) {
             return status(422, { error: local ? "本机服务器不能压到中立带（远程区一侧）" : "远程服务器不能压到中立带（本机区一侧）" });

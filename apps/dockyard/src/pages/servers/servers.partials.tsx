@@ -7,11 +7,10 @@ import type { ServerResource } from "../resources/resources.socket";
 import type { ServerService } from "./servers.service";
 import type { ResourceService } from "../resources/resources.socket";
 import { Badge, Button, Empty, Field, Modal, PageHeader } from "../../shared/ui";
-import { isLocalHost } from "./servers.socket";
 
-/** 本机/远程徽章（部署通道分界线：本机=回环地址，画布上两区硬隔离） */
+/** 本机/远程徽章（部署通道分界线：以 builtin 列为准，画布上两区硬隔离） */
 const scopeBadge = (s: Server) =>
-  isLocalHost(s.host) ? <Badge label="本机" tone="ok" /> : <Badge label="远程" tone="muted" />;
+  s.builtin ? <Badge label="本机" tone="ok" /> : <Badge label="远程" tone="muted" />;
 
 const dockerBadge = (s: Server) => {
   if (s.dockerStatus === "ok") return <Badge label={`docker ${s.dockerVersion ?? "ok"}`} tone="ok" />;
@@ -33,6 +32,7 @@ export const ServerRow: Component<{ server: Server; message?: string }> = ({ ser
       <span class="ml-auto">{dockerBadge(server)}</span>
       <Button label="共享资源" variant="ghost" small hxGet={routes.pages.servers.resourcesByServerId(server.id)} hxTarget="#modal-root" hxSwap="innerHTML" />
       <Button label="检测" variant="ghost" small hxPost={routes.pages.servers.ByIdCheck(server.id)} hxTarget={`#server-${server.id}`} hxSwap="outerHTML" />
+      {/* 本机不提供「安装 docker」：安装方式随发行版/权限，检测结果里已说明原因 */}
       {!server.builtin && server.dockerStatus === "missing" ? (
         <Button label="安装 docker" small hxPost={routes.pages.servers.ByIdInstallDocker(server.id)} hxTarget={`#server-${server.id}`} hxSwap="outerHTML" />
       ) : null}

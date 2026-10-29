@@ -14,7 +14,6 @@ import type { ResourceService, SharedEnv } from "../resources/resources.socket";
 import type { ServerService } from "../servers/servers.socket";
 import { parseOwnerRepo, type GithubService } from "../github/github.socket";
 import type { CanvasService } from "../canvas/canvas.socket";
-import { isLocalHost } from "../canvas/canvas.socket";
 import type { DeployRepository } from "./deploy.repository";
 import type { EdgeService } from "../edge/edge.socket";
 import { envFilePaths, type DetectedService } from "./detect";
@@ -710,7 +709,7 @@ export class DeployService {
       this.serverService.byId(oldNode.serverId),
       this.serverService.byId(node.serverId),
     ]);
-    const crossing = isLocalHost(oldServer?.host ?? "") !== isLocalHost(newServer?.host ?? "");
+    const crossing = Boolean(oldServer?.builtin) !== Boolean(newServer?.builtin);
     if (target.kind !== "app") {
       if (crossing)
         throw new ServiceError("数据库不能跨区移动——数据不随卡走，请在目标服务器新建实例");

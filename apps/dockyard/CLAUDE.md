@@ -39,3 +39,10 @@
 错误处理约定：services 抛 ServiceError（@elysiax/core），actions 不写 try/catch 回显；预期错误 return status(code, { error })。
 
 进行测试，需要询问我
+
+
+- 熟悉的框架和现有代码模式直接修改；
+- 只读实际要改的文件及其直接依赖；
+- 遇到真实报错或版本 API 不确定时才查文档；
+- 完成后审查实际 diff，不在修改前反复论证；
+- 不再为了“绝对稳妥”扩大检查范围。

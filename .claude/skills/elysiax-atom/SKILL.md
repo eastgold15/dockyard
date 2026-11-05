@@ -124,7 +124,7 @@ export default defineRoutes().post("/", { body: form }, async ({ di, body, toast
 ### `<name>.page.tsx` + `<name>.partials.tsx`（htmx 形态）
 
 - page = 整页壳（hx 目标容器），partials = 可替换片段组件。
-- UI 组件先用 `bunx shadcn-htmx list` 查现成组件，样式遵守 `apps/dockyard/.interface-design/system.md`。
+- UI 组件先用 `src/shared/ui/`；Button、Field、Badge、Modal、Drawer 的样式从 `styled-system/` 的 Panda recipe 获取，遵守 `apps/dockyard/.interface-design/system.md`。不再使用 shadcn-htmx registry/snippets。
 - hx 路径用 `routes.pages.<name>.*` 类型化 helper，不写裸路径。
 - `hx-on::` 属性用 spread：`{...{ "hx-on::after-request": "..." }}`。
 

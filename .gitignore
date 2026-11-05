@@ -42,8 +42,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 **/.turbo/**
 
-# 代码生成产物（elysiax gen 重新生成，勿入库）
+# 代码生成产物（Panda / elysiax 重新生成，勿入库）
 .elysiax/
+styled-system/
+panda.gen.css
 
 # Arch 打包产物
 **/packaging/pkg/

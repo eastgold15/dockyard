@@ -1,5 +1,8 @@
 import { defineLayout } from "@elysiax/core";
 import { ConfirmScript, ToastRoot, ToastScripts } from "@elysiax/htmx";
+// Panda recipe（panda/recipes.ts）：确认框复用 Button/Modal 面板样式，行为仍由 ConfirmScript 接管
+import { button, modal } from "../styled-system/recipes";
+import { cx } from "../styled-system/css";
 
 /**
  * 全局壳（L0 唯一 AppLayout）：全站外框 = <html><head>、侧边导航、toast。
@@ -46,21 +49,27 @@ export default defineLayout(({ title, content }) => (
         id="hx-confirm-dialog"
         role="alertdialog"
         aria-label="确认操作"
-        class="fixed top-1/2 left-1/2 m-0 w-96 max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-harbor-700 bg-harbor-900 p-5 text-neutral-100 shadow-2xl outline-none backdrop:bg-black/60"
+        class={cx(
+          modal({ width: "sm" }).panel,
+          // 原生 <dialog> 的定位与 ::backdrop 不能由普通 overlay slot 承担，保留必要类：
+          // 固定居中、窄屏留边距、p-5、backdrop 遮罩；panel 自带 sm(384px)/圆角/边框/Harbor 表面。
+          // panel 的 display:flex 不能覆盖原生 dialog 关闭态，故由 hidden/open:flex 接管显隐。
+          "hidden open:flex fixed top-1/2 left-1/2 m-0 max-w-[calc(100%_-_2rem)]! -translate-x-1/2 -translate-y-1/2 p-5 text-neutral-100 outline-none backdrop:bg-black/60",
+        )}
         {...{ closedby: "closerequest" }}
       >
         <p class="text-sm leading-6" data-confirm-question />
         <div class="mt-4 flex justify-end gap-2">
           <button
             type="button"
-            class="rounded border border-harbor-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-harbor-800"
+            class={button({ variant: "ghost", size: "md" })}
             onclick="this.closest('dialog').close()"
           >取消</button>
           <button
             type="button"
             data-confirm-ok
             autofocus
-            class="rounded bg-signal-500/15 px-3 py-1.5 text-sm font-semibold text-signal-500 hover:bg-signal-500/25"
+            class={button({ variant: "danger", size: "md" })}
           >确认</button>
         </div>
       </dialog>

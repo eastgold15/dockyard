@@ -12,6 +12,8 @@ import { useServiceState, useTargetLive } from "./live";
 import { emitRefresh, useUi } from "./ui";
 import { confirmAction, toast } from "./feedback";
 import { HandleView, Resizer, type FlowNodeBase } from "@elysiax/flow";
+// Panda recipe（panda/recipes.ts）：与 htmx 侧共享同一视觉契约，运行时只产 className
+import { badge } from "../../../../styled-system/recipes";
 
 export type ServerFlowNode = FlowNodeBase & { type: "server"; data: { server: CardModel["server"] } };
 export type AppFlowNode = FlowNodeBase & { type: "app"; data: { t: TargetModel } };
@@ -29,12 +31,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function Badge(props: { tone: "ok" | "warn" | "err" | "muted"; children: JSX.Element }) {
   return (
-    <span class={`rounded px-1.5 py-0.5 text-[11px] font-medium mono ${
-      props.tone === "ok" ? "bg-tide-400/10 text-tide-400"
-      : props.tone === "warn" ? "bg-brass-500/15 text-brass-500"
-      : props.tone === "err" ? "bg-signal-500/15 text-signal-500"
-      : "bg-harbor-800 text-neutral-500"
-    }`}>{props.children}</span>
+    <span class={badge({ tone: props.tone })}>{props.children}</span>
   );
 }
 

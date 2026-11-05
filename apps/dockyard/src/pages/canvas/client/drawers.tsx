@@ -27,6 +27,9 @@ import { emitRefresh, useUi } from "./ui";
 import { confirmAction, toast } from "./feedback";
 import { useDeployLog, useTargetLive } from "./live";
 import { mergeLiveRow, PipelineSteps, stagePosture, stepStates } from "./pipeline-steps";
+// Panda recipe（panda/recipes.ts）：与 htmx 侧共享同一视觉契约，运行时只产 className
+import { badge, button, drawer, field, modal } from "../../../../styled-system/recipes";
+import { cx } from "../../../../styled-system/css";
 
 // ── 壳与通用件 ──
 
@@ -63,40 +66,42 @@ function overlayClose(onClose: () => void) {
 }
 
 export const Modal = (props: { title: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
+  const m = () => modal({ width: props.wide ? "lg" : "sm" });
   return (
     <div
       data-shell="overlay"
-      class="fixed inset-0 z-40 flex items-center justify-center bg-black/70"
+      class={m().overlay}
       {...overlayClose(() => props.onClose())}
     >
-      <div data-shell="panel" class={`${props.wide ? "w-[42rem]" : "w-96"} max-h-[85vh] overflow-y-auto rounded border border-harbor-700 bg-harbor-900 p-5 shadow-2xl`}>
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-neutral-100">{props.title}</h3>
-          <button class="text-neutral-500 hover:text-neutral-200" onClick={props.onClose}>✕</button>
+      <div data-shell="panel" class={m().panel}>
+        <div class={m().header}>
+          <h3 class={m().title}>{props.title}</h3>
+          <button class={m().close} onClick={props.onClose}>✕</button>
         </div>
-        {props.children}
+        <div class={cx(m().body, "p-5")}>{props.children}</div>
       </div>
     </div>
   );
 };
 
-/** 右侧抽屉（Railway 式配置面板） */
+/** 右侧抽屉（Railway 式配置面板）：默认 576px、宽 768px，窄屏全宽（maxWidth 100% 兜底） */
 export const Drawer = (props: { title: string; sub?: string; wide?: boolean; children: JSX.Element; onClose: () => void }) => {
+  const d = () => drawer({ width: props.wide ? "lg" : "md" });
   return (
     <div
       data-shell="overlay"
-      class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+      class={d().overlay}
       {...overlayClose(() => props.onClose())}
     >
-      <div data-shell="panel" class={`fixed inset-y-0 right-0 left-auto flex h-full ${props.wide ? "w-[50vw]" : "w-[36rem]"} max-w-full flex-col border-l border-harbor-700 bg-harbor-900 shadow-2xl`}>
-        <div class="flex items-start justify-between border-b border-harbor-800 px-5 py-4">
+      <div data-shell="panel" class={d().panel}>
+        <div class={d().header}>
           <div class="flex flex-col gap-1">
-            <h3 class="text-sm font-semibold text-neutral-100">{props.title}</h3>
-            {props.sub ? <p class="text-xs text-neutral-500">{props.sub}</p> : null}
+            <h3 class={d().title}>{props.title}</h3>
+            {props.sub ? <p class={d().sub}>{props.sub}</p> : null}
           </div>
-          <button class="text-neutral-500 hover:text-neutral-200" onClick={props.onClose}>✕</button>
+          <button class={d().close} onClick={props.onClose}>✕</button>
         </div>
-        <div class="flex-1 overflow-y-auto px-5 py-4">{props.children}</div>
+        <div class={d().body}>{props.children}</div>
       </div>
     </div>
   );
@@ -121,11 +126,7 @@ const Notice = (props: { children: JSX.Element }) => (
 );
 
 const Chip = (props: { tone?: "ok" | "warn" | "muted"; children: JSX.Element }) => (
-  <span class={`rounded px-1.5 py-0.5 text-[11px] font-medium mono ${
-    props.tone === "ok" ? "bg-tide-400/10 text-tide-400"
-    : props.tone === "warn" ? "bg-brass-500/15 text-brass-500"
-    : "bg-harbor-800 text-neutral-500"
-  }`}>{props.children}</span>
+  <span class={badge({ tone: props.tone ?? "muted" })}>{props.children}</span>
 );
 
 const inputCls = "rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-200";
@@ -136,7 +137,7 @@ const Field = (props: { label: string } & JSX.InputHTMLAttributes<HTMLInputEleme
   return (
     <label class="flex flex-col gap-1 text-sm">
       <span class="text-xs text-neutral-500">{local.label}</span>
-      <input class="rounded border border-harbor-700 bg-harbor-950 px-2.5 py-1.5 text-sm text-neutral-200 outline-none focus:border-brass-500" {...rest} />
+      <input class={field()} {...rest} />
     </label>
   );
 };
@@ -146,7 +147,7 @@ const SubmitBtn = (props: { label: string; busyLabel: string; busy: boolean }) =
   <button
     type="submit"
     disabled={props.busy}
-    class="inline-flex items-center justify-center gap-2 rounded bg-brass-500 px-3 py-1.5 text-sm font-semibold text-harbor-950 transition-colors hover:bg-brass-600 disabled:pointer-events-none disabled:opacity-70"
+    class={cx(button({ variant: "primary", size: "md" }), "gap-2")}
   >
     {props.busy ? <span class="animate-spin">◌</span> : null}
     {props.busy ? props.busyLabel : props.label}

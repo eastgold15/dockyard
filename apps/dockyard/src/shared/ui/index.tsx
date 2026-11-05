@@ -1,4 +1,6 @@
 import type { Component } from "@elysiax/htmx";
+// Panda recipe（panda/recipes.ts）：htmx 侧与 Solid 侧共享同一视觉契约，运行时只产 className
+import { badge, button, field, modal } from "../../../styled-system/recipes";
 
 // ── L4 渲染件层（page-architecture.md §五）：无状态、无业务、无路由感知 ──
 // 准入条件：给它 props 出 HTML；带业务语义的组件不许进这层。
@@ -15,14 +17,9 @@ export const Button: Component<{
   hxSwap?: string;
   hxConfirm?: string;
 }> = ({ label, variant = "primary", type = "button", small, hxGet, hxPost, hxDelete, hxTarget, hxSwap, hxConfirm }) => {
-  const cls = {
-    primary: "bg-brass-500 text-harbor-950 font-semibold hover:bg-brass-600",
-    ghost: "border border-harbor-700 text-neutral-400 hover:bg-harbor-800 hover:text-neutral-200",
-    danger: "text-signal-500 border border-transparent hover:bg-signal-500/10",
-  }[variant];
   return (
     <button
-      class={`inline-flex items-center justify-center rounded transition-colors ${small ? "px-2 py-0.5 text-xs" : "px-3 py-1.5 text-sm"} ${cls}`}
+      class={button({ variant, size: small ? "sm" : "md" })}
       type={type}
       hx-get={hxGet}
       hx-post={hxPost}
@@ -40,13 +37,7 @@ export const Badge: Component<{
   label: string;
   tone?: "ok" | "warn" | "err" | "muted";
 }> = ({ label, tone = "muted" }) => {
-  const cls = {
-    ok: "bg-tide-400/10 text-tide-400",
-    warn: "bg-brass-500/15 text-brass-500",
-    err: "bg-signal-500/15 text-signal-500",
-    muted: "bg-harbor-800 text-neutral-500",
-  }[tone];
-  return <span class={`rounded px-1.5 py-0.5 text-[11px] font-medium mono ${cls}`}>{label}</span>;
+  return <span class={badge({ tone })}>{label}</span>;
 };
 
 /** 视图页头：标题 + 副标题 + 右侧操作区 */
@@ -66,7 +57,7 @@ export const Field: Component<{ label: string; name: string; type?: string; plac
   <label class="flex flex-col gap-1 text-sm">
     <span class="text-xs text-neutral-500">{label}</span>
     <input
-      class="rounded border border-harbor-700 bg-harbor-950 px-2.5 py-1.5 text-sm text-neutral-200 outline-none focus:border-brass-500"
+      class={field()}
       type={type}
       name={name}
       placeholder={placeholder ?? ""}
@@ -87,14 +78,16 @@ export const Empty: Component<{ text: string }> = ({ text }) => (
  * 模态弹窗（规格统一容器）：遮罩 60% 黑、z-60、圆角 8px、宽三档（sm 384 / md 480 / lg 672）、
  * Esc 与遮罩点击关闭。children 放进独立滚动区。确认型对话框不走这里——用 hx-confirm
  * （layout 的全局 <dialog> 单例接管）。
+ * 行为保持原样；close 关闭逻辑从依赖布局类选择器改为 data-shell 标识，避免与样式类耦合。
  */
 export const Modal: Component<{ title: string; sub?: string; width?: "sm" | "md" | "lg" }> = ({
   title, sub, width = "md", children,
 }) => {
-  const w = { sm: "w-96", md: "w-[30rem]", lg: "w-[42rem]" }[width];
+  const { overlay, panel, header, title: titleCls, sub: subCls, close, body } = modal({ width });
   return (
     <div
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 outline-none"
+      data-shell="overlay"
+      class={overlay}
       tabindex="-1"
       {...{
         autofocus: "autofocus",
@@ -103,21 +96,21 @@ export const Modal: Component<{ title: string; sub?: string; width?: "sm" | "md"
       }}
     >
       <div
-        class={`flex max-h-[85vh] ${w} max-w-full flex-col rounded-lg border border-harbor-700 bg-harbor-900 shadow-2xl`}
+        class={panel}
         role="dialog" aria-modal="true" aria-label={title}
       >
-        <div class="flex items-start justify-between border-b border-harbor-800 px-5 py-4">
+        <div class={header}>
           <div class="flex flex-col gap-1">
-            <h3 class="text-sm font-semibold text-neutral-100">{title}</h3>
-            {sub ? <p class="text-xs text-neutral-500">{sub}</p> : null}
+            <h3 class={titleCls}>{title}</h3>
+            {sub ? <p class={subCls}>{sub}</p> : null}
           </div>
           <button
-            class="text-neutral-500 hover:text-neutral-200"
+            class={close}
             aria-label="关闭"
-            onclick="this.closest('.fixed.inset-0').remove()"
+            onclick="this.closest('[data-shell=overlay]').remove()"
           >✕</button>
         </div>
-        <div class="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        <div class={body}>{children}</div>
       </div>
     </div>
   );

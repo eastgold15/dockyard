@@ -16,7 +16,7 @@
 
 ### servers（htmx，样板候选 #1）
 
-**状态：待视觉验收（2026-10-26 部分实施，证据 /tmp/htmx-confirm.png、/tmp/htmx-modal.png，视口 1280×633）**
+**状态：待视觉验收（2026-10-26 起局部实施；早期临时截图不作为持久验收证据）**
 
 已实施：
 - 共享资源弹窗迁移到 shared/ui `Modal`（lg 672px，遮罩 60% 黑 z-60、Esc/遮罩关闭、内容独立滚动）；
@@ -29,27 +29,28 @@
 现状差异（来自源码审查，非浏览器验收）：
 
 - 列表行已用 48px 高、名称/主机/状态/操作四段式，基本符合规范方向；
-- 添加表单与页面顶部的“添加服务器”按钮用内联黄铜实底类（`bg-brass-500 px-3 py-1.5`）而没走 `Button` 组件，与共享渲染件重复；
+- 页面顶部的“添加服务器”按钮仍用内联黄铜实底类而没走 `Button` 组件；添加表单提交按钮已复用共享 `Button`；
 - `TrustPrompt` 用 `bg-brass-500/5 + border-brass-600/40` 整段提示——符合“警告淡底”角色，待样板时确认为警告提示的标准形态；
-- 弹窗 `Modal`（共享资源）在 partials 内私有，宽 `36rem`、阴影 `shadow-2xl`、圆角 `rounded`，与规范目标（480px / 8px / 轻量阴影）有差；
+- 共享资源弹窗已复用 shared/ui `Modal`，本轮将随共享容器接入 Panda；
 - 空态已有 `Empty` 组件，文案与下一步指引合格；
 - 待样板范围：列表行、添加表单、信任提示、共享资源弹窗的规格统一 + 验收。
 
 ### projects（htmx，样板候选 #2）
 
-**状态：待视觉验收（2026-10-26 部分实施：两个弹窗迁移到 shared/ui `Modal`，扫描目录 sm 384 / 新建项目 md 480；原生 alert 的 hx-on::response-error 已删，失败走全局 toast）**
+**状态：待视觉验收（2026-10-26 部分实施：两个弹窗迁移到 shared/ui `Modal`，扫描目录 sm 384 / 新建项目 md 480）**
 
 现状差异：
 
 - 列表行与 servers 同构（48px、hover、分段），方向一致；
 - `EditorPicker` split-button 是自绘结构，待对齐按钮规格与焦点环；
-- 两个弹窗（扫描目录 / 新建项目）各自内联实现，宽度 26rem/30rem、`shadow-2xl`、圆角 `rounded-lg`，与 servers 的 36rem `rounded` 弹窗已是第三种形态——弹窗规格统一是全局任务；
+- 两个弹窗（扫描目录 / 新建项目）已复用 shared/ui `Modal`，本轮将随共享容器接入 Panda，不再各自维护宽度和遮罩；
 - 新建项目提交按钮含 htmx 加载态（`.htmx-request` + spinner），是全应用异步提交态的参考实现，待固化为规范中的提交按钮模式；
 - 待做：弹窗形态统一、主操作唯一化（页面右上两个按钮同权）、验收。
+- 2026-11-05 源码复核：`projects.partials.tsx` 仍有 3 处 `hx-on::response-error` 调用原生 `alert`；错误反馈统一不在本轮 Panda 范围内，保留为后续问题。
 
 ### canvas（Solid 整页，例外页；2026-10-25 起语义升级为世界地图）
 
-**状态：未开始（几何有业务约束，最后动）**
+**状态：待视觉验收（已有 Kobalte 反馈、xterm 日志等局部实施；本轮 Panda 控件迁移仍需浏览器验收，几何模型不动）**
 
 > 画布语义已反转：物理服务器卡全局唯一（本机/远程分区），项目只是过滤透镜。新增待验收项：透镜切换、分区线、项目徽章、透镜外建内容禁用。原差异条目仍有效：
 
@@ -58,7 +59,7 @@
 - 工作条 56px（vs 列表页页头目标 64px）——按规范允许保留紧凑布局，待确认；
 - 节点卡用 emoji（🖥 📦 🗄 ⛁ ▸）作类型标识——规范定为“暂不替换、待选统一图标来源”；
 - 抽屉 `Drawer`（576px/50vw 上限缺失窄屏兜底）与弹窗 `Modal`（384px/42rem）在 `drawers.tsx` 内私有实现，待与全局弹层规格统一；
-- `drawers.tsx` 内有未使用的 `inputCls`/`labelCls` 常量（内联类与常量并存），待清理；
+- `drawers.tsx` 的 `inputCls`/`labelCls` 常量被多处表单使用；它们尚未全部接入共享 Field，属于后续渐进迁移范围；
 - 画布 24px 点阵、Brass 虚线依赖边、节点调色已符合方向，不动几何模型；
 - 待做：弹层规格、图标策略、画布页视觉验收（拖动/缩放/连接/右键菜单/抽屉全状态）。
 
@@ -88,15 +89,22 @@
 
 ### 全局层（app.layout + global.css + shared/ui）
 
-**状态：未开始**
+**状态：待视觉验收（导航、确认框、Toast 与本轮 Panda 共享样式均有局部源码实施）**
 
 现状差异：
 
-- 侧边导航用 `bg-neutral-900 / border-neutral-800`，而全局基座是 Harbor 色系——nav 与内容不同色源，是规范明确要收敛的第一处；
+- 侧边导航已使用 Harbor 色源，与全局基座一致；
 - 导航无当前项状态（无 `aria-current`、无选中底色）；
 - 内嵌 CDN 的 htmx/idiomorph 脚本（jsdelivr），桌面离线/内网场景是外部依赖——非视觉项，但与“工具自包含”相关，待决策是否本地化；
-- `global.css` 的 `@theme` 只定义了 9 个颜色原语，语义 token（surface/border/text 层级）未定义——样板页实施时一次补齐；
-- `shared/ui` 已有 Button/Badge/PageHeader/Field/Empty/Modal 六件（2026-10-26 Modal 入库，宽三档 sm/md/lg，htmx 三个私有弹窗已迁移）；Drawer/SubmitBtn 仍在画布私有。
+- `global.css` 保留 9 个 Tailwind 颜色原语与布局工具；本轮共享 Button/Field/Badge/Modal/Drawer 的 token 与 recipe 改由 Panda 配置统一维护，未迁移控件的语义层级仍待后续收敛；
+- `shared/ui` 已有 Button/Badge/PageHeader/Field/Empty/Modal 六件（2026-10-26 Modal 入库，宽三档 sm/md/lg，htmx 三个私有弹窗已迁移）；Drawer/SubmitBtn 仍在画布私有，本轮只共享 Panda 样式，不抽取跨运行时组件。
+
+2026-11-05 Panda 第一轮迁移（**源码已改，待用户验证与视觉验收**）：
+
+- 新增 `panda.config.ts` 与 `panda/recipes.ts`，显式启用 Panda v2 `preset-base`、关闭 preflight，并为 Button、Field、Badge、Modal、Drawer 声明静态完整变体；
+- htmx 的 shared/ui 与全局确认框、Solid 的 drawers/feedback/nodes 已改为消费同一组生成 recipe；保留各自 DOM 所有权、组件 props、Kobalte Promise 反馈和现有弹层行为；
+- 删除 `shadcn-htmx.json` 与 10 个静态 snippets；Tailwind 布局类与未纳入本轮的控件保留；
+- 最后配置修正后的代码生成、typecheck、测试、构建、doctor 和浏览器验收均由用户执行，当前不登记为通过。重点验收 servers、projects、Canvas，以及 390px 窄屏、键盘焦点和弹层尺寸。
 
 ### 其他
 
@@ -114,4 +122,4 @@
 
 ## 验收记录
 
-（暂无——尚未有任何页面进入待视觉验收。每次验收在此追加一行：页面、日期、视口、证据路径、确认人。）
+（暂无有效记录。早期 `/tmp` 截图路径不作为持久验收证据；每次验收在此追加一行：页面、日期、视口、稳定证据路径、确认人。）

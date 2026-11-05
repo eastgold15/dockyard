@@ -1,7 +1,7 @@
 # Dockyard 界面设计规范
 
 > 状态：设计方向已由用户确认，以下尺寸与模式作为后续实施基线；尚未完成样板页视觉验收。
-> 建立日期：2026-10-25。页面实施与验收状态见 [页面进度表](../docs/design/pages.md)。本文件是视觉契约，不是“已实现”的声明。
+> 建立日期：2026-10-25。页面实施与验收状态见 [页面进度表](../../docs/docs/design/pages.md)。本文件是视觉契约，不是“已实现”的声明。
 
 ## 1. 方向与边界
 
@@ -25,14 +25,15 @@ htmx 与 Solid **共享视觉契约，不共享运行时**：htmx 页面用服�
 | 资产 | 职责 |
 |---|---|
 | 本文件 | 设计方向、目标值、组件模式、例外边界 |
-| `docs/design/pages.md` | 页面清单、差异、实施状态、验收证据 |
-| `src/global.css` | 当前共享颜色原语、基础字体与 Tailwind 入口 |
+| `../docs/docs/design/pages.md` | 页面清单、差异、实施状态、验收证据 |
+| `src/global.css` | 聚合 Panda 生成 CSS、Tailwind 布局工具与共享基础样式 |
+| `panda.config.ts`、`panda/recipes.ts` | 双渲染器共享的 token、控件 recipe 与 slot recipe 唯一来源 |
+| `styled-system/` | Panda 生成的框架无关 helper；htmx 与 Solid 只消费产物，不手改 |
 | `src/shared/ui/index.tsx` | htmx 无业务渲染件：Button、Badge、PageHeader、Field、Empty |
-| `snippets/`、`shadcn-htmx.json` | 已有组件参考与 registry；优先评估，不盲目整页复制默认主题 |
 | `src/pages/canvas/client/drawers.tsx` | Solid 抽屉/弹窗与表单模式的现有实现 |
 | `src/pages/canvas/client/nodes.tsx` | Solid 节点、徽章与状态点的现有实现 |
 
-现有原语是事实来源；下文“语义角色”是使用契约，**不代表已新增同名 CSS 变量或工具类**。需要语义 token 时，在 `src/global.css` 的 Tailwind 主题中一次定义并让两种渲染器复用，不在每个页面复制一份主题。不手写第二套独立样式文件。
+现有原语是事实来源；下文“语义角色”是使用契约，**不代表所有组件都已完成迁移**。共享控件样式在 Panda 配置中一次定义并让两种渲染器复用，不在每个页面复制主题或分别补类。Tailwind 布局类在渐进迁移期间保留，不另写第二套全局样式文件。
 
 ## 3. 颜色与层级
 
@@ -117,8 +118,8 @@ Brass 的操作与警告角色用形态区分：主操作为实底按钮；警�
 - 默认右侧抽屉宽 576px，宽抽屉上限约 768px；窄屏全宽。避免只写 `50vw` 导致内容在不同屏幕上过窄或过宽。
 - 页头与关闭入口保持可用，正文独立滚动；背景遮罩统一约黑色 60%，不混用多档强模糊。
 - 必须具备语义标题、可访问关闭名称、Escape、焦点进入/约束/返回、背景不可交互。优先原生 HTML 与已有成熟组件；不要自行重写不完整的弹层行为。
-- **Solid client（canvas）的弹层基座定为 `@kobalte/core`**（2026-10-26 用户确认）：无头组件自带焦点约束/Esc/aria，样式全部走本规范的 Tailwind 色板；toast/确认框/输入框统一走 `client/feedback.tsx`（`toast()`/`confirmAction()`/`promptAction()`），禁止再出现原生 `alert/confirm/prompt`。
-- **两渲染器同一副面孔**（2026-10-26 用户确认）：Kobalte 是无头库、本身无视觉风格，"风格"= 本规范的色板与尺寸规格——htmx 侧弹层（shared/ui、shadcn-htmx 组件）必须按 canvas Kobalte 弹层的同一规格实现，行为层用原生 `<dialog>` 拿 Esc/焦点语义，不引 JS 弹层库。验收时同规格双侧对照，不允许各写一套。
+- **Solid client（canvas）的弹层基座定为 `@kobalte/core`**（2026-10-26 用户确认）：无头组件自带焦点约束/Esc/aria，共享控件外观走 Panda recipe；toast/确认框/输入框统一走 `client/feedback.tsx`（`toast()`/`confirmAction()`/`promptAction()`），禁止再出现原生 `alert/confirm/prompt`。
+- **两渲染器同一副面孔**（2026-10-26 用户确认）：Kobalte 是无头库、本身无视觉风格，"风格"= 本规范的色板与尺寸规格——2026-11-05 起 htmx 与 Solid 的 Modal/Drawer 外观统一消费 Panda slot recipe。htmx 行为层目标仍是原生 `<dialog>`，Solid 目标仍是 Kobalte；行为迁移状态以 pages.md 为准，不把样式统一当作行为已验收。
 - 菜单在视口内定位，支持键盘导航、Escape、点击外部关闭；右键入口不能是关键操作唯一入口。
 - 层级按底层内容 → 菜单 → 模态遮罩/面板 → toast 排序；canvas client 落为：菜单 `z-50` < 模态 `z-[60]` < toast `z-[70]`（Kobalte Portal 渲染）。
 
@@ -139,7 +140,7 @@ Brass 的操作与警告角色用形态区分：主操作为实底按钮；警�
 
 ## 7. 复用与禁止事项
 
-- htmx 先用 `src/shared/ui/` 与 `snippets/`；Solid 先看本原子内已有实现。组件外观一致不意味着必须跨原子引入隐式共享运行时。
+- htmx 先用 `src/shared/ui/`，Solid 先看本原子内已有实现；Button、Field、Badge、Modal、Drawer 的样式只从 Panda recipe 获取。组件外观一致不意味着必须跨原子引入隐式共享运行时。
 - 可复用模式至少有两处真实用途再抽取；跨原子分发仍遵守 socket 与显式依赖，不为 DRY 破坏原子完整性。
 - 不新增没有任务含义的色彩、渐变、重投影、巨型圆角、emoji 装饰。已有 emoji 暂不批量替换，先选定统一图标来源与可访问标签。
 - 不为新页面另挑字体、按钮尺寸、面板阴影或交互反馈。确需例外时，先在本文件写原因和范围。

@@ -14,9 +14,11 @@
 
 规范没有覆盖到的新模式：先与用户确认，确认后同步更新 system.md 与 pages.md。不得仅凭本轮对话记忆另起风格。状态纪律：文档已写 ≠ 源码已改 ≠ 浏览器验收通过；进度表只认三态（未开始 / 待视觉验收 / 已验收）。
 
-## UI - shadcn-htmx
+## UI - Panda CSS
 
-UI 组件优先用 shadcn-htmx（htmx v4 + Tailwind v4，flavour=html）。组件清单用 `bunx shadcn-htmx list` 现查，添加用 `bunx shadcn-htmx add <组件>`；registry 配置见 `shadcn-htmx.json`。
+共享控件样式统一使用 `panda.config.ts` / `panda/recipes.ts` 中的 token 与 recipe。htmx 与 Solid 只消费 `styled-system/` 生成的框架无关 helper，不使用 Panda `styled` JSX，不引入跨渲染器组件运行时，也不再使用 shadcn-htmx registry/snippets。
+
+修改 Panda 配置后运行 `bun run css:panda`；开发时可另开 `bun run panda:watch`。`styled-system/` 与 `panda.gen.css` 都是生成物，不手改。现有 Tailwind 布局类在渐进迁移期间保留。
 
 
 

@@ -1,6 +1,5 @@
-// Minimal class-name joiner. Drops falsy values; flattens arrays.
-// Equivalent to clsx for the subset we need. No tailwind-merge — author
-// the variants so they don't collide, the way shadcn does for cva-defined classes.
+// 轻量类名拼接器：忽略空值并展平数组。
+// 不负责合并冲突的 Tailwind/Panda 类；变体样式由 Panda recipe 统一定义。
 export type ClassValue = string | number | null | undefined | false | ClassValue[]
 
 export function cn(...inputs: ClassValue[]): string {

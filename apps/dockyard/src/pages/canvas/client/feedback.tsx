@@ -2,12 +2,15 @@
 /**
  * 画布 client 的应用内反馈件：toast / 确认框 / 输入框——替代原生 alert/confirm/prompt。
  * 弹层基座用 @kobalte/core（Solid 官方生态的无头 UI，对标 Radix）：Esc、焦点约束、
- * aria 语义全部内置，我们只套 Tailwind 样式（harbor/brass/signal 色板）。
+ * aria 语义全部内置；确认框与输入框复用 Panda 共享 recipe，Toast 保留现有 Tailwind 样式。
  * API 与原生用法同构（promise 化），<FeedbackHost/> 在 App 根部挂一次。
  */
 import { Dialog } from "@kobalte/core/dialog";
 import { Toast, toaster } from "@kobalte/core/toast";
 import { createSignal, Show } from "solid-js";
+// Panda recipe（panda/recipes.ts）：与 htmx 侧共享同一视觉契约，运行时只产 className
+import { button, field, modal } from "../../../../styled-system/recipes";
+import { cx } from "../../../../styled-system/css";
 
 // ── toast ─────────────────────────────────────────────────
 type Tone = "info" | "ok" | "err";
@@ -65,9 +68,10 @@ const closePrompt = (v: string | null) => {
 };
 
 // ── 宿主组件 ──────────────────────────────────────────────
-const panelCls = "w-96 rounded-lg border border-harbor-700 bg-harbor-900 p-5 shadow-2xl outline-none";
-const overlayCls = "fixed inset-0 z-[60] bg-black/60";
-const ghostBtn = "rounded border border-harbor-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-harbor-800";
+// 确认框/输入框复用 Modal sm(384px) 面板样式；Kobalte 只提供行为（Esc/焦点约束/aria），样式全走本规范
+const panelCls = cx(modal({ width: "sm" }).panel, "p-5");
+const overlayCls = modal({ width: "sm" }).overlay;
+const ghostBtn = button({ variant: "ghost", size: "md" });
 
 export function FeedbackHost() {
   return (
@@ -87,11 +91,7 @@ export function FeedbackHost() {
                   <div class="mt-4 flex justify-end gap-2">
                     <button class={ghostBtn} onClick={() => closeConfirm(false)}>取消</button>
                     <button
-                      class={`rounded px-3 py-1.5 text-sm font-semibold ${
-                        s().danger
-                          ? "bg-signal-500/15 text-signal-500 hover:bg-signal-500/25"
-                          : "bg-brass-500 text-harbor-950 hover:bg-brass-600"
-                      }`}
+                      class={s().danger ? button({ variant: "danger", size: "md" }) : button({ variant: "primary", size: "md" })}
                       onClick={() => closeConfirm(true)}
                     >
                       {s().confirmLabel ?? "确认"}
@@ -124,13 +124,13 @@ export function FeedbackHost() {
                     <input
                       name="value"
                       ref={(el) => queueMicrotask(() => { el.focus(); el.select(); })}
-                      class="w-full rounded border border-harbor-700 bg-harbor-950 px-2.5 py-1.5 text-sm text-neutral-200 outline-none focus:border-brass-500"
+                      class={field()}
                       value={s().initial ?? ""}
                       placeholder={s().placeholder ?? ""}
                     />
                     <div class="mt-4 flex justify-end gap-2">
                       <button type="button" class={ghostBtn} onClick={() => closePrompt(null)}>取消</button>
-                      <button type="submit" class="rounded bg-brass-500 px-3 py-1.5 text-sm font-semibold text-harbor-950 hover:bg-brass-600">
+                      <button type="submit" class={button({ variant: "primary", size: "md" })}>
                         确认
                       </button>
                     </div>

@@ -10,6 +10,8 @@ import { useUi } from "./ui";
 import { confirmAction, promptAction, toast } from "./feedback";
 import { clampCardX, laneRect } from "../zones";
 import { FlowView, type ConnectResult, type FlowEdge, type NodeViewProps } from "@elysiax/flow";
+import { ContextMenu, useContextMenuContext } from "@kobalte/core/context-menu";
+import { useMenuContext } from "@kobalte/core/menu";
 import { menu } from "../../../../styled-system/recipes";
 import { cx } from "../../../../styled-system/css";
 
@@ -291,7 +293,7 @@ export function Board(props: { lens: () => number | null }) {
   const [servers, setServers] = createSignal<BoardModel["servers"]>([]);
   const [nodes, setNodes] = createSignal<CanvasFlowNode[]>([]);
   const [edges, setEdges] = createSignal<FlowEdge[]>([]);
-  const [menu, setMenu] = createSignal<Menu | null>(null);
+  const [menuState, setMenuState] = createSignal<Menu | null>(null);
   let structure: CardModel[] = [];
   let flowApi!: { screenToFlowPosition(p: { x: number; y: number }): { x: number; y: number } };
 
@@ -569,11 +571,8 @@ export function Board(props: { lens: () => number | null }) {
     }
   };
 
-  const closeMenu = () => setMenu(null);
-
   // 点服务卡/db 卡 → Railway 式服务抽屉（FlowView 内部已抑制拖拽后的误点击）
   const onNodeClick = (_e: MouseEvent, node: CanvasFlowNode) => {
-    closeMenu();
     if (node.type === "service") {
       const { t, s } = node.data as { t: TargetModel; s: { name: string } };
       ui.open({ kind: "service", targetId: t.id, svc: s.name });
@@ -620,7 +619,11 @@ export function Board(props: { lens: () => number | null }) {
 
   return (
     <>
-      <FlowView
+      <ContextMenu>
+        {/* 打开桥：FlowView 的右键回调只确定菜单内容（kind/坐标），实际打开与视口内定位、键盘/Esc/焦点交给 Kobalte ContextMenu 管理。 */}
+        <MenuGate state={menuState} />
+        <ContextMenu.Trigger class="block h-full w-full">
+        <FlowView
         nodes={nodes()}
         edges={edges()}
         nodeViews={nodeViews}
@@ -641,131 +644,139 @@ export function Board(props: { lens: () => number | null }) {
         onPaneContextMenu={(e) => {
           if (servers().length === 0) return;
           const p = flowApi.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-          setMenu({ x: e.clientX, y: e.clientY, kind: "pane", flowX: Math.round(p.x), flowY: Math.round(p.y) });
+          setMenuState({ x: e.clientX, y: e.clientY, kind: "pane", flowX: Math.round(p.x), flowY: Math.round(p.y) });
         }}
         onNodeContextMenu={(e, node) => {
-          e.preventDefault();
+          e.preventDefault(); // 抑制原生菜单：Kobalte 由 MenuGate 打开，不走 Trigger 自动打开
           if (node.type === "server")
-            setMenu({ x: e.clientX, y: e.clientY, kind: "server", nodeId: Number(node.id.replace("srv-", "")), flowX: 0, flowY: 0 });
+            setMenuState({ x: e.clientX, y: e.clientY, kind: "server", nodeId: Number(node.id.replace("srv-", "")), flowX: 0, flowY: 0 });
           else if (node.type === "group")
-            setMenu({ x: e.clientX, y: e.clientY, kind: "group", groupId: Number(node.id.replace("grp-", "")), flowX: 0, flowY: 0 });
+            setMenuState({ x: e.clientX, y: e.clientY, kind: "group", groupId: Number(node.id.replace("grp-", "")), flowX: 0, flowY: 0 });
+          else
+            setMenuState(null); // app/db/service/container：操作在卡片按钮上，无右键菜单
           // app/db 卡的操作在卡片按钮上
         }}
-        onPaneClick={closeMenu}
-        onMoveStart={closeMenu}
-      />
+        />
+        </ContextMenu.Trigger>
 
-      <Show when={menu()}>
-        {(m) => (
-          <div
-            data-flow-menu class={cx(menu().panel, "fixed z-50")}
-            style={{ left: `${m().x}px`, top: `${m().y}px` }}
-            onClick={closeMenu}
-          >
-            {m().kind === "group" && m().groupId != null ? (
-              <>
-                <MenuItem
-                  label="重命名分组"
-                  onClick={async () => {
-                    // Show 的 accessor 只在同步段有效：await 前先捕获（点击即关菜单，Show 随即卸载）
-                    const groupId = m().groupId!;
-                    const name = await promptAction({ title: "重命名分组" });
-                    if (!name?.trim()) return;
-                    await unwrap(canvasApi.groups({ id: groupId }).patch({ name: name.trim() }));
-                    await refetch();
-                  }}
-                />
-                <MenuItem
-                  label="删除分组"
-                  danger
-                  onClick={async () => {
-                    const groupId = m().groupId!;
-                    const ok = await confirmAction({
-                      title: "删除分组？",
-                      body: "组内服务卡会回落到服务器卡（部署不动）。",
-                      confirmLabel: "删除",
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    await unwrap(canvasApi.groups({ id: groupId }).delete());
-                    await refetch();
-                  }}
-                />
-              </>
-            ) : m().kind === "server" && m().nodeId != null ? (
-              <>
-                {/* 建内容（部署目标）需要项目归属：世界视图（无透镜）下禁用 */}
-                <MenuItem
-                  label="部署本仓库"
-                  disabled={props.lens() == null}
-                  onClick={() => ui.open({ kind: "new-app", nodeId: m().nodeId!, projectId: props.lens() })}
-                />
-                <MenuItem
-                  label="添加数据库"
-                  disabled={props.lens() == null}
-                  onClick={() => ui.open({ kind: "new-db", nodeId: m().nodeId!, projectId: props.lens() })}
-                />
-                <MenuItem
-                  label="新建分组"
-                  onClick={async () => {
-                    // 同上：await 前捕获，否则 prompt 确认后 Show 已卸载，m() 抛 stale
-                    const nodeId = m().nodeId!;
-                    const name = await promptAction({ title: "新建分组", initial: "group" });
-                    if (!name?.trim()) return;
-                    await unwrap(canvasApi.nodes({ id: nodeId }).groups.post({ name: name.trim() }));
-                    await refetch();
-                  }}
-                />
-                <MenuItem
-                  label="移除卡片"
-                  danger
-                  onClick={async () => {
-                    const nodeId = m().nodeId!;
-                    const ok = await confirmAction({
-                      title: "移除这张卡片？",
-                      body: "只是从画布移除卡片，服务器与部署目标不动。",
-                      confirmLabel: "移除",
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    await unwrap(canvasApi.nodes({ id: nodeId }).delete());
-                    await refetch();
-                  }}
-                />
-              </>
-            ) : (
-              <For each={servers()}>
-                {(s) => (
-                  <MenuItem
-                    label={`＋ ${s.name}`}
-                    onClick={async () => {
-                      // 世界地图：建卡无 projectId（服务端幂等——同服务器已上画则返回已有卡）
-                      const flowX = m().flowX;
-                      const flowY = m().flowY;
-                      await unwrap(canvasApi.nodes.post({ serverId: s.id, x: flowX, y: flowY }));
-                      await refetch();
-                    }}
-                  />
-                )}
-              </For>
-            )}
-          </div>
-        )}
-      </Show>
+        <ContextMenu.Portal>
+          <ContextMenu.Content class={cx(menu().panel, "z-50")}>
+            <Show when={menuState()}>
+              {(m) => (
+                <>
+                  {m().kind === "group" && m().groupId != null ? (
+                    <>
+                      <ContextMenu.Item
+                        class={menu().item}
+                        onSelect={async () => {
+                          // onSelect 会关菜单（closeOnSelect）：await 前先捕获 ID，避免卸载后访问器失效
+                          const groupId = m().groupId!;
+                          const name = await promptAction({ title: "重命名分组" });
+                          if (!name?.trim()) return;
+                          await unwrap(canvasApi.groups({ id: groupId }).patch({ name: name.trim() }));
+                          await refetch();
+                        }}
+                      >重命名分组</ContextMenu.Item>
+                      <ContextMenu.Item
+                        class={menu({ tone: "danger" }).item}
+                        onSelect={async () => {
+                          const groupId = m().groupId!;
+                          const ok = await confirmAction({
+                            title: "删除分组？",
+                            body: "组内服务卡会回落到服务器卡（部署不动）。",
+                            confirmLabel: "删除",
+                            danger: true,
+                          });
+                          if (!ok) return;
+                          await unwrap(canvasApi.groups({ id: groupId }).delete());
+                          await refetch();
+                        }}
+                      >删除分组</ContextMenu.Item>
+                    </>
+                  ) : m().kind === "server" && m().nodeId != null ? (
+                    <>
+                      {/* 建内容（部署目标）需要项目归属：世界视图（无透镜）下禁用 */}
+                      <ContextMenu.Item
+                        class={menu().item}
+                        disabled={props.lens() == null}
+                        title={props.lens() == null ? "先在右上角选择一个项目" : undefined}
+                        onSelect={() => ui.open({ kind: "new-app", nodeId: m().nodeId!, projectId: props.lens() })}
+                      >部署本仓库</ContextMenu.Item>
+                      <ContextMenu.Item
+                        class={menu().item}
+                        disabled={props.lens() == null}
+                        title={props.lens() == null ? "先在右上角选择一个项目" : undefined}
+                        onSelect={() => ui.open({ kind: "new-db", nodeId: m().nodeId!, projectId: props.lens() })}
+                      >添加数据库</ContextMenu.Item>
+                      <ContextMenu.Item
+                        class={menu().item}
+                        onSelect={async () => {
+                          const nodeId = m().nodeId!;
+                          const name = await promptAction({ title: "新建分组", initial: "group" });
+                          if (!name?.trim()) return;
+                          await unwrap(canvasApi.nodes({ id: nodeId }).groups.post({ name: name.trim() }));
+                          await refetch();
+                        }}
+                      >新建分组</ContextMenu.Item>
+                      <ContextMenu.Item
+                        class={menu({ tone: "danger" }).item}
+                        onSelect={async () => {
+                          const nodeId = m().nodeId!;
+                          const ok = await confirmAction({
+                            title: "移除这张卡片？",
+                            body: "只是从画布移除卡片，服务器与部署目标不动。",
+                            confirmLabel: "移除",
+                            danger: true,
+                          });
+                          if (!ok) return;
+                          await unwrap(canvasApi.nodes({ id: nodeId }).delete());
+                          await refetch();
+                        }}
+                      >移除卡片</ContextMenu.Item>
+                    </>
+                  ) : (
+                    <For each={servers()}>
+                      {(s) => (
+                        <ContextMenu.Item
+                          class={menu().item}
+                          onSelect={async () => {
+                            // 世界地图：建卡无 projectId（服务端幂等——同服务器已上画则返回已有卡）
+                            const flowX = m().flowX;
+                            const flowY = m().flowY;
+                            await unwrap(canvasApi.nodes.post({ serverId: s.id, x: flowX, y: flowY }));
+                            await refetch();
+                          }}
+                        >＋ {s.name}</ContextMenu.Item>
+                      )}
+                    </For>
+                  )}
+                </>
+              )}
+            </Show>
+          </ContextMenu.Content>
+        </ContextMenu.Portal>
+      </ContextMenu>
     </>
   );
 }
 
-/** 右键菜单项：外观走共享 menu recipe，定位与点击行为仍由 Board 管理。 */
-function MenuItem(props: { label: string; danger?: boolean; disabled?: boolean; onClick: () => void }) {
-  return (
-    <button
-      class={menu({ tone: props.danger ? "danger" : "default" }).item}
-      disabled={props.disabled}
-      title={props.disabled ? "先在右上角选择一个项目" : undefined}
-      onClick={props.onClick}
-    >
-      {props.label}
-    </button>
-  );
+/**
+ * Kobalte ContextMenu 打开桥：把 Board 的 menuState 信号翻译成 Kobalte 的打开 + 锚点定位调用。
+ * FlowView 内部对右键事件已 preventDefault（pane）或 stopPropagation（node），
+ * Kobalte Trigger 的自动打开会被这两者拦掉；这里用 useMenuContext/useContextMenuContext
+ * 直接调用 Kobalte 的 open 与锚点定位，定位/键盘/Esc/焦点仍全由 Kobalte 管理。
+ */
+function MenuGate(props: { state: () => Menu | null }) {
+  const menuCtx = useMenuContext();
+  const ctx = useContextMenuContext();
+  createEffect(() => {
+    const m = props.state();
+    if (m) {
+      ctx.setAnchorRect({ x: m.x, y: m.y });
+      menuCtx.open(true);
+    } else {
+      menuCtx.close();
+    }
+  });
+  return null;
 }

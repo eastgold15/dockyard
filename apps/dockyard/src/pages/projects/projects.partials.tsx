@@ -40,8 +40,7 @@ export async function listModel(ctx: ModelCtx): Promise<ProjectListModel> {
  * 编辑器 split-button：主按钮 = 默认编辑器直接开；下拉换一个（服务端会把它记为新默认）。
  * 左主按钮与右下拉用 ghost sm + field 紧凑变体，Panda recipe 统一焦点环；
  * `rounded-l`/`rounded-r-none` 等几何由 Tailwind 覆盖（global.css 中 Tailwind 在 Panda 之后）。
- * 原生 response-error alert 保留：/open 的 ServiceError 对 HX-Request 返回 HTML 横幅，
- * 全局 toast 只解码 JSON，替换会丢具体错误文案（见 pages.md 本轮错误反馈保留项）。
+ * 打开失败由 elysiax 的 ServiceError JSON 与全局 Toast 统一显示具体错误。
  */
 const EditorPicker: Component<{ path: string; editors: string[]; defaultEditor: string }> = ({
   path,
@@ -59,7 +58,6 @@ const EditorPicker: Component<{ path: string; editors: string[]; defaultEditor: 
         hx-post={routes.pages.projects.open()}
         hx-vals={`js:{path:${JSON.stringify(path)},tool:${JSON.stringify(current)}}`}
         hx-swap="none"
-        {...{ "hx-on::response-error": "alert(event.detail.xhr.responseText)" }}
       >
         {current} 打开
       </button>
@@ -71,7 +69,6 @@ const EditorPicker: Component<{ path: string; editors: string[]; defaultEditor: 
         hx-vals={vals}
         hx-swap="none"
         title="选择编辑器（选中即设为默认）"
-        {...{ "hx-on::response-error": "alert(event.detail.xhr.responseText)" }}
       >
         {editors.map((e) => (
           <option value={e} selected={e === current}>
@@ -113,10 +110,7 @@ export const ProjectList: Component<ProjectListModel> = ({ local, remote, editor
                   hx-post={routes.pages.projects.open()}
                   hx-vals={`js:{path:${JSON.stringify(p.path)},tool:"lazygit"}`}
                   hx-swap="none"
-                  {...{
-                    onclick: "event.stopPropagation()",
-                    "hx-on::response-error": "alert(event.detail.xhr.responseText)",
-                  }}
+                  onclick="event.stopPropagation()"
                 >
                   lazygit
                 </button>

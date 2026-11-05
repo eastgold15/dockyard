@@ -46,7 +46,7 @@
 - 两个弹窗（扫描目录 / 新建项目）已复用 shared/ui `Modal`，本轮将随共享容器接入 Panda，不再各自维护宽度和遮罩；
 - 新建项目提交按钮含 htmx 加载态（`.htmx-request` + spinner），是全应用异步提交态的参考实现，待固化为规范中的提交按钮模式；
 - 待做：完整浏览器验收。2026-11-05 第二轮已统一两个弹窗的输入/永久标签、提交加载态与主按钮，扫描目录降为次按钮，GitHub 创建保留唯一主操作；列表补长文本截断与窄屏 padding。
-- 2026-11-05 源码复核：`projects.partials.tsx` 仍有 3 处 `hx-on::response-error` 调用原生 `alert`；错误反馈统一不在本轮 Panda 范围内，保留为后续问题。
+- 2026-11-05 错误反馈统一：elysiax `ServiceError` 对普通请求与 htmx 请求均返回 `{ error }` JSON，projects 的 3 处原生 `alert` 已删除，具体错误由全局 Toast 展示；`ValidationError` 仍保留 422 表单片段机制。源码已改，待浏览器验收。
 
 ### canvas（Solid 整页，例外页；2026-10-25 起语义升级为世界地图）
 
@@ -94,7 +94,7 @@
 - 右键菜单：容器 `shadow-2xl` → `shadow-xl`（收敛重投影）；菜单项补 Brass 焦点环、禁用加 `opacity`、危险项 Signal 淡底 hover；
 - 几何与行为不动：节点宽高/截断/几何常量未改，拖拽/缩放/连接/SSE/Kobalte Promise 反馈与业务协议未改；未引入原生 alert/confirm/prompt，无新依赖。
 
-遗留限制（本轮不越权）：右键菜单仍是「新建分组/重命名/删除分组/移除卡片/部署本仓库/添加数据库」的唯一入口，补可见入口会牵涉抽屉或业务层；右键菜单无 Esc/键盘导航（保持现有行为）。主线程已将菜单面板与菜单项继续收敛到新增 Panda `menu` slot recipe，行为不变。
+2026-11-05 右键菜单已迁移到 Kobalte `ContextMenu`：沿用 pane/server/group 上下文和既有业务动作，由 Kobalte 接管视口定位、键盘选择、Esc、外部点击与焦点管理，外观继续使用 Panda `menu` recipe；FlowView 回调只设置菜单上下文与锚点。源码已改，待浏览器验收。右键仍是部分建卡/分组操作的唯一入口，可见入口另列后续任务。
 
 2026-11-05 drawers.tsx 第二轮 Panda 迁移（源码已改，浏览器未验）：删除 `inputCls`/`labelCls`；全部 input/select/textarea 走 `field()`（textarea 用 min-h 防固定高度裁切）；全部按钮走 `button` recipe；永久标签统一；失败徽章改 Signal；修复不存在的颜色类与控制台硬编码色。节点按钮升至 32px、列表行内动作按钮化后的密度，以及 390px 窄屏仍待验收。
 

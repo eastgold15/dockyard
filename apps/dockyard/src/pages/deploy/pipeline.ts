@@ -96,6 +96,8 @@ export interface Harness {
   sshExec(serverId: number, cmd: string, retries?: number): Promise<SshExecResult>;
   /** 长跑命令远端后台执行 + 轮询日志（防 SIGHUP） */
   execLongRemote(serverId: number, cmd: string, tag: string, log: Log): Promise<{ code: number }>;
+  /** 同一服务器的远端构建互斥；不同服务器仍可并行 */
+  withBuildLock<T>(serverId: number, task: () => Promise<T>, log?: Log): Promise<T>;
   serverCaps(serverId: number): Promise<ServerCaps>;
   /** SFTP 不做 shell 展开，`~` 先解析成绝对路径 */
   resolveRemoteDir(client: ServerTransport, dir: string): Promise<string>;
@@ -168,6 +170,24 @@ export function createHarness(deps: {
   const { serverService, canvas } = deps;
   /** serverId → docker 架构名（内存缓存——硬件不会中途变） */
   const archCache = new Map<number, string>();
+  /** 每个服务器一条构建队列：compose 内逐服务构建之外，再挡住不同目标的并行构建。 */
+  const buildQueues = new Map<number, Promise<void>>();
+
+  const withBuildLock = async <T>(serverId: number, task: () => Promise<T>, log?: Log): Promise<T> => {
+    const previous = buildQueues.get(serverId);
+    if (previous) await log?.("服务器已有构建任务，当前部署排队等待 …");
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const tail = (previous ?? Promise.resolve()).then(() => current);
+    buildQueues.set(serverId, tail);
+    await previous;
+    try {
+      return await task();
+    } finally {
+      release();
+      if (buildQueues.get(serverId) === tail) buildQueues.delete(serverId);
+    }
+  };
 
   /** 带断线重连的短命令：连接失效则丢弃缓存重建后重试 */
   const sshExec = async (serverId: number, cmd: string, retries = 2): Promise<SshExecResult> => {
@@ -242,6 +262,7 @@ export function createHarness(deps: {
     ...deps,
     sshExec,
     execLongRemote,
+    withBuildLock,
     async serverCaps(serverId) {
       let arch = archCache.get(serverId);
       if (!arch) {

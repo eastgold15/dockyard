@@ -37,15 +37,23 @@ export const githubAppForm: DeployForm = {
     await ctx.setStatus("building");
     await ctx.setStage("sourcing");
     const probe = await client.exec(`[ -d "${srcDir}/.git" ] && echo yes || echo no`);
+    let cloned = false;
     if (probe.stdout.trim() !== "yes") {
       await rlog(`远端克隆 ${ownerRepo} …`);
       await client.exec(`mkdir -p "$(dirname "${srcDir}")"`);
-      const clone = await client.exec(`git clone "${authedUrl}" "${srcDir}"`);
+      const clone = await client.exec(`git clone --branch "${branch}" --single-branch "${authedUrl}" "${srcDir}"`);
       if (clone.code !== 0) throw new ServiceError(redact(`远端克隆失败（exit ${clone.code}）\n${clone.stderr}`));
       await client.exec(`git -C "${srcDir}" remote set-url origin "https://github.com/${ownerRepo}.git"`);
+      cloned = true;
     }
-    const fetch = await client.exec(`git -C "${srcDir}" fetch "${authedUrl}" "${branch}" && git -C "${srcDir}" checkout FETCH_HEAD`);
-    if (fetch.code !== 0) throw new ServiceError(redact(`远端拉取失败（exit ${fetch.code}）\n${fetch.stderr}`));
+    // 手动重试复用现有检出：构建失败后重部署不该再次访问 GitHub。
+    // 轮询发现新版本（updateAvailable）或自动部署时才 fetch + checkout。
+    if (!cloned && (ctx.run.trigger === "auto" || target.updateAvailable)) {
+      const fetch = await client.exec(`git -C "${srcDir}" fetch "${authedUrl}" "${branch}" && git -C "${srcDir}" checkout FETCH_HEAD`);
+      if (fetch.code !== 0) throw new ServiceError(redact(`远端拉取失败（exit ${fetch.code}）\n${fetch.stderr}`));
+    } else if (!cloned) {
+      await rlog("复用远端现有源码，本次不访问 GitHub");
+    }
     const sha = (await client.exec(`git -C "${srcDir}" rev-parse --short=8 HEAD`)).stdout.trim();
     await rlog(`远端构建 ${ownerRepo}@${sha} …`);
 
@@ -66,10 +74,14 @@ export const githubAppForm: DeployForm = {
       ? `docker compose -f "${composePath}" build ${target.serviceName}`
       : `for s in $(docker compose -f "${composePath}" config --services); do docker compose -f "${composePath}" build "$s" || exit 1; done`;
     await ctx.setStage("building");
-    const build = await h.execLongRemote(
+    const build = await h.withBuildLock(
       serverId,
-      `cd "${srcDir}" && ${buildCmd}`,
-      `build-${target.id}`,
+      () => h.execLongRemote(
+        serverId,
+        `cd "${srcDir}" && ${buildCmd}`,
+        `build-${target.id}`,
+        rlog,
+      ),
       rlog,
     );
     if (build.code !== 0) throw new ServiceError(`远端构建失败（exit ${build.code}）`);

@@ -10,6 +10,7 @@ const serverForm = t.Object({
   authType: t.Union([t.Literal("key"), t.Literal("password"), t.Literal("agent")]),
   keyPath: t.Optional(t.String()),
   password: t.Optional(t.String()),
+  registryMirrors: t.Optional(t.String()),
 });
 
 const DB_TYPES = [t.Literal("postgres"), t.Literal("mysql"), t.Literal("redis"), t.Literal("mongo")] as const;
@@ -20,6 +21,7 @@ export default defineRoutes()
       ...body,
       keyPath: body.keyPath || undefined,
       password: body.password || undefined,
+      registryMirrors: body.registryMirrors || undefined,
     });
     toast(`服务器「${body.name}」已添加`);
     return <ServerList servers={await di.get("serverService").list()} />;
@@ -63,6 +65,17 @@ export default defineRoutes()
       />
     );
   })
+  .post(
+    "/:id/registry-mirrors",
+    { params: t.Object({ id: t.Number() }), body: t.Object({ mirrors: t.Optional(t.String()) }) },
+    async ({ di, params, body }) => {
+      const svc = di.get("serverService");
+      const id = params.id;
+      const result = await svc.configureMirrors(id, body.mirrors ?? "");
+      const server = (await svc.byId(id))!;
+      return <ServerRow server={server} message={result.output} />;
+    },
+  )
   // ── 共享资源（弹窗内写操作，刷新 #shared-resources-body） ──
   .post(
     "/resources",

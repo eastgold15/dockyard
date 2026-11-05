@@ -10,7 +10,15 @@ import { userInfo } from "node:os";
 import { ServiceError } from "@elysiax/core";
 import { migrationsJournal } from "../../shared/migrations-journal";
 import { ServerRepository } from "./servers.repository";
-import { ServerService } from "./servers.service";
+import {
+  ServerService,
+  applyMirrorsToServer,
+  mergeRegistryMirrors,
+  normalizeMirrors,
+  parseMirrors,
+  type CheckResult,
+} from "./servers.service";
+import type { ServerExecResult, ServerSftp, ServerTransport } from "./transport";
 import { SshPool } from "./ssh-pool";
 import { DockerRelay } from "./docker-relay";
 
@@ -92,4 +100,169 @@ test("remove：内置本机不可删除", async () => {
   const local = await svc.ensureLocal();
   await expect(svc.remove(local.id)).rejects.toThrow(ServiceError);
   expect((await repo.list()).length).toBe(1);
+});
+
+// ── 镜像源：纯函数 + 远端 apply 流程（fake transport 注入，不碰真实 SSH） ──
+
+function fakeExecResult(stdout = "", code = 0): ServerExecResult {
+  return { stdout, stderr: "", code, signal: null, coreDumped: null, errorMessage: null };
+}
+
+/** 按命令子串脚本化的 fake 传输通道；同时记录写入文件与全部执行命令供断言 */
+function fakeTransport(script: {
+  uid?: string;
+  sudoOk?: boolean;
+  daemonJson?: string;
+  validateOk?: boolean;
+  applyOk?: boolean;
+}) {
+  const writes: Record<string, string> = {};
+  const execs: string[] = [];
+  const exec = async (cmd: string): Promise<ServerExecResult> => {
+    execs.push(cmd);
+    if (cmd.startsWith("id -u")) return fakeExecResult(script.uid ?? "0");
+    if (cmd.includes("sudo -n true")) return fakeExecResult("", script.sudoOk === false ? 1 : 0);
+    if (cmd.includes("cat /etc/docker/daemon.json")) return fakeExecResult(script.daemonJson ?? "{}");
+    if (cmd.includes("dockerd --validate")) return fakeExecResult("", script.validateOk === false ? 1 : 0);
+    if (cmd.startsWith("set -e\nbackup=")) return fakeExecResult("", script.applyOk === false ? 1 : 0);
+    return fakeExecResult();
+  };
+  const sftp = async (): Promise<ServerSftp> => ({
+    async write(path, contents) {
+      writes[path] = typeof contents === "string" ? contents : new TextDecoder().decode(contents);
+    },
+    async close() {},
+  });
+  return {
+    execs,
+    writes,
+    exec,
+    sftp,
+  } satisfies ServerTransport & { execs: string[]; writes: Record<string, string> };
+}
+
+test("normalizeMirrors：补 https、去空行/尾斜杠/重复，拒绝非法协议", () => {
+  expect(normalizeMirrors(" docker.1ms.run \n\n https://docker.1ms.run/\nhttps://docker.m.daocloud.io\n")).toEqual([
+    "https://docker.1ms.run",
+    "https://docker.m.daocloud.io",
+  ]);
+  expect(normalizeMirrors("   \n\n")).toEqual([]);
+  expect(() => normalizeMirrors("ftp://docker.example.com")).toThrow(/只支持 http/);
+});
+
+test("parseMirrors：JSON 数组字符串 ↔ 列表；空/非法 JSON 当 []", () => {
+  expect(parseMirrors({ registryMirrors: '["https://a","https://b"]' })).toEqual(["https://a", "https://b"]);
+  expect(parseMirrors({ registryMirrors: "not-json" })).toEqual([]);
+  expect(parseMirrors({ registryMirrors: null })).toEqual([]);
+});
+
+test("mergeRegistryMirrors：追加去重，保留远端原有配置项，空对象给默认镜像源", () => {
+  const merged = mergeRegistryMirrors({ "storage-driver": "overlay2" }, ["https://a", "https://b", "https://a"]);
+  const parsed = JSON.parse(merged);
+  expect(parsed["registry-mirrors"]).toEqual(["https://a", "https://b"]);
+  expect(parsed["storage-driver"]).toBe("overlay2");
+  // 远端原有镜像源保留在 dockyard 配置之前
+  expect(mergeRegistryMirrors({ "registry-mirrors": ["https://old"] }, ["https://new"])).toContain("https://old");
+  expect(mergeRegistryMirrors(null, ["https://new"])).toContain('"registry-mirrors"');
+});
+
+test("applyMirrorsToServer：root 直写，install 落 /etc，重启 dockerd，返回最终列表", async () => {
+  const t = fakeTransport({});
+  const final = await applyMirrorsToServer(t, ["https://a"]);
+  expect(final).toEqual(["https://a"]);
+  const written = t.writes["/tmp/dockyard-daemon.json"];
+  expect(JSON.parse(written!)).toEqual({ "registry-mirrors": ["https://a"] });
+  // root 路径不带 sudo，且 apply 前先校验、覆盖前备份、失败可回滚
+  const apply = t.execs.find((c) => c.startsWith("set -e\nbackup="))!;
+  expect(apply).toContain("\ninstall ");
+  expect(apply).toContain("cp -a /etc/docker/daemon.json");
+  expect(apply).toContain("restart docker");
+  expect(t.execs.some((c) => c.includes("dockerd --validate"))).toBe(true);
+  expect(t.execs.some((c) => c.startsWith("sudo "))).toBe(false);
+});
+
+test("applyMirrorsToServer：非 root 有免密 sudo → 读取、校验、写入和重启都带 sudo", async () => {
+  const t = fakeTransport({ uid: "1000", sudoOk: true });
+  await applyMirrorsToServer(t, ["https://a"]);
+  expect(t.execs.some((c) => c.includes("sudo cat /etc/docker/daemon.json"))).toBe(true);
+  expect(t.execs.some((c) => c.includes("sudo dockerd --validate"))).toBe(true);
+  const apply = t.execs.find((c) => c.startsWith("set -e\nbackup="))!;
+  expect(apply).toContain("sudo install ");
+  expect(apply).toContain("sudo systemctl restart docker");
+});
+
+test("applyMirrorsToServer：非 root 且无免密 sudo → 明确拒绝", async () => {
+  const t = fakeTransport({ uid: "1000", sudoOk: false });
+  await expect(applyMirrorsToServer(t, ["https://a"])).rejects.toThrow(/免密 sudo/);
+});
+
+test("applyMirrorsToServer：远端 daemon.json 非法 → 拒绝覆盖（不重启 docker）", async () => {
+  const t = fakeTransport({ daemonJson: "{not json" });
+  await expect(applyMirrorsToServer(t, ["https://a"])).rejects.toThrow(/不是合法 JSON/);
+  expect(t.execs.some((c) => c.includes("restart docker"))).toBe(false);
+});
+
+test("applyMirrorsToServer：dockerd 校验失败不覆盖原配置、不重启", async () => {
+  const t = fakeTransport({ validateOk: false });
+  await expect(applyMirrorsToServer(t, ["https://a"])).rejects.toThrow(/配置校验失败/);
+  expect(t.execs.some((c) => c.startsWith("set -e\nbackup="))).toBe(false);
+});
+
+test("applyMirrorsToServer：重启失败时报错，远端命令包含恢复备份并再次拉起", async () => {
+  const t = fakeTransport({ applyOk: false });
+  await expect(applyMirrorsToServer(t, ["https://a"])).rejects.toThrow(/自动恢复原配置/);
+  const apply = t.execs.find((c) => c.startsWith("set -e\nbackup="))!;
+  expect(apply).toContain('cp -a "$backup"');
+  expect(apply).toContain("restart_docker || true");
+});
+
+test("applyMirrorsToServer：空列表直接拒绝", async () => {
+  const t = fakeTransport({});
+  await expect(applyMirrorsToServer(t, [])).rejects.toThrow(/为空/);
+});
+
+// configureMirrors：内嵌远程通道的重写子类（只测编排，不测真 SSH）
+class FakeServerService extends ServerService {
+  transportCalls = 0;
+  constructor(transport: ServerTransport) {
+    super(new ServerRepository(dbOfFake()), new SshPool(), new DockerRelay());
+    this.fake = transport;
+  }
+  private fake: ServerTransport;
+  override async transport() {
+    this.transportCalls++;
+    return this.fake;
+  }
+  override async check(): Promise<CheckResult> {
+    return { ok: true, dockerVersion: "1.0" };
+  }
+}
+function dbOfFake() {
+  const sqlite = new Database(":memory:");
+  const db = drizzle({ client: sqlite });
+  migrate(db, migrationsJournal);
+  return db;
+}
+
+test("configureMirrors：清空列表只保存不碰远端；非空则应用并回写状态", async () => {
+  const t = fakeTransport({});
+  const fsvc = new FakeServerService(t);
+  const server = await fsvc.create({ name: "远", host: "10.0.0.5", port: 22, user: "root", authType: "key" });
+  const clear = await fsvc.configureMirrors(server.id, "  \n ");
+  expect(clear.applied).toBe(false);
+  expect(fsvc.transportCalls).toBe(0);
+  expect((await fsvc.byId(server.id))!.registryMirrors).toBeNull();
+
+  const applied = await fsvc.configureMirrors(server.id, "https://a\nhttps://a");
+  expect(applied.applied).toBe(true);
+  expect(applied.mirrors).toEqual(["https://a"]);
+  expect((await fsvc.byId(server.id))!.registryMirrors).toBe('["https://a"]');
+  expect(fsvc.transportCalls).toBe(1);
+});
+
+test("configureMirrors：内置本机拒绝", async () => {
+  const t = fakeTransport({});
+  const fsvc = new FakeServerService(t);
+  const local = await fsvc.ensureLocal();
+  await expect(fsvc.configureMirrors(local.id, "https://a")).rejects.toThrow(/本机镜像源/);
 });

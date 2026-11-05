@@ -4,7 +4,7 @@ import { t } from "elysia";
 import type { Component } from "@elysiax/htmx";
 import type { Server } from "./schema";
 import type { ServerResource } from "../resources/resources.socket";
-import type { ServerService } from "./servers.service";
+import { parseMirrors, type ServerService } from "./servers.service";
 import type { ResourceService } from "../resources/resources.socket";
 import { Badge, Button, Empty, Field, Modal, PageHeader } from "../../shared/ui";
 
@@ -37,9 +37,46 @@ export const ServerRow: Component<{ server: Server; message?: string }> = ({ ser
         <Button label="安装 docker" small hxPost={routes.pages.servers.ByIdInstallDocker(server.id)} hxTarget={`#server-${server.id}`} hxSwap="outerHTML" />
       ) : null}
       {server.builtin ? null : (
+        <button
+          class="inline-flex items-center justify-center rounded border border-harbor-700 px-2 py-0.5 text-xs text-neutral-400 transition-colors hover:bg-harbor-800 hover:text-neutral-200"
+          onclick={`document.getElementById('mirror-panel-${server.id}').classList.toggle('hidden')`}
+        >
+          镜像源
+        </button>
+      )}
+      {server.builtin ? null : (
         <Button label="删除" variant="danger" small hxDelete={routes.pages.servers.ById(server.id)} hxTarget="#main" hxSwap="innerHTML" hxConfirm={`删除服务器「${server.name}」？`} />
       )}
     </div>
+    {/* 镜像源配置面板（默认收起；应用后整行重渲染，面板随行隐藏） */}
+    {server.builtin ? null : (
+      <div id={`mirror-panel-${server.id}`} class="hidden border-t border-harbor-800/60 bg-harbor-950 px-6 py-3">
+        <form
+          class="flex max-w-xl flex-col gap-2"
+          hx-post={routes.pages.servers.ByIdRegistryMirrors(server.id)}
+          hx-target={`#server-${server.id}`}
+          hx-swap="outerHTML"
+        >
+          <label class="flex flex-col gap-1 text-sm">
+            <span class="text-xs text-neutral-500">Docker 镜像源（每行一个，docker.io 加速地址）</span>
+            <textarea
+              class="mono rounded border border-harbor-700 bg-harbor-950 px-2.5 py-1.5 text-xs text-neutral-200 outline-none focus:border-brass-500"
+              name="mirrors"
+              rows="3"
+              placeholder={"https://docker.1ms.run\nhttps://docker.m.daocloud.io"}
+            >
+              {parseMirrors(server).join("\n")}
+            </textarea>
+          </label>
+          <p class="text-xs text-neutral-500">
+            应用会把列表合并进远端 /etc/docker/daemon.json（追加不覆盖），并重启 dockerd——会短暂中断这台服务器上的运行中容器。
+          </p>
+          <div>
+            <Button label="保存并应用" type="submit" small />
+          </div>
+        </form>
+      </div>
+    )}
     {message ? (
       <pre class="mono mx-6 mb-3 max-h-40 overflow-auto rounded bg-harbor-950 p-2 text-xs whitespace-pre-wrap text-neutral-400">{message}</pre>
     ) : null}
@@ -92,6 +129,15 @@ export const ServerList: Component<{ servers: Server[] }> = ({ servers }) => (
         </label>
         <Field label="私钥路径（key 时）" name="keyPath" placeholder="~/.ssh/id_ed25519" />
         <Field label="密码（password 时）" name="password" type="password" />
+        <label class="col-span-2 flex flex-col gap-1 text-sm">
+          <span class="text-xs text-neutral-500">Docker 镜像源（每行一个，可选；添加后可在行内「保存并应用」）</span>
+          <textarea
+            class="mono rounded border border-harbor-700 bg-harbor-950 px-2.5 py-1.5 text-xs text-neutral-200 outline-none focus:border-brass-500"
+            name="registryMirrors"
+            rows="2"
+            placeholder={"https://docker.1ms.run\nhttps://docker.m.daocloud.io"}
+          />
+        </label>
         <div class="col-span-2">
           <Button label="添加" type="submit" />
         </div>

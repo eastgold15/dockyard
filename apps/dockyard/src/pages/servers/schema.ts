@@ -22,6 +22,8 @@ export const servers = sqliteTable("servers", {
   // 机器指纹：防止同一台物理机被添加两次 / IP 漂移误部署
   machineId: text(), // /etc/machine-id
   dockerId: text(), // docker info 的 Server ID
+  // Docker 镜像源（JSON 数组字符串，每行一个 URL）；applyRegistryMirrors 时写进远端 /etc/docker/daemon.json
+  registryMirrors: text(),
   lastCheckedAt: integer({ mode: "timestamp" }),
   createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });

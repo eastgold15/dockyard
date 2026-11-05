@@ -18,4 +18,10 @@ export const migrations: MigrationsJournal = [
     timestamp: 21,
     sql: "ALTER TABLE `servers` ADD `builtin` integer DEFAULT 0 NOT NULL;",
   },
+  {
+    // Docker 镜像源（JSON 数组字符串）；applyRegistryMirrors 写进远端 daemon.json
+    name: "0022_server_registry_mirrors",
+    timestamp: 22,
+    sql: "ALTER TABLE `servers` ADD `registryMirrors` text;",
+  },
 ];

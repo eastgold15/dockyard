@@ -11,6 +11,8 @@ export type NewServer = {
   keyPath?: string;
   password?: string;
   builtin?: boolean;
+  /** 镜像源（JSON 数组字符串），建服务器时可选填 */
+  registryMirrors?: string;
 };
 
 export class ServerRepository {

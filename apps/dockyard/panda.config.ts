@@ -1,5 +1,5 @@
 import { defineConfig } from "@pandacss/dev";
-import { badge, button, drawer, field, modal } from "./panda/recipes";
+import { badge, button, drawer, field, menu, modal } from "./panda/recipes";
 
 /**
  * Panda CSS 最小迁移配置。
@@ -9,9 +9,9 @@ import { badge, button, drawer, field, modal } from "./panda/recipes";
  * - preflight false：基础 reset 由 Tailwind（global.css）负责，两套不叠。
  * - outdir styled-system：生成物在 apps/dockyard/styled-system，两侧（htmx 服务端 + Solid 画布）
  *   以相对路径 import recipe 函数，运行时只产生 className 字符串，无样式 JSX。
- * - theme 只定义配色原语与五个 recipe/slotRecipe；配色值来自 global.css @theme 与设计规范，
+ * - theme 只定义配色原语与共享 recipe/slotRecipe；配色值来自 global.css @theme 与设计规范，
  *   不在页面里复制主题。
- * - staticCss.recipes 为 button/field/badge/modal/drawer 声明完整变体：Solid 侧存在运行时
+ * - staticCss.recipes 为全部共享 recipe 声明完整变体：Solid 侧存在运行时
  *   tone()/wide 三元等动态值，静态提取覆盖不到，必须预生成。
  */
 export default defineConfig({
@@ -53,7 +53,7 @@ export default defineConfig({
         },
       },
       recipes: { button, field, badge },
-      slotRecipes: { modal, drawer },
+      slotRecipes: { modal, drawer, menu },
     },
   },
   staticCss: {
@@ -63,6 +63,7 @@ export default defineConfig({
       badge: ["*"],
       modal: ["*"],
       drawer: ["*"],
+      menu: ["*"],
     },
   },
 });

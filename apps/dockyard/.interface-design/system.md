@@ -140,7 +140,7 @@ Brass 的操作与警告角色用形态区分：主操作为实底按钮；警�
 
 ## 7. 复用与禁止事项
 
-- htmx 先用 `src/shared/ui/`，Solid 先看本原子内已有实现；Button、Field、Badge、Modal、Drawer 的样式只从 Panda recipe 获取。组件外观一致不意味着必须跨原子引入隐式共享运行时。
+- htmx 先用 `src/shared/ui/`，Solid 先看本原子内已有实现；Button、Field、Badge、Modal、Drawer、Menu 的样式只从 Panda recipe 获取。组件外观一致不意味着必须跨原子引入隐式共享运行时。
 - 可复用模式至少有两处真实用途再抽取；跨原子分发仍遵守 socket 与显式依赖，不为 DRY 破坏原子完整性。
 - 不新增没有任务含义的色彩、渐变、重投影、巨型圆角、emoji 装饰。已有 emoji 暂不批量替换，先选定统一图标来源与可访问标签。
 - 不为新页面另挑字体、按钮尺寸、面板阴影或交互反馈。确需例外时，先在本文件写原因和范围。

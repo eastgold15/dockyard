@@ -1,6 +1,7 @@
 import type { Component } from "@elysiax/htmx";
 // Panda recipe（panda/recipes.ts）：htmx 侧与 Solid 侧共享同一视觉契约，运行时只产 className
 import { badge, button, field, modal } from "../../../styled-system/recipes";
+import { cn } from "./cn";
 
 // ── L4 渲染件层（page-architecture.md §五）：无状态、无业务、无路由感知 ──
 // 准入条件：给它 props 出 HTML；带业务语义的组件不许进这层。
@@ -16,10 +17,17 @@ export const Button: Component<{
   hxTarget?: string;
   hxSwap?: string;
   hxConfirm?: string;
-}> = ({ label, variant = "primary", type = "button", small, hxGet, hxPost, hxDelete, hxTarget, hxSwap, hxConfirm }) => {
+  onclick?: string;
+  class?: string;
+  disabled?: boolean;
+  ariaLabel?: string;
+}> = ({
+  label, variant = "primary", type = "button", small, hxGet, hxPost, hxDelete, hxTarget, hxSwap, hxConfirm,
+  onclick, class: className, disabled, ariaLabel, children,
+}) => {
   return (
     <button
-      class={button({ variant, size: small ? "sm" : "md" })}
+      class={cn(button({ variant, size: small ? "sm" : "md" }), className)}
       type={type}
       hx-get={hxGet}
       hx-post={hxPost}
@@ -27,8 +35,11 @@ export const Button: Component<{
       hx-target={hxTarget}
       hx-swap={hxSwap}
       hx-confirm={hxConfirm}
+      onclick={onclick}
+      {...(disabled ? { disabled: true } : {})}
+      {...(ariaLabel ? { "aria-label": ariaLabel } : {})}
     >
-      {label ?? "按钮"}
+      {children ?? label ?? "按钮"}
     </button>
   );
 };
@@ -36,40 +47,49 @@ export const Button: Component<{
 export const Badge: Component<{
   label: string;
   tone?: "ok" | "warn" | "err" | "muted";
-}> = ({ label, tone = "muted" }) => {
-  return <span class={badge({ tone })}>{label}</span>;
+}> = ({ label, tone = "muted", children, class: className }) => {
+  return <span class={cn(badge({ tone }), className)}>{children ?? label}</span>;
 };
 
-/** 视图页头：标题 + 副标题 + 右侧操作区 */
+/** 视图页头：标题 + 副标题 + 右侧操作区；目标 min-h 64px、24px 水平内边距（窄屏 16px、可换行） */
 export const PageHeader: Component<{ title: string; sub?: string }> = ({ title, sub, children }) => (
-  <div class="flex h-14 shrink-0 items-center justify-between border-b border-harbor-800 px-6">
+  <div class="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-harbor-800 px-4 py-3 sm:px-6">
     <div class="flex items-baseline gap-3">
-      <h2 class="text-sm font-semibold tracking-wide text-neutral-100">{title}</h2>
+      <h2 class="text-xl font-semibold tracking-wide text-neutral-100">{title}</h2>
       {sub ? <span class="text-xs text-neutral-500">{sub}</span> : null}
     </div>
     <div class="flex items-center gap-2">{children}</div>
   </div>
 );
 
-export const Field: Component<{ label: string; name: string; type?: string; placeholder?: string; value?: string; required?: boolean }> = ({
-  label, name, type = "text", placeholder, value, required,
-}) => (
+export const Field: Component<{
+  label: string;
+  /** 默认 <input> 的 name；传入 children（select/textarea）时由子元素自持 name */
+  name?: string;
+  type?: string;
+  placeholder?: string;
+  value?: string;
+  required?: boolean;
+}> = ({ label, name, type = "text", placeholder, value, required, children }) => (
   <label class="flex flex-col gap-1 text-sm">
     <span class="text-xs text-neutral-500">{label}</span>
-    <input
-      class={field()}
-      type={type}
-      name={name}
-      placeholder={placeholder ?? ""}
-      value={value ?? ""}
-      {...(required ? { required: true } : {})}
-    />
+    {/* 传入 children（select/textarea 等）时替代默认 input；控件外观仍由 field() recipe 统一供给 */}
+    {children ?? (
+      <input
+        class={field()}
+        type={type}
+        name={name}
+        placeholder={placeholder ?? ""}
+        value={value ?? ""}
+        {...(required ? { required: true } : {})}
+      />
+    )}
   </label>
 );
 
-/** 空态（7.3）：每个列表/数据区域必须有空态分支 */
+/** 空态（7.3）：每个列表/数据区域必须有空态分支；说明"为什么为空"与下一步 */
 export const Empty: Component<{ text: string }> = ({ text }) => (
-  <div class="flex flex-1 items-center justify-center text-sm text-neutral-600">
+  <div class="flex flex-1 items-center justify-center text-sm text-neutral-400">
     {text}
   </div>
 );

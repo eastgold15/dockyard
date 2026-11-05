@@ -12,6 +12,9 @@ import { FeedbackHost } from "./feedback";
 import { lens, setLens } from "./lens";
 import { LiveProvider } from "./live-provider";
 import { emitRefresh, UiContext, type UiBus, type View } from "./ui";
+// Panda recipe（panda/recipes.ts）：与 htmx 侧共享同一视觉契约，运行时只产 className
+import { field } from "../../../../styled-system/recipes";
+import { cx } from "../../../../styled-system/css";
 
 interface ProjectBrief { id: number; name: string }
 
@@ -90,7 +93,7 @@ export function App() {
       {/* 整页 client 壳没有 AppLayout：视口高度从这里开始，h-full 链条才有根 */}
       <div class="h-screen">
       <Show when={missing()}>
-        <div class="flex h-full items-center justify-center text-sm text-neutral-500">
+        <div class="flex h-full items-center justify-center text-sm text-neutral-400">
           先创建一个项目空间（左侧「项目」）
         </div>
       </Show>
@@ -101,12 +104,13 @@ export function App() {
               <h1 class="text-sm font-semibold text-neutral-100">
                 {lensProject()?.name ?? "世界地图"}
               </h1>
-              <p class="text-xs text-neutral-500">画布 · 空白处右键添加服务器，拖动行尾圆点连线建依赖</p>
+              <p class="text-xs text-neutral-400">画布 · 空白处右键添加服务器，拖动行尾圆点连线建依赖</p>
             </div>
             {/* 透镜选择器：全部项目（世界视图）+ 各项目 */}
             <Show when={projects().length > 0}>
+              {/* 透镜选择器走共享 field recipe；w-auto 是布局例外（工具条右侧不占满行宽） */}
               <select
-                class="rounded border border-harbor-700 bg-harbor-950 px-2 py-1 text-sm text-neutral-300"
+                class={cx(field(), "w-auto")}
                 value={lens() ?? ""}
                 onChange={(e) => {
                   const v = e.currentTarget.value;

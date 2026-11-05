@@ -24,7 +24,7 @@
 - 导航色源 neutral→harbor 统一（当前项 aria-current 待 layout 契约带路径后补）；
 - 全局 toast 样式补齐（此前 #toast-root 无样式，toast 一直是裸 div）；responseError 弹服务端 `{error}` 文本。
 
-仍待做：添加表单/TrustPrompt 细节规格、aria-current、语义 token 落 global.css。
+仍待做：aria-current（需 layout 契约提供当前路径）、完整浏览器视觉验收。2026-11-05 第二轮已把添加服务器主按钮、镜像源按钮、select/textarea、共享资源徽章接入共享控件/Panda recipe，列表行与表单补 390px 换行和单列布局；TrustPrompt 保留警告淡底。
 
 现状差异（来自源码审查，非浏览器验收）：
 
@@ -42,10 +42,10 @@
 现状差异：
 
 - 列表行与 servers 同构（48px、hover、分段），方向一致；
-- `EditorPicker` split-button 是自绘结构，待对齐按钮规格与焦点环；
+- `EditorPicker` split-button 已改为 Panda ghost sm 按钮 + field 选择器，保留原有打开行为与错误提示；
 - 两个弹窗（扫描目录 / 新建项目）已复用 shared/ui `Modal`，本轮将随共享容器接入 Panda，不再各自维护宽度和遮罩；
 - 新建项目提交按钮含 htmx 加载态（`.htmx-request` + spinner），是全应用异步提交态的参考实现，待固化为规范中的提交按钮模式；
-- 待做：弹窗形态统一、主操作唯一化（页面右上两个按钮同权）、验收。
+- 待做：完整浏览器验收。2026-11-05 第二轮已统一两个弹窗的输入/永久标签、提交加载态与主按钮，扫描目录降为次按钮，GitHub 创建保留唯一主操作；列表补长文本截断与窄屏 padding。
 - 2026-11-05 源码复核：`projects.partials.tsx` 仍有 3 处 `hx-on::response-error` 调用原生 `alert`；错误反馈统一不在本轮 Panda 范围内，保留为后续问题。
 
 ### canvas（Solid 整页，例外页；2026-10-25 起语义升级为世界地图）
@@ -87,6 +87,17 @@
 - 错误/警告/成功行按 Harbor 色板套 ANSI 颜色（Signal 红 / Brass 黄 / Tide 绿），已有 ANSI 的行不套色、不改落库原文；
 - 跟随策略：停在底部时自动跟随，向上翻阅不强制拉回，全文替换后回到底部；Terminal `disableStdin`/`convertEol`/Harbor 950 背景/12px 等宽/scrollback 5000，FitAddon + ResizeObserver，卸载 dispose。
 
+2026-11-05 画布 client 剩余内联控件迁移（源码已改，浏览器未验；只消费已定义 recipe，不新增变体）：
+
+- 节点卡内按钮全部接入共享 `button` recipe：部署 = `primary sm`（黄铜实底，卡内唯一主操作）；变量/域名/日志/连接串 = `ghost sm`；移除 ✕ 保留弱化（ghost 外壳 + 悬停才亮 Signal，避免与主按钮抢注意力）；全部补 `aria-label` 与 `nodrag`；
+- 顶部工作条透镜选择器接入共享 `field` recipe（`w-auto` 布局例外，工具条右侧不占满行宽）；空态与工具条提示对比度提升（`neutral-500` → `neutral-400`）；
+- 右键菜单：容器 `shadow-2xl` → `shadow-xl`（收敛重投影）；菜单项补 Brass 焦点环、禁用加 `opacity`、危险项 Signal 淡底 hover；
+- 几何与行为不动：节点宽高/截断/几何常量未改，拖拽/缩放/连接/SSE/Kobalte Promise 反馈与业务协议未改；未引入原生 alert/confirm/prompt，无新依赖。
+
+遗留限制（本轮不越权）：右键菜单仍是「新建分组/重命名/删除分组/移除卡片/部署本仓库/添加数据库」的唯一入口，补可见入口会牵涉抽屉或业务层；右键菜单无 Esc/键盘导航（保持现有行为）。主线程已将菜单面板与菜单项继续收敛到新增 Panda `menu` slot recipe，行为不变。
+
+2026-11-05 drawers.tsx 第二轮 Panda 迁移（源码已改，浏览器未验）：删除 `inputCls`/`labelCls`；全部 input/select/textarea 走 `field()`（textarea 用 min-h 防固定高度裁切）；全部按钮走 `button` recipe；永久标签统一；失败徽章改 Signal；修复不存在的颜色类与控制台硬编码色。节点按钮升至 32px、列表行内动作按钮化后的密度，以及 390px 窄屏仍待验收。
+
 ### 全局层（app.layout + global.css + shared/ui）
 
 **状态：待视觉验收（导航、确认框、Toast 与本轮 Panda 共享样式均有局部源码实施）**
@@ -96,8 +107,9 @@
 - 侧边导航已使用 Harbor 色源，与全局基座一致；
 - 导航无当前项状态（无 `aria-current`、无选中底色）；
 - 内嵌 CDN 的 htmx/idiomorph 脚本（jsdelivr），桌面离线/内网场景是外部依赖——非视觉项，但与“工具自包含”相关，待决策是否本地化；
-- `global.css` 保留 9 个 Tailwind 颜色原语与布局工具；本轮共享 Button/Field/Badge/Modal/Drawer 的 token 与 recipe 改由 Panda 配置统一维护，未迁移控件的语义层级仍待后续收敛；
-- `shared/ui` 已有 Button/Badge/PageHeader/Field/Empty/Modal 六件（2026-10-26 Modal 入库，宽三档 sm/md/lg，htmx 三个私有弹窗已迁移）；Drawer/SubmitBtn 仍在画布私有，本轮只共享 Panda 样式，不抽取跨运行时组件。
+- `global.css` 保留 Tailwind 颜色原语与布局工具；Button/Field/Badge/Modal/Drawer/Menu 的 token 与 recipe 由 Panda 统一维护；第二轮已迁移 servers、projects、Canvas 的剩余主要内联按钮、表单控件与状态徽章，仍待浏览器验收；
+- `shared/ui` 已有 Button/Badge/PageHeader/Field/Empty/Modal 六件；第二轮扩展 Button/Field 的向后兼容 props，页头采用 64px 最小高与窄屏换行；Drawer/SubmitBtn 仍在画布私有，只共享 Panda 样式，不抽取跨运行时组件。
+- 2026-11-05 导航补键盘焦点、44px 命中区与窄屏折叠入口；折叠使用原生 hidden 显示态，#main 外层布局避免 htmx 替换导航。当前项 aria-current 仍需 layout 提供路径后补。
 
 2026-11-05 Panda 第一轮迁移（**源码已改，待用户验证与视觉验收**）：
 

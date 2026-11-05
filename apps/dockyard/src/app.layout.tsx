@@ -28,20 +28,56 @@ export default defineLayout(({ title, content }) => (
       />
     </head>
     <body class="flex h-screen overflow-hidden">
-      {/* 导航与全局同走 Harbor 色源（规范：nav 与内容不许不同色源）；当前项状态待 layout 契约带路径后补 */}
-      <aside class="flex w-52 shrink-0 flex-col border-r border-harbor-800 bg-harbor-900">
-        <div class="flex h-14 items-center gap-2 border-b border-harbor-800 px-4 font-semibold tracking-wide text-neutral-100">
+      {/* 侧边导航与全局同走 Harbor 色源（规范：nav 与内容不许不同色源）；桌面 w-52 静态基线，
+          窄屏折叠为离屏抽屉（折叠入口在 #main 外的移动顶栏），不依赖当前路径，也不替换 #main 片段。
+          当前项状态待 layout 契约带路径后补，不伪造路径。 */}
+      <aside
+        id="site-nav"
+        class="fixed inset-y-0 left-0 z-40 flex hidden w-52 flex-col border-r border-harbor-800 bg-harbor-900 sm:static sm:flex sm:shrink-0"
+      >
+        <div class="flex h-14 shrink-0 items-center gap-2 border-b border-harbor-800 px-4 font-semibold tracking-wide text-neutral-100">
           ⚓ Dockyard
+          <button
+            type="button"
+            class={cx(button({ variant: "ghost", size: "sm" }), "ml-auto sm:hidden")}
+            aria-label="关闭导航"
+            onclick="const n=document.getElementById('site-nav');n.classList.add('hidden');const t=document.getElementById('nav-toggle');if(t)t.setAttribute('aria-expanded','false')"
+          >✕</button>
         </div>
-        <nav class="flex flex-col gap-0.5 p-2">
-          <a class="rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100" href="/projects">项目</a>
-          <a class="rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100" href="/canvas">画布</a>
-          <a class="rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100" href="/servers">服务器</a>
+        <nav class="flex flex-col gap-0.5 overflow-y-auto p-2">
+          <a
+            class="flex min-h-11 items-center rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-brass-500"
+            href="/projects"
+          >项目</a>
+          <a
+            class="flex min-h-11 items-center rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-brass-500"
+            href="/canvas"
+          >画布</a>
+          <a
+            class="flex min-h-11 items-center rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-brass-500"
+            href="/servers"
+          >服务器</a>
         </nav>
       </aside>
-      <main id="main" class="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {content}
-      </main>
+
+      {/* #main 外包一层：移动顶栏放在 #main 外，页面片段 hx-swap 只替换 #main，不波及折叠入口 */}
+      <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div class="flex h-12 shrink-0 items-center border-b border-harbor-800 bg-harbor-900 px-4 sm:hidden">
+          <button
+            id="nav-toggle"
+            type="button"
+            class={button({ variant: "ghost", size: "sm" })}
+            aria-label="打开导航"
+            aria-controls="site-nav"
+            aria-expanded="false"
+            onclick="const n=document.getElementById('site-nav');const closed=n.classList.toggle('hidden');this.setAttribute('aria-expanded',closed?'false':'true')"
+          >导航</button>
+        </div>
+        <main id="main" class="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {content}
+        </main>
+      </div>
+
       <div id="modal-root" />
       {/* hx-confirm 的样式化确认框单例（htmx 侧对标 Kobalte AlertDialog：
           原生 <dialog>.showModal() 自带 Esc/焦点约束/::backdrop，行为语义对齐） */}

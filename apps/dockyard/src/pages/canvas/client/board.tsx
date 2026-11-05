@@ -10,6 +10,8 @@ import { useUi } from "./ui";
 import { confirmAction, promptAction, toast } from "./feedback";
 import { clampCardX, laneRect } from "../zones";
 import { FlowView, type ConnectResult, type FlowEdge, type NodeViewProps } from "@elysiax/flow";
+import { menu } from "../../../../styled-system/recipes";
+import { cx } from "../../../../styled-system/css";
 
 const nodeViews = {
   server: ServerNodeView, app: AppNodeView, service: ServiceNodeView,
@@ -86,9 +88,9 @@ function fitParents(ns: CanvasFlowNode[], resizingIds?: ReadonlySet<string>): Ca
   };
   return ns.map((n) =>
     n.type === "app" ? grow(n, CHILD_W, APP_MIN_H, PAD, APP_TAIL_H)
-    : n.type === "group" ? grow(n, GROUP_MIN_W, GROUP_MIN_H, PAD, PAD)
-    : n.type === "server" ? grow(n, PAD + CHILD_W + PAD, HEADER_H + APP_MIN_H + PAD, PAD, PAD)
-    : n
+      : n.type === "group" ? grow(n, GROUP_MIN_W, GROUP_MIN_H, PAD, PAD)
+        : n.type === "server" ? grow(n, PAD + CHILD_W + PAD, HEADER_H + APP_MIN_H + PAD, PAD, PAD)
+          : n
   );
 }
 
@@ -656,7 +658,7 @@ export function Board(props: { lens: () => number | null }) {
       <Show when={menu()}>
         {(m) => (
           <div
-            data-flow-menu class="fixed z-50 min-w-40 rounded border border-harbor-700 bg-harbor-900 py-1 shadow-2xl"
+            data-flow-menu class={cx(menu().panel, "fixed z-50")}
             style={{ left: `${m().x}px`, top: `${m().y}px` }}
             onClick={closeMenu}
           >
@@ -754,14 +756,11 @@ export function Board(props: { lens: () => number | null }) {
   );
 }
 
+/** 右键菜单项：外观走共享 menu recipe，定位与点击行为仍由 Board 管理。 */
 function MenuItem(props: { label: string; danger?: boolean; disabled?: boolean; onClick: () => void }) {
   return (
     <button
-      class={`block w-full px-3 py-1.5 text-left text-sm ${
-        props.disabled
-          ? "cursor-not-allowed text-neutral-600"
-          : `hover:bg-harbor-800 ${props.danger ? "text-signal-500" : "text-neutral-200"}`
-      }`}
+      class={menu({ tone: props.danger ? "danger" : "default" }).item}
       disabled={props.disabled}
       title={props.disabled ? "先在右上角选择一个项目" : undefined}
       onClick={props.onClick}

@@ -13,7 +13,8 @@ import { emitRefresh, useUi } from "./ui";
 import { confirmAction, toast } from "./feedback";
 import { HandleView, Resizer, type FlowNodeBase } from "@elysiax/flow";
 // Panda recipe（panda/recipes.ts）：与 htmx 侧共享同一视觉契约，运行时只产 className
-import { badge } from "../../../../styled-system/recipes";
+import { badge, button } from "../../../../styled-system/recipes";
+import { cx } from "../../../../styled-system/css";
 
 export type ServerFlowNode = FlowNodeBase & { type: "server"; data: { server: CardModel["server"] } };
 export type AppFlowNode = FlowNodeBase & { type: "app"; data: { t: TargetModel } };
@@ -49,7 +50,9 @@ const StatusBadge = (props: { targetId: number }) => {
   );
 };
 
-const btn = "nodrag rounded px-2 py-0.5 text-xs transition-colors";
+// 卡内紧凑按钮：全部走共享 button recipe（sm 32px / 12px），只补 nodrag 防止触发节点拖拽；
+// extra 用于个别按钮的语义着色覆盖（如「连接串」保留 Tide 强调色）
+const cardBtn = (v: Parameters<typeof button>[0] | undefined, extra?: string) => cx(button(v), "nodrag", extra);
 
 const DomainLink = (props: { d: DomainBadge }) => (
   <a
@@ -227,17 +230,19 @@ export const AppNodeView = (props: { id: string; data: { t: TargetModel }; selec
         <For each={t().domains}>{(d) => <DomainLink d={d} />}</For>
       </div>
       <div class="mt-auto flex items-center gap-1 px-2.5 pt-1 pb-1.5" onClick={(e) => e.stopPropagation()}>
-        <button class={`${btn} bg-harbor-800 text-neutral-300 hover:bg-harbor-700`}
+        {/* 部署是本卡的唯一主操作：primary 实底黄铜；其余次按钮用 ghost */}
+        <button class={cardBtn({ variant: "primary", size: "sm" })}
           onClick={() => deployTarget(ui, t().id)}>
           {live().running ? "部署中…" : t().updateAvailable ? "更新部署" : "重新部署"}
         </button>
-        <button class={`${btn} text-neutral-500 hover:text-neutral-200`}
+        <button class={cardBtn({ variant: "ghost", size: "sm" })}
           onClick={() => ui.open({ kind: "env", targetId: t().id })}>变量</button>
-        <button class={`${btn} text-neutral-500 hover:text-neutral-200`}
+        <button class={cardBtn({ variant: "ghost", size: "sm" })}
           onClick={() => ui.open({ kind: "domains", targetId: t().id })}>域名</button>
-        <button class={`${btn} text-neutral-500 hover:text-neutral-200`}
+        <button class={cardBtn({ variant: "ghost", size: "sm" })}
           onClick={() => ui.open({ kind: "log", targetId: t().id })}>日志</button>
-        <button class={`${btn} text-neutral-600 hover:text-signal-500`}
+        {/* 移除是危险操作，但本行主操作是部署：✕ 保持弱化（ghost 外壳 + 悬停才亮 Signal），避免与主按钮抢注意力 */}
+        <button class={cardBtn({ variant: "ghost", size: "sm" }, "text-neutral-500 hover:text-signal-500")} aria-label="移除部署目标"
           onClick={() => removeTarget(t())}>✕</button>
       </div>
     </div>
@@ -298,17 +303,20 @@ export const DbNodeView = (props: { id: string; data: { t: TargetModel }; select
         </div>
       </div>
       <div class="mt-auto flex items-center gap-1 pt-1" onClick={(e) => e.stopPropagation()}>
-        <button class={`${btn} bg-harbor-800 text-neutral-300 hover:bg-harbor-700`}
+        {/* 部署是本卡的唯一主操作：primary 实底黄铜；其余次按钮用 ghost */}
+        <button class={cardBtn({ variant: "primary", size: "sm" })}
           onClick={() => deployTarget(ui, t().id)}>
           {live().running ? "部署中…" : "重新部署"}
         </button>
         <Show when={t().url}>
-          <button class={`${btn} text-tide-400 hover:text-tide-300`}
+          {/* 连接串复制是成功/就绪语义的辅助操作：ghost 外壳 + Tide 文字强调色 */}
+          <button class={cardBtn({ variant: "ghost", size: "sm" }, "text-tide-400 hover:text-tide-300")}
             onClick={() => navigator.clipboard.writeText(t().url!)}>连接串</button>
         </Show>
-        <button class={`${btn} text-neutral-500 hover:text-neutral-200`}
+        <button class={cardBtn({ variant: "ghost", size: "sm" })}
           onClick={() => ui.open({ kind: "log", targetId: t().id })}>日志</button>
-        <button class={`${btn} text-neutral-600 hover:text-signal-500`}
+        {/* 移除是危险操作，但本行主操作是部署：✕ 保持弱化（ghost 外壳 + 悬停才亮 Signal），避免与主按钮抢注意力 */}
+        <button class={cardBtn({ variant: "ghost", size: "sm" }, "text-neutral-500 hover:text-signal-500")} aria-label="移除部署目标"
           onClick={() => removeTarget(t())}>✕</button>
       </div>
     </div>

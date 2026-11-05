@@ -115,6 +115,47 @@ export const badge = defineRecipe({
   defaultVariants: { tone: "muted" },
 });
 
+/** 浮层菜单：面板与菜单项共享 Harbor 层级、Brass 焦点和 Signal 危险态；行为仍由现有组件负责。 */
+export const menu = defineSlotRecipe({
+  className: "menu",
+  slots: ["panel", "item"],
+  base: {
+    panel: {
+      minWidth: "160px",
+      paddingTop: "4px",
+      paddingBottom: "4px",
+      borderRadius: "4px",
+      border: "1px solid {colors.harbor.700}",
+      background: "harbor.900",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+    },
+    item: {
+      display: "block",
+      width: "100%",
+      paddingLeft: "12px",
+      paddingRight: "12px",
+      paddingTop: "6px",
+      paddingBottom: "6px",
+      textAlign: "left",
+      fontSize: "14px",
+      color: "neutral.200",
+      _hover: { background: "harbor.800" },
+      _focusVisible: {
+        outline: "2px solid {colors.brass.500}",
+        outlineOffset: "-2px",
+      },
+      _disabled: { color: "neutral.500", opacity: "0.6", cursor: "not-allowed" },
+    },
+  },
+  variants: {
+    tone: {
+      default: {},
+      danger: { item: { color: "signal.500", _hover: { background: "signal.500/10" } } },
+    },
+  },
+  defaultVariants: { tone: "default" },
+});
+
 /** 模态弹窗：遮罩 60% 黑、z-60、圆角 8px、宽三档 sm 384 / md 480 / lg 672、内容 ≤85vh 独立滚动。
  *   header 自带 20/16 padding 与底边框，与 Drawer 一致，调用方不再补差异。 */
 export const modal = defineSlotRecipe({

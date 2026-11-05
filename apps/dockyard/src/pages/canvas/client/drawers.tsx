@@ -125,12 +125,9 @@ const Notice = (props: { children: JSX.Element }) => (
   <div class="rounded bg-tide-400/10 px-3 py-2 text-xs text-tide-400">{props.children}</div>
 );
 
-const Chip = (props: { tone?: "ok" | "warn" | "muted"; children: JSX.Element }) => (
+const Chip = (props: { tone?: "ok" | "warn" | "err" | "muted"; children: JSX.Element }) => (
   <span class={badge({ tone: props.tone ?? "muted" })}>{props.children}</span>
 );
-
-const inputCls = "rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-200";
-const labelCls = "text-[11px] text-neutral-500";
 
 const Field = (props: { label: string } & JSX.InputHTMLAttributes<HTMLInputElement>) => {
   const [local, rest] = splitProps(props, ["label"]);
@@ -257,9 +254,9 @@ function NewAppStep1(props: {
         {error() ? <ErrorBanner>{error()}</ErrorBanner> : null}
         <Section title="仓库" hint={`gh 账号下 ${props.repos.length} 个`}>
           <label class="flex flex-col gap-1 text-sm">
-            <span class="text-neutral-400">选择仓库（可输入过滤）</span>
+            <span class="text-xs text-neutral-500">选择仓库（可输入过滤）</span>
             <input
-              class="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-neutral-200"
+              class={field()}
               type="text" name="repoUrl" list="gh-repos" placeholder="owner/repo"
               autocomplete="off" value={repoUrl()} onInput={(e) => pickRepo(e.currentTarget.value)} required
             />
@@ -392,7 +389,7 @@ function AppDetectStep(props: { data: DetectStepData; onBack?: () => void }) {
                   </div>
                   <div class="grid grid-cols-4 gap-2">
                     <label class="flex flex-col gap-0.5">
-                      <span class={labelCls}>
+                      <span class="text-xs text-neutral-500">
                         <input
                           type="checkbox" checked={svc().exposed} class="mr-1 accent-brass-500"
                           onChange={(e) => patchSvc(svc().name, { exposed: e.currentTarget.checked })}
@@ -400,24 +397,24 @@ function AppDetectStep(props: { data: DetectStepData; onBack?: () => void }) {
                         对外端口
                       </span>
                       <input
-                        class={`${inputCls} disabled:opacity-40`} type="number" placeholder="内部"
+                        class={field()} type="number" placeholder="内部"
                         value={svc().port ?? ""} disabled={!svc().exposed}
                         onInput={(e) => patchSvc(svc().name, { port: numOrUndef(e.currentTarget.value) })}
                       />
                     </label>
                     <label class="col-span-3 flex flex-col gap-0.5">
-                      <span class={labelCls}>绑定域名（留空 = 不绑，需先勾对外）</span>
-                      <input class={inputCls} type="text" placeholder="api.example.com" value={svc().domain ?? ""}
+                      <span class="text-xs text-neutral-500">绑定域名（留空 = 不绑，需先勾对外）</span>
+                      <input class={field()} type="text" placeholder="api.example.com" value={svc().domain ?? ""}
                         onInput={(e) => patchSvc(svc().name, { domain: e.currentTarget.value })} />
                     </label>
                     <label class="col-span-2 flex flex-col gap-0.5">
-                      <span class={labelCls}>CPU 上限（核）</span>
-                      <input class={inputCls} type="number" step="0.1" placeholder="不限" value={svc().cpuCores ?? ""}
+                      <span class="text-xs text-neutral-500">CPU 上限（核）</span>
+                      <input class={field()} type="number" step="0.1" placeholder="不限" value={svc().cpuCores ?? ""}
                         onInput={(e) => patchSvc(svc().name, { cpuCores: numOrUndef(e.currentTarget.value) })} />
                     </label>
                     <label class="col-span-2 flex flex-col gap-0.5">
-                      <span class={labelCls}>内存上限（MB）</span>
-                      <input class={inputCls} type="number" placeholder="不限" value={svc().memoryMb ?? ""}
+                      <span class="text-xs text-neutral-500">内存上限（MB）</span>
+                      <input class={field()} type="number" placeholder="不限" value={svc().memoryMb ?? ""}
                         onInput={(e) => patchSvc(svc().name, { memoryMb: numOrUndef(e.currentTarget.value) })} />
                     </label>
                   </div>
@@ -427,7 +424,7 @@ function AppDetectStep(props: { data: DetectStepData; onBack?: () => void }) {
                         环境变量 · 随 override 注入容器
                       </summary>
                       <textarea
-                        class={`${inputCls} mono mt-1 h-28 w-full px-2 py-1.5 text-[11px] leading-relaxed`}
+                        class={cx(field(), "mono mt-1 min-h-28 py-1.5 text-[11px] leading-relaxed")}
                         value={svc().envText}
                         onInput={(e) => patchSvc(svc().name, { envText: e.currentTarget.value })}
                       />
@@ -478,15 +475,15 @@ function AppDetectStep(props: { data: DetectStepData; onBack?: () => void }) {
 
         <Section title="变量" hint="compose 插值用 · 加密保存">
           <textarea
-            class={`${inputCls} mono h-28 px-3 py-2 text-xs leading-relaxed`}
+            class={cx(field(), "mono min-h-28 py-2 text-xs leading-relaxed")}
             placeholder="KEY=value" value={envText()} onInput={(e) => setEnvText(e.currentTarget.value)}
           />
         </Section>
 
         <Section title="打包" hint="compose 构建与部署">
           <label class="flex flex-col gap-1 text-sm">
-            <span class="text-neutral-400">compose 文件路径</span>
-            <input class={`${inputCls} px-3 py-1.5`} type="text" value={composePath()} required
+            <span class="text-xs text-neutral-500">compose 文件路径</span>
+            <input class={field()} type="text" value={composePath()} required
               onInput={(e) => setComposePath(e.currentTarget.value)} />
           </label>
         </Section>
@@ -495,7 +492,7 @@ function AppDetectStep(props: { data: DetectStepData; onBack?: () => void }) {
           <div class="text-xs text-neutral-500">创建后立即部署并打开日志。</div>
           <div class="flex gap-2">
             <Show when={props.onBack}>
-              <button type="button" class="rounded border border-harbor-700 px-3 py-1.5 text-sm text-neutral-300 hover:bg-harbor-800" onClick={props.onBack}>
+              <button type="button" class={button({ variant: "ghost", size: "md" })} onClick={props.onBack}>
                 上一步
               </button>
             </Show>
@@ -586,9 +583,9 @@ export function NewDbModal(props: { nodeId: number; projectId?: number | null })
       <form class="flex flex-col gap-3" onSubmit={submit}>
         <Field label="名称" name="name" placeholder="my_pg" required />
         <label class="flex flex-col gap-1 text-sm">
-          <span class="text-neutral-400">类型</span>
+          <span class="text-xs text-neutral-500">类型</span>
           <select
-            class="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-neutral-200"
+            class={field()}
             value={dbType()} onChange={(e) => setDbType(e.currentTarget.value as DbType)}
           >
             <option value="postgres">PostgreSQL</option>
@@ -631,7 +628,7 @@ const dnsChip = (d: Domain) =>
 const sslChip = (d: Domain) =>
   d.sslStatus === "active" ? <Chip tone="ok">🔒 HTTPS</Chip>
   : d.sslStatus === "pending" ? <Chip tone="warn">证书待签发</Chip>
-  : d.sslStatus === "error" ? <Chip tone="warn">证书异常</Chip>
+  : d.sslStatus === "error" ? <Chip tone="err">证书异常</Chip>
   : <Chip>无证书</Chip>;
 
 interface DomainsData { target: DeployTarget; domains: Domain[] }
@@ -685,26 +682,26 @@ export function DomainsModal(props: { targetId: number }) {
           {(d) => (
             <div class="flex items-center justify-between gap-2 rounded border border-harbor-800 bg-harbor-950/70 px-3 py-2">
               <div class="flex flex-col gap-1">
-                <a class="text-xs font-medium text-tide-400 hover:text-tide-300 mono" href={`https://${d.hostname}`} target="_blank" rel="noreferrer">{d.hostname}</a>
+                <a class="text-xs font-medium text-tide-400 hover:opacity-80 mono" href={`https://${d.hostname}`} target="_blank" rel="noreferrer">{d.hostname}</a>
                 <span class="text-[11px] text-neutral-500 mono">→ :{d.targetPort}{d.serviceName ? `（${d.serviceName}）` : ""}</span>
               </div>
               <div class="flex items-center gap-1.5">
                 {dnsChip(d)}{sslChip(d)}
-                <button class="text-neutral-600 hover:text-signal-500" onClick={() => void remove(d)}>✕</button>
+                <button class={button({ variant: "danger", size: "sm" })} onClick={() => void remove(d)}>✕</button>
               </div>
             </div>
           )}
         </For>
         <form class="flex items-end gap-2" onSubmit={submit}>
           <label class="flex flex-1 flex-col gap-0.5">
-            <span class={labelCls}>域名</span>
-            <input class={inputCls} type="text" name="hostname" placeholder="app.example.com" required />
+            <span class="text-xs text-neutral-500">域名</span>
+            <input class={field()} type="text" name="hostname" placeholder="app.example.com" required />
           </label>
           <label class="flex w-24 flex-col gap-0.5">
-            <span class={labelCls}>端口</span>
-            <input class={inputCls} type="number" name="targetPort" required />
+            <span class="text-xs text-neutral-500">端口</span>
+            <input class={field()} type="number" name="targetPort" required />
           </label>
-          <button type="submit" class="rounded bg-brass-500 px-3 py-1.5 text-sm font-semibold text-harbor-950 hover:bg-brass-600">绑定</button>
+          <button type="submit" class={button({ variant: "primary", size: "md" })}>绑定</button>
         </form>
         <div class="text-xs text-neutral-500">域名 A 记录指向服务器 IP 后，证书会自动签发。</div>
       </div>
@@ -764,7 +761,7 @@ export function EnvDrawer(props: { targetId: number }) {
         </Show>
         <Section title="变量" hint="compose 插值用 · 加密保存">
           <textarea
-            class={`${inputCls} mono h-56 px-3 py-2 text-xs leading-relaxed`}
+            class={cx(field(), "mono min-h-56 py-2 text-xs leading-relaxed")}
             placeholder="KEY=value" value={envText()} onInput={(e) => setEnvText(e.currentTarget.value)}
           />
         </Section>
@@ -843,7 +840,7 @@ export function DeployLogModal(props: { targetId: number; dep?: number }) {
       <Show when={depStatus()}>
         {(s) => (
           <div class="mb-2">
-            <Chip tone={s() === "success" ? "ok" : s() === "failed" ? "warn" : "muted"}>{s()}</Chip>
+            <Chip tone={s() === "success" ? "ok" : s() === "failed" ? "err" : "muted"}>{s()}</Chip>
           </div>
         )}
       </Show>
@@ -1057,7 +1054,7 @@ export function ServiceDrawer(props: { targetId: number; svc?: string; initialTa
               <Show when={tab() === "console"}>
                 <div class="flex flex-col gap-2">
                   <p class="text-xs text-neutral-500">进入{props.svc ? `服务 ${props.svc}` : "容器"}的交互式终端（docker exec）。关闭抽屉即断开。</p>
-                  <div class="h-[55vh] overflow-hidden rounded border border-harbor-800 bg-[#0b0f14] p-1">
+                  <div class="h-[55vh] overflow-hidden rounded border border-harbor-800 bg-harbor-950 p-1">
                     <ConsoleView targetId={props.targetId} service={props.svc} />
                   </div>
                 </div>
@@ -1113,7 +1110,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
     <>
       <div class="flex items-center gap-2">
         <button
-          class="rounded bg-brass-500 px-3 py-1.5 text-xs font-semibold text-harbor-950 hover:bg-brass-600"
+          class={button({ variant: "primary", size: "sm" })}
           onClick={async () => {
             await unwrap(api.targets({ id: t().id }).deploy.post());
             // 部署是后台任务：先拉一次让 queued 行出现在列表，后续段位由 SSE 驱动
@@ -1124,7 +1121,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
           重新部署
         </button>
         <button
-          class="rounded border border-harbor-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-harbor-800"
+          class={button({ variant: "ghost", size: "sm" })}
           onClick={() => void props.mutate(() => unwrap(api.targets({ id: t().id }).service.restart.post({ svc: props.svc })), { reload: false })}
         >
           重启{props.svc ? "服务" : "容器"}
@@ -1134,7 +1131,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
             按「没有 repoUrl」判会把这类 app 的传输按钮藏掉，跨区移动彻底死锁 */}
         <Show when={t().kind === "app" && props.data.sourceType === "local"}>
           <button
-            class="rounded border border-harbor-700 px-3 py-1.5 text-xs text-neutral-300 hover:bg-harbor-800"
+            class={button({ variant: "ghost", size: "sm" })}
             title={t().artifactShipped ? "产物已传输过（可再传更新）" : "跨区移动前必须先传输产物"}
             onClick={async () => {
               await unwrap(api.targets({ id: t().id }).ship.post());
@@ -1147,7 +1144,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
         </Show>
         {/* 部署策略三态：manual 不轮询 / notify 只亮徽章 / auto 检出更新即部署 */}
         <select
-          class={`${inputCls} ml-auto px-2 py-1.5 text-xs`}
+          class={cx(field(), "ml-auto h-8 w-auto text-xs")}
           value={t().deployPolicy}
           title="检出更新时：手动部署=不轮询；仅提醒=亮「有更新」徽章；自动部署=立即触发"
           onChange={(e) => void props.mutate(
@@ -1172,7 +1169,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
             const runStage = () => run().stage;
             return (
             <div class="flex items-center gap-3 border-b border-harbor-800/60 py-2 text-xs">
-              <Chip tone={runStatus() === "success" ? "ok" : runStatus() === "failed" ? "warn" : "muted"}>{runStatus()}</Chip>
+              <Chip tone={runStatus() === "success" ? "ok" : runStatus() === "failed" ? "err" : "muted"}>{runStatus()}</Chip>
               <span class="text-neutral-500">#{d.id}</span>
               {/* 触发来源：手动/自动/回滚/仅传输（回滚带血缘号） */}
               <Show when={d.trigger && d.trigger !== "ui"}>
@@ -1192,7 +1189,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
               <div class="ml-auto flex items-center gap-2">
                 {/* 回滚仅对有产物的成功 run 开放（rollbackable 由历史联查 deploy_artifacts 透出）；旧 run 无产物，置灰 */}
                 <button
-                  class="text-neutral-500 hover:text-brass-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  class={button({ variant: "danger", size: "sm" })}
                   disabled={!d.rollbackable}
                   title={d.rollbackable ? `回滚到 run #${d.id}` : "无快照，无法回滚"}
                   onClick={() => {
@@ -1213,7 +1210,7 @@ function DeploymentsTab(props: { data: ServiceDrawerData; svc?: string; mutate: 
                   回滚
                 </button>
                 <button
-                  class="text-tide-400 hover:text-tide-300"
+                  class={button({ variant: "ghost", size: "sm" })}
                   onClick={() => ui.open({ kind: "log", targetId: t().id, dep: d.id })}
                 >
                   日志
@@ -1246,7 +1243,7 @@ function ServiceEnvTab(props: { data: ServiceDrawerData; svc: string; mutate: Mu
       <Show when={(props.data.sharedEnv ?? []).length > 0}>
         <Section title="服务器共享变量" hint="选择即追加连接串到下方变量">
           <select
-            class={`${inputCls} px-2 py-1.5`} value=""
+            class={field()} value=""
             onChange={(e) => {
               if (e.currentTarget.value) setEnvText((cur) => (cur.trim() ? `${cur.trim()}\n` : "") + e.currentTarget.value);
             }}
@@ -1270,7 +1267,7 @@ function ServiceEnvTab(props: { data: ServiceDrawerData; svc: string; mutate: Mu
         </Section>
       </Show>
       <textarea
-        class={`${inputCls} mono h-56 px-3 py-2 text-xs leading-relaxed`}
+        class={cx(field(), "mono min-h-56 py-2 text-xs leading-relaxed")}
         placeholder="KEY=value" value={envText()} onInput={(e) => setEnvText(e.currentTarget.value)}
       />
       <SubmitBtn label="保存变量" busyLabel="保存中…" busy={false} />
@@ -1298,12 +1295,12 @@ function HardwareTab(props: { data: ServiceDrawerData; svc: string; mutate: Muta
         }}
       >
         <label class="flex flex-1 flex-col gap-0.5">
-          <span class={labelCls}>CPU 上限（核）</span>
-          <input class={inputCls} type="number" step="0.1" min="0" name="cpuCores" value={props.data.resources?.cpuCores ?? ""} placeholder="不限" />
+          <span class="text-xs text-neutral-500">CPU 上限（核）</span>
+          <input class={field()} type="number" step="0.1" min="0" name="cpuCores" value={props.data.resources?.cpuCores ?? ""} placeholder="不限" />
         </label>
         <label class="flex flex-1 flex-col gap-0.5">
-          <span class={labelCls}>内存上限（MB）</span>
-          <input class={inputCls} type="number" min="0" name="memoryMb" value={props.data.resources?.memoryMb ?? ""} placeholder="不限" />
+          <span class="text-xs text-neutral-500">内存上限（MB）</span>
+          <input class={field()} type="number" min="0" name="memoryMb" value={props.data.resources?.memoryMb ?? ""} placeholder="不限" />
         </label>
         <SubmitBtn label="保存" busyLabel="…" busy={false} />
       </form>
@@ -1334,22 +1331,22 @@ function SourceTab(props: { data: ServiceDrawerData; svc?: string; mutate: Mutat
             }}
           >
             <label class="flex flex-col gap-0.5">
-              <span class={labelCls}>GitHub 仓库（本地文件夹导入可留空）</span>
-              <input class={inputCls} type="text" name="repoUrl" value={t().repoUrl ?? ""} placeholder="owner/repo" />
+              <span class="text-xs text-neutral-500">GitHub 仓库（本地文件夹导入可留空）</span>
+              <input class={field()} type="text" name="repoUrl" value={t().repoUrl ?? ""} placeholder="owner/repo" />
             </label>
             <div class="grid grid-cols-2 gap-2">
               <label class="flex flex-col gap-0.5">
-                <span class={labelCls}>分支</span>
-                <input class={inputCls} type="text" name="branch" value={t().branch ?? "main"} />
+                <span class="text-xs text-neutral-500">分支</span>
+                <input class={field()} type="text" name="branch" value={t().branch ?? "main"} />
               </label>
               <label class="flex flex-col gap-0.5">
-                <span class={labelCls}>compose 路径</span>
-                <input class={inputCls} type="text" name="composePath" value={t().composePath ?? "docker-compose.yml"} />
+                <span class="text-xs text-neutral-500">compose 路径</span>
+                <input class={field()} type="text" name="composePath" value={t().composePath ?? "docker-compose.yml"} />
               </label>
             </div>
             <label class="flex flex-col gap-0.5">
-              <span class={labelCls}>远端目录</span>
-              <input class={inputCls} type="text" name="remoteDir" value={t().remoteDir ?? ""} placeholder="~/dockyard/my-app" />
+              <span class="text-xs text-neutral-500">远端目录</span>
+              <input class={field()} type="text" name="remoteDir" value={t().remoteDir ?? ""} placeholder="~/dockyard/my-app" />
             </label>
             <div><SubmitBtn label="保存" busyLabel="…" busy={false} /></div>
           </form>
@@ -1386,7 +1383,7 @@ function NetworkTab(props: { data: ServiceDrawerData; svc?: string; mutate: Muta
               <span class="text-neutral-600">:{d.targetPort}</span>
               {dnsChip(d)}{sslChip(d)}
               <button
-                class="ml-auto text-neutral-600 hover:text-signal-500"
+                class={cx(button({ variant: "danger", size: "sm" }), "ml-auto")}
                 onClick={() => {
                   void (async () => {
                     if (!(await confirmAction({ title: `解绑 ${d.hostname}？`, confirmLabel: "解绑", danger: true }))) return;
@@ -1419,12 +1416,12 @@ function NetworkTab(props: { data: ServiceDrawerData; svc?: string; mutate: Muta
           }}
         >
           <label class="flex flex-1 flex-col gap-0.5">
-            <span class={labelCls}>域名</span>
-            <input class={inputCls} type="text" name="hostname" placeholder="api.example.com" required />
+            <span class="text-xs text-neutral-500">域名</span>
+            <input class={field()} type="text" name="hostname" placeholder="api.example.com" required />
           </label>
           <label class="flex w-20 flex-col gap-0.5">
-            <span class={labelCls}>端口</span>
-            <input class={inputCls} type="number" name="targetPort" required />
+            <span class="text-xs text-neutral-500">端口</span>
+            <input class={field()} type="number" name="targetPort" required />
           </label>
           <SubmitBtn label="绑定" busyLabel="…" busy={false} />
         </form>
@@ -1451,7 +1448,7 @@ function BackupsTab(props: { data: ServiceDrawerData; mutate: Mutate }) {
     <>
       <div>
         <button
-          class="rounded bg-brass-500 px-3 py-1.5 text-xs font-semibold text-harbor-950 hover:bg-brass-600"
+          class={button({ variant: "primary", size: "sm" })}
           onClick={() => void props.mutate(() => unwrap(api.targets({ id: t().id }).backup.post()))}
         >
           立即备份
@@ -1469,11 +1466,11 @@ function BackupsTab(props: { data: ServiceDrawerData; mutate: Mutate }) {
               <span class="text-neutral-500">{fmtAgo(b.at)}</span>
               <div class="ml-auto flex items-center gap-3">
                 <Show when={restorable()}>
-                  <button class="text-signal-400 hover:text-signal-300" onClick={() => void restore(b.file)}>
+                  <button class={button({ variant: "danger", size: "sm" })} onClick={() => void restore(b.file)}>
                     恢复
                   </button>
                 </Show>
-                <a class="text-tide-400 hover:text-tide-300" href={deployPaths.backupsByIdByFile(t().id, b.file)} download={b.file}>
+                <a class="text-tide-400 hover:opacity-80" href={deployPaths.backupsByIdByFile(t().id, b.file)} download={b.file}>
                   下载
                 </a>
               </div>
@@ -1515,7 +1512,7 @@ export function DiscoveredModal(props: { d: DiscoveredContainer }) {
 
   const row = (label: string, value: JSX.Element) => (
     <>
-      <span class={labelCls}>{label}</span>
+      <span class="text-xs text-neutral-500">{label}</span>
       <span class="min-w-0 text-neutral-300">{value}</span>
     </>
   );
@@ -1534,7 +1531,7 @@ export function DiscoveredModal(props: { d: DiscoveredContainer }) {
             {row("容器 ID", (
               <span class="flex items-center gap-2">
                 <code class="mono select-all text-neutral-400">{d().id}</code>
-                <button class="shrink-0 text-tide-400 hover:text-tide-300" onClick={() => void copyId()}>
+                <button class={cx(button({ variant: "ghost", size: "sm" }), "shrink-0")} onClick={() => void copyId()}>
                   {copied() ? "已复制" : "复制"}
                 </button>
               </span>

@@ -22,6 +22,7 @@ import type { DiscoveredContainer } from "../canvas.model";
 import { serviceEnvToText, textToEnvMap } from "../../../shared/env-text";
 import { api, deployPaths, unwrap } from "./api";
 import { ConsoleView } from "./console";
+import { LogView } from "./log-view";
 import { emitRefresh, useUi } from "./ui";
 import { confirmAction, toast } from "./feedback";
 import { useDeployLog, useTargetLive } from "./live";
@@ -845,9 +846,7 @@ export function DeployLogModal(props: { targetId: number; dep?: number }) {
           </div>
         )}
       </Show>
-      <pre class="mono max-h-96 overflow-auto rounded bg-harbor-950 p-3 text-xs whitespace-pre-wrap text-neutral-300">
-        {logText()}
-      </pre>
+      <LogView text={logText()} height="24rem" />
     </Modal>
   );
 }
@@ -958,9 +957,7 @@ const ServiceLogs = (props: { targetId: number; svc?: string }) => {
     onCleanup(() => clearInterval(timer));
   });
   return (
-    <pre class="mono max-h-[40vh] overflow-auto rounded bg-harbor-950 p-3 text-xs leading-relaxed whitespace-pre-wrap text-neutral-300">
-      {text()}
-    </pre>
+    <LogView text={text()} height="40vh" />
   );
 };
 

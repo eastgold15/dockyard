@@ -78,6 +78,14 @@
 - 区域隔离从"坐标魔法线"重构为**车道模型**（`canvas/zones.ts` 单一事实源，用户批评"空气墙和背景不同步"后的重做）：中立带 ±24px，本机车道右缘钉 -GAP、远程车道左缘钉 +GAP；背景 tint 车道由卡片 bounds 派生、与墙读同一规则，不可能脱节；拖拽中按**卡片完整矩形**钳制，服务端 422 同规则裁决，右键建卡自动归位本车道；
 - 画布 client 全面去原生弹窗：新建 `client/feedback.tsx`（Kobalte Dialog + Toast），alert→toast、confirm→confirmAction、prompt→promptAction，覆盖 board/drawers/nodes 全部 8 处。
 
+2026-11-05 部署/服务日志改 xterm.js 只读视图（源码已改，浏览器未验）：
+
+- 新增 `client/log-view.tsx` 可复用只读 `LogView`（xterm.js 渲染 ANSI，复用已有 `@xterm/xterm` + `@xterm/addon-fit`，不新增运行时依赖）；
+- `drawers.tsx` 的 `DeployLogModal`（部署日志）与 `ServiceLogs`（服务日志）两处 `<pre>` 替换为 `LogView`，保留 HTTP 回填、SSE 增量与 2s 轮询数据流，不改服务端协议；高度按任务规格：部署约 24rem（h-96）、服务约 40vh；
+- 增量策略：`props.text` 为完整日志，后续文本以旧文本为前缀时只 `term.write` 增量；run 切换/终态对齐/截断非前缀时清屏序列+正文同一次 write 完整替换，避开异步 reset/write 竞态；
+- 错误/警告/成功行按 Harbor 色板套 ANSI 颜色（Signal 红 / Brass 黄 / Tide 绿），已有 ANSI 的行不套色、不改落库原文；
+- 跟随策略：停在底部时自动跟随，向上翻阅不强制拉回，全文替换后回到底部；Terminal `disableStdin`/`convertEol`/Harbor 950 背景/12px 等宽/scrollback 5000，FitAddon + ResizeObserver，卸载 dispose。
+
 ### 全局层（app.layout + global.css + shared/ui）
 
 **状态：未开始**

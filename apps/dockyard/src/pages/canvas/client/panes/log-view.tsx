@@ -13,7 +13,7 @@
 import { createEffect, createSignal } from "solid-js";
 import AnsiToHtml from "ansi-to-html";
 import copy from "copy-to-clipboard";
-import { button } from "../../../../styled-system/recipes";
+import { button } from "../../../../../styled-system/recipes";
 
 // Harbor 色板的 ANSI 24 位前景色（与 system.md 原语对齐）：
 // Signal 500 #d95d4e（错误）、Brass 500 #d9a441（警告）、Tide 400 #5ec4b6（成功）

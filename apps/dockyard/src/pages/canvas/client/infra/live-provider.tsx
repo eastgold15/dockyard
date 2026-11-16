@@ -8,7 +8,7 @@
 import { onCleanup, onMount, type JSX } from "solid-js";
 import { createStore } from "solid-js/store";
 import { LiveContext, nextLog, nextTargetLive, type LiveState } from "./live";
-import type { ServiceState } from "../canvas.model";
+import type { ServiceState } from "../../canvas.model";
 import { canvasPaths } from "./api";
 import { emitRefresh } from "./ui";
 

@@ -9,7 +9,7 @@ export { CanvasService } from "./canvas.service";
 export { isLocalHost } from "../servers/servers.socket";
 
 /** 发现层变更指纹（container-poller 跨原子消费，正主在 discovery.ts） */
-export { discoverySignature } from "./discovery";
+export { discoverySignature } from "./domain/discovery";
 
 // Eden Treaty 的 API 类型出口（同原子 client 引用）
 import type canvasApi from "./canvas.actions";

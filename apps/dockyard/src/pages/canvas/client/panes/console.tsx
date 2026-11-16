@@ -7,7 +7,7 @@ import { onCleanup, onMount } from "solid-js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { api } from "./api";
+import { api } from "../infra/api";
 
 export function ConsoleView(props: { targetId: number; service?: string }) {
   let el!: HTMLDivElement;

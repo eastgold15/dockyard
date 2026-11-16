@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "css:panda": "panda codegen && panda cssgen --outfile src/pages/canvas/client/panda.gen.css",
-    "panda:watch": "panda cssgen --watch --outfile src/pages/canvas/client/panda.gen.css",
+    "css:panda": "panda codegen && panda cssgen --outfile src/styles/panda.gen.css",
+    "panda:watch": "panda cssgen --watch --outfile src/styles/panda.gen.css",
     "gen": "bun run css:panda && elysiax gen",
     "dev": "bun run css:panda && elysiax dev",
     "start": "bun run gen && bun src/index.ts",

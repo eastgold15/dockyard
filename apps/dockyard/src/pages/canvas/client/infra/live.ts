@@ -6,9 +6,9 @@
  * 函数——JSX 里 `live().status` 即细粒度订阅，一条 SSE 消息只让订阅的徽章重渲染。
  */
 import { createContext, useContext } from "solid-js";
-import type { ServiceState } from "../canvas.model";
-import type { DeployStage } from "../../deploy/deploy.socket";
-import { STAGES } from "./pipeline-steps";
+import type { ServiceState } from "../../canvas.model";
+import type { DeployStage } from "../../../deploy/deploy.socket";
+import { STAGES } from "../panes/pipeline-steps";
 
 export type DeployStatus =
   "queued" | "building" | "transferring" | "deploying" | "success" | "failed";

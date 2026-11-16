@@ -4,7 +4,7 @@
  * 细粒度订阅发生在 JSX 读取处。
  */
 import { createContext, useContext } from "solid-js";
-import type { DiscoveredContainer } from "../canvas.model";
+import type { DiscoveredContainer } from "../../canvas.model";
 
 /** 模态视图描述：App 层的 DrawerHost 按 kind 渲染对应抽屉 */
 export type View =

@@ -6,7 +6,7 @@
 // 只比 click.target 的写法会在两种情况下都误关，把用户正在编辑的内容丢掉。
 import { expect, test } from "bun:test";
 import { render } from "solid-js/web";
-import { Drawer, Modal } from "./drawers";
+import { Drawer, Modal } from "./index";
 
 function mountShell(kind: "modal" | "drawer") {
   let closed = 0;

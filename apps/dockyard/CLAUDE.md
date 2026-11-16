@@ -14,6 +14,20 @@
 
 规范没有覆盖到的新模式：先与用户确认，确认后同步更新 system.md 与 pages.md。不得仅凭本轮对话记忆另起风格。状态纪律：文档已写 ≠ 源码已改 ≠ 浏览器验收通过；进度表只认三态（未开始 / 待视觉验收 / 已验收）。
 
+## 目录归属（垂直切片）
+
+页面 = 一个 URL = 一个文件夹，前端（`client/`）与后端（`*.di.ts` / `*.socket.ts` / `*.service.ts` / `*.repository.ts` / `schema.ts` / `migrations.ts` / `*.actions.ts`）同目录。归属按顺序判断：
+
+1. **有独立 URL**（能刷新、能外链）→ 新建页面文件夹（原子），不塞进别的页面。
+2. **没有 URL 且被 ≥2 个页面使用** → `src/shared/`（壳 `AppShell`、`Nav`、控件、`feedback`）。
+3. **否则** → 留在所属页面文件夹内。
+
+页面内子目录只按“视图区域”拆，深度最多两层：
+
+- `client/<region>/`，区域名用业务面（`board` / `nodes` / `panes` / `infra`），**禁止** `components` / `hooks` / `utils` 这类技术名词。
+- 服务端逻辑留在原子根层，不因 UI 差异搬家；跨页逻辑复用走 DI service，跨页 UI 复用走 `shared/solid-ui`，两条通道不混用。
+- 量化触发条件：单文件 >400 行，或一个文件里装了 3 个以上独立弹窗/视图 → 拆区域；只是“组件有点多” → 不拆。
+
 ## UI - Panda CSS
 
 共享控件样式统一使用 `panda.config.ts` / `panda/recipes.ts` 中的 token 与 recipe。htmx 与 Solid 只消费 `styled-system/` 生成的框架无关 helper，不使用 Panda `styled` JSX，不引入跨渲染器组件运行时，也不再使用 shadcn-htmx registry/snippets。
@@ -39,6 +53,7 @@ canvas、servers、projects、ping 均为整页 Solid client（各自 `client/`�
 
 - `di.get()` 的类型由 codegen 的 `ServiceMap` 自动推导。禁止手写 `get(k: "xxx"): Xxx` 重载，禁止 `di: { get(name: string): any }` 这类把类型擦成 `any`。跨文件统一用 `type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] }`。
 - 表行/插入类型从 drizzle 派生：`typeof t.$inferSelect`、`Pick<typeof t.$inferInsert, ...>`。禁止手抄表字段。
+- repository 的查询/写入方法不写返回类型标注，交给 drizzle 推断。方法一律写成 `async`（签名因此是真正的 `Promise<行类型>`，而不是暴露 drizzle builder），行类型由 `db.select().from(...)` / `.returning()` 链式调用推断。需要更紧的返回契约时在调用方标注，不在 repository 里重复。
 - 引用别的原子的 service 类型时用 `ServiceMap["xxxService"]` / `Pick<ServiceMap, ...>` 索引，不重复声明类名。
 - 只有三类类型允许手写：`t.Object` 校验 schema、`ServiceError` 判别、形状确实变了的跨原子 DTO / 视图模型。
 

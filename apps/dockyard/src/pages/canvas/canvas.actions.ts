@@ -15,8 +15,8 @@ import type {
   DiscoveredContainer,
 } from "./canvas.model";
 import type { CanvasService } from "./canvas.service";
-import { discoverContainers } from "./discovery";
-import { clampCardX, violatesLane } from "./zones";
+import { discoverContainers } from "./domain/discovery";
+import { clampCardX, violatesLane } from "./domain/zones";
 
 /** DI 容器视图：键与返回类型全部来自 codegen 的 ServiceMap，不重抄 */
 type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] };

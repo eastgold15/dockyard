@@ -8,7 +8,7 @@
  * （tradeflow 的容器 working_dir = <repo>/deploy → 归到 tradeflow）。
  * compose project 名精确匹配作兜底；容器名前缀只用于没有任何 compose 标签的裸容器。
  */
-import type { DiscoveredContainer } from "./canvas.model";
+import type { DiscoveredContainer } from "../canvas.model";
 
 /** dockerode ContainerInfo 的最小子集（单测可直接造） */
 export interface RawContainer {

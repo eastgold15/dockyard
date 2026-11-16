@@ -5,7 +5,7 @@
  * URL ?project=<id> 作初始透镜；?path=<本地路径> 幂等落库后聚焦该项目。
  */
 import { createSignal, Match, onMount, Show, Switch } from "solid-js";
-import { canvasApi, unwrap } from "./api";
+import { canvasApi, unwrap } from "./infra/api";
 import { Board } from "./board";
 import {
   DeployLogModal,
@@ -15,12 +15,12 @@ import {
   NewAppWizard,
   NewDbModal,
   ServiceDrawer,
-} from "./drawers";
-import { FeedbackHost } from "./feedback";
+} from "./panes";
+import { FeedbackHost } from "../../../shared/solid-ui/feedback";
 import { AppShell } from "../../../shared/solid-ui";
-import { lens, setLens } from "./lens";
-import { LiveProvider } from "./live-provider";
-import { emitRefresh, UiContext, type UiBus, type View } from "./ui";
+import { lens, setLens } from "./infra/lens";
+import { LiveProvider } from "./infra/live-provider";
+import { emitRefresh, UiContext, type UiBus, type View } from "./infra/ui";
 // Panda recipe（panda/recipes.ts）：与 htmx 侧共享同一视觉契约，运行时只产 className
 import { field } from "../../../../styled-system/recipes";
 import { cx } from "../../../../styled-system/css";

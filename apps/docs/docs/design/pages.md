@@ -74,6 +74,15 @@
 - canvas 根组件改用 `shared/solid-ui` 的 `Nav` / `MobileNav`（与 htmx AppLayout 同一视觉：w-52、h-14 品牌条、44px 导航项、aria-current），整页布局改为「侧边栏 + 主区」；
 - 画布工作条仍为 56px、Board 几何与交互未改；Board 可用宽度随侧边栏收缩（期望行为）。
 
+2026-11-16 canvas 目录按“视图区域”重组（源码已改，行为未改，待浏览器验收）：
+
+- `drawers.tsx`（2885 行）拆为 `client/panes/`：`shell`（Modal/Drawer/通用件）、`new-app` + `app-detect`、`new-db`、`domains`、`env`、`deploy-log`、`service` + 三组 tab、`discovered`、`console`/`log-view`/`pipeline-steps`；
+- `board.tsx`（1058 行）拆为 `client/board/`：`index`（Board 主体）、`geometry`（布局常量）、`derive`（节点/边/尺寸派生）、`menu`（右键菜单门）；
+- `nodes.tsx`（484 行）拆为 `client/nodes/`：`types`、`atoms`、`persist`、六种节点视图；
+- `client/infra/`：api、lens、live、live-provider、ui；canvas 根层新增 `domain/`（discovery、zones）；
+- 生成物 `panda.gen.css` 移出源码目录到 `src/styles/`；删除 `client/feedback.tsx`（直接引 shared）；
+- 归属规则写入 `apps/dockyard/CLAUDE.md`（URL → shared → 页面；页面内子目录只按区域、深度 ≤2）。
+
 > 画布语义已反转：物理服务器卡全局唯一（本机/远程分区），项目只是过滤透镜。新增待验收项：透镜切换、分区线、项目徽章、透镜外建内容禁用。原差异条目仍有效：
 
 现状差异：

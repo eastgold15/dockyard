@@ -3,9 +3,9 @@
  *  浏览器原生场景（href 下载、EventSource SSE、裸文本流）Eden 管不到，
  *  仍用 routes.gen 的 URL 助手（deployPaths / canvasPaths）。 */
 import { treaty } from "@elysia/eden";
-import { routes } from "../../../../.elysiax/routes.gen";
-import type { DeployApi } from "../../deploy/deploy.socket";
-import type { CanvasApi } from "../canvas.socket";
+import { routes } from "../../../../../.elysiax/routes.gen";
+import type { DeployApi } from "../../../deploy/deploy.socket";
+import type { CanvasApi } from "../../canvas.socket";
 
 export const api = treaty<DeployApi>(`${location.origin}/api/deploy`);
 export const canvasApi = treaty<CanvasApi>(`${location.origin}/api/canvas`);

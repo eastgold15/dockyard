@@ -1,4 +1,4 @@
-@import "./pages/canvas/client/panda.gen.css";
+@import "./styles/panda.gen.css";
 @import "tailwindcss";
 
 @theme {

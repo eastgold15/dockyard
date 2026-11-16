@@ -52,7 +52,7 @@ bun run package                  # Linux 打包
 - **跨原子 import 只能指向对方的 `<name>.socket.ts`**；socket 文件只 re-export，跨原子物理外键也经 socket 表引用。
 - 每个原子在 `*.di.ts` 用 `provide()` 声明依赖（类引用 + 字符串值服务键），运行时 `di.get("xxxService")`。
 - services 抛 `ServiceError`（`@elysiax/core`）；actions 不写 try/catch 回显，预期错误 `return status(code, { error })`。
-- **渲染器单选**：htmx 原子的 actions 吐 HTML 片段（@kitajs/html JSX，路径用 `routes.*` 类型化 helper）；Solid 原子（目前是 canvas）的 actions 只吐 JSON，`client/` 依赖链禁止 Node-only 包（dotenv / bun:sqlite / fs 会导致浏览器打包失败）。
+- **渲染器单选**：htmx 原子的 actions 吐 HTML 片段（@kitajs/html JSX，路径用 `routes.*` 类型化 helper）；Solid 原子（canvas、servers、projects、ping——应用已无 htmx 页面）的 actions 只吐 JSON，`client/` 依赖链禁止 Node-only 包（dotenv / bun:sqlite / fs 会导致浏览器打包失败）。Solid 共享控件在 `src/shared/solid-ui/`。
 - 新建/改动原子的脚手架流程见 `.claude/skills/elysiax-atom/SKILL.md`；契约审查清单见 `.claude/agents/elysiax-reviewer.md`。
 
 ### 数据层
@@ -68,7 +68,7 @@ SQLite + drizzle。数据库文件与密钥在 `$XDG_DATA_HOME/dockyard/`，git 
 
 ### UI 与设计
 
-共享控件样式唯一来源是 `apps/dockyard/panda.config.ts` + `panda/recipes.ts`，经 `styled-system/` 生成的框架无关 helper 供 htmx（`src/shared/ui/`）与 Solid 消费；不使用 Panda `styled` JSX，不引入跨渲染器组件运行时。`styled-system/` 和 `panda.gen.css` 都是生成物。Tailwind 布局类仍在 `src/global.css`，渐进迁移期间保留。
+共享控件样式唯一来源是 `apps/dockyard/panda.config.ts` + `panda/recipes.ts`，经 `styled-system/` 生成的框架无关 helper 供 `src/shared/solid-ui/` 消费；不使用 Panda `styled` JSX。应用已全部是 Solid client（无 htmx 页面与依赖），页面外框为 `AppShell`。`styled-system/` 和 `panda.gen.css` 都是生成物。Tailwind 布局类仍在 `src/global.css`，渐进迁移期间保留。
 
 任何 UI 任务动手前先读视觉契约 `apps/dockyard/.interface-design/system.md` 与页面进度表 `apps/docs/docs/design/pages.md`（状态只认三态：未开始 / 待视觉验收 / 已验收）。UI 任务可直接用 `ui-craft` agent。
 

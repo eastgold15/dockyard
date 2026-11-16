@@ -8,3 +8,7 @@ export type { ServerSftp, ServerTransport } from "./transport";
 
 /** 本机服务器判定（部署通道分界线）：回环地址派生，不落库；servers/canvas/deploy 共用正主在此 */
 export { isLocalHost } from "./host";
+
+/** Eden Treaty 的 API 类型出口（同原子 client 引用；壳由 codegen HTMLBundle 服务） */
+import type serverActions from "./servers.actions";
+export type ServerApi = typeof serverActions;

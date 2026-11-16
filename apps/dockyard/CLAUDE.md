@@ -29,7 +29,7 @@
 3. 只有确认现成方案不满足需求时才手写实现，并在回复中说明为什么不用现成库
    通用功能包括但不限于：日期处理、校验、ID 生成、重试/限流、文件监听、CLI 解析、日志等。
 
-不要让 htmx 和 Solid 操作同一个 DOM 元素。画布已是整页 Solid client 模式（src/pages/canvas/client/），/canvas 由壳 HTMLBundle 服务、不走 htmx；htmx 页面（servers/projects）与 Solid 页天然隔离，不存在共享 DOM。client 代码依赖链禁 Node-only 包（dotenv/bun:sqlite → 浏览器打包 500）。
+canvas、servers、projects、ping 均为整页 Solid client（各自 `client/`），路由由壳 HTMLBundle 服务。应用不使用 htmx：`app.layout.tsx` / `shared/ui` 与 `@elysiax/htmx` 依赖均已移除，页面外框是客户端组件 `AppShell`（`src/shared/solid-ui/`，侧边栏 + 移动导航 + 主区）。所有控件与反馈件（toast/确认框/输入框）都在 `src/shared/solid-ui/`：Panda recipe 出样式、Kobalte 出行为，四个页面共用。client 代码依赖链禁 Node-only 包（dotenv/bun:sqlite → 浏览器打包 500），跨端类型放 `<name>.types.ts` 纯类型文件。
 
 错误处理约定：services 抛 ServiceError（@elysiax/core），actions 不写 try/catch 回显；预期错误 return status(code, { error })。
 

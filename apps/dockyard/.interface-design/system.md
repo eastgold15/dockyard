@@ -18,7 +18,7 @@
 
 适用于 projects、servers、canvas、弹窗、抽屉及其加载/错误/空态。画布可以改变布局模型，不能另起字体、配色或控件体系。
 
-htmx 与 Solid **共享视觉契约，不共享运行时**：htmx 页面用服务端模板；canvas 是整页 Solid client，壳由 HTMLBundle 服务。不得让两个渲染器操作同一 DOM，不得为复用视觉引入 React 或让 client 导入服务端值级代码。
+**单一渲染器（2026-11-16 起）**：全部页面（canvas、servers、projects、ping）均为整页 Solid client，壳由 codegen 的 HTMLBundle 服务；`app.layout.tsx`、`shared/ui` 与 `@elysiax/htmx` 依赖均已删除。页面外框是客户端组件 `AppShell`（`src/shared/solid-ui/`：侧边栏 + 移动导航 + 主区），视觉定义只有一处。
 
 ## 2. 资产与实现入口
 
@@ -28,8 +28,8 @@ htmx 与 Solid **共享视觉契约，不共享运行时**：htmx 页面用服�
 | `../docs/docs/design/pages.md`        | 页面清单、差异、实施状态、验收证据                            |
 | `src/global.css`                      | 聚合 Panda 生成 CSS、Tailwind 布局工具与共享基础样式          |
 | `panda.config.ts`、`panda/recipes.ts` | 双渲染器共享的 token、控件 recipe 与 slot recipe 唯一来源     |
-| `styled-system/`                      | Panda 生成的框架无关 helper；htmx 与 Solid 只消费产物，不手改 |
-| `src/shared/ui/index.tsx`             | htmx 无业务渲染件：Button、Badge、PageHeader、Field、Empty    |
+| `styled-system/`                      | Panda 生成的框架无关 helper；客户端页面只消费产物，不手改 |
+| `src/shared/solid-ui/`                | 全站共享件：AppShell、Button、Badge、PageHeader、Field、Empty、Modal、Nav、MobileNav、feedback（toast/确认框/输入框） |
 | `src/pages/canvas/client/drawers.tsx` | Solid 抽屉/弹窗与表单模式的现有实现                           |
 | `src/pages/canvas/client/nodes.tsx`   | Solid 节点、徽章与状态点的现有实现                            |
 
@@ -140,7 +140,7 @@ Brass 的操作与警告角色用形态区分：主操作为实底按钮；警�
 
 ## 7. 复用与禁止事项
 
-- htmx 先用 `src/shared/ui/`，Solid 先看本原子内已有实现；Button、Field、Badge、Modal、Drawer、Menu 的样式只从 Panda recipe 获取。组件外观一致不意味着必须跨原子引入隐式共享运行时。
+- 页面控件先用 `src/shared/solid-ui/`，本原子已有实现先复用之；Button、Field、Badge、Modal、Drawer、Menu 的样式只从 Panda recipe 获取。组件外观一致不意味着必须跨原子引入隐式共享运行时。
 - 可复用模式至少有两处真实用途再抽取；跨原子分发仍遵守 socket 与显式依赖，不为 DRY 破坏原子完整性。
 - 不新增没有任务含义的色彩、渐变、重投影、巨型圆角、emoji 装饰。已有 emoji 暂不批量替换，先选定统一图标来源与可访问标签。
 - 不为新页面另挑字体、按钮尺寸、面板阴影或交互反馈。确需例外时，先在本文件写原因和范围。

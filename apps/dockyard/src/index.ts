@@ -7,7 +7,6 @@ import "typebox/schema";
 import "typebox/compile";
 
 import { start } from "@elysiax/core";
-import "./app.layout";
 import * as gen from "../.elysiax";
 
 // 根容器在入口实例化：类型来自生成物的链式注册，后台轮询器与请求共用这份单例

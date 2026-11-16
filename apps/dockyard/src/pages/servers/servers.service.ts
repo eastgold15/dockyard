@@ -14,14 +14,11 @@ import {
 } from "./transport";
 import type { ServerRepository, NewServer } from "./servers.repository";
 
-export type CheckResult =
-  | { ok: true; dockerVersion: string; warning?: string }
-  | {
-      ok: false;
-      reason: "docker-missing" | "ssh-failed" | "local-failed";
-      message: string;
-    }
-  | { ok: false; reason: "need-trust"; fingerprint: string; algorithm: string };
+// CheckResult 正主在 servers.types（client 也要用，纯类型无服务端值依赖）
+export type { CheckResult } from "./servers.types";
+import type { CheckResult } from "./servers.types";
+// parseMirrors 正主在零依赖的 servers.mirrors（client 直接用）
+export { parseMirrors } from "./servers.mirrors";
 
 /** 内置本机行的固定字段：地址/用户/端口由程序定死，UI 不可编辑 */
 const LOCAL_HOST = "127.0.0.1";
@@ -287,22 +284,6 @@ export function normalizeMirrors(text: string): string[] {
   return mirrors;
 }
 
-/** DB 存的是 JSON 数组字符串；解析失败/空值一律当 [] 处理（存量行没有该列） */
-export function parseMirrors(
-  server: Pick<Server, "registryMirrors">,
-): string[] {
-  if (!server.registryMirrors) return [];
-  try {
-    const arr = JSON.parse(server.registryMirrors) as unknown;
-    return Array.isArray(arr)
-      ? arr.filter(
-          (m): m is string => typeof m === "string" && m.trim().length > 0,
-        )
-      : [];
-  } catch {
-    return [];
-  }
-}
 
 /** 现有 daemon.json + dockyard 配置 → 合并后的 JSON 文本。
  *  只追加不覆盖（保留用户在远端手工配的其他镜像源/配置项），去重后写回。 */

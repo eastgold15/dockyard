@@ -14,9 +14,17 @@
 
 ## 页面清单
 
-### servers（htmx，样板候选 #1）
+### servers（Solid 整页 client，样板候选 #1）
 
-**状态：待视觉验收（2026-10-26 起局部实施；早期临时截图不作为持久验收证据）**
+**状态：待视觉验收（2026-11-16 整页 Solid 迁移完成，浏览器未验）**
+
+2026-11-16 渲染器收敛（源码已改，待浏览器验收）：
+
+- 删除 `servers.page.tsx` / `servers.partials.tsx`，新增 `client/`（`index.tsx` / `app.tsx` / `rows.tsx` / `resources.tsx` / `api.ts`），路由 `/servers` 改由 codegen 的 shell HTMLBundle 服务；
+- `servers.actions.ts` 全部改为 JSON 端点，新增 `GET /api/servers` 列表模型与 `GET /api/servers/resources/:id` 弹窗数据；写操作返回服务端最新列表/行，客户端直接替换；
+- 视觉仍走同一组 Panda recipe（Button/Field/Badge/Modal），弹层行为改由 Kobalte（共享 `Modal`），确认框/toast 统一走 `shared/solid-ui/feedback`；
+- 顶部「添加服务器」按钮已走共享 `Button`（原先的内联黄铜类删除）；
+- `servers.types.ts` / `servers.mirrors.ts` 提供纯类型与零依赖镜像源解析，client 不再触碰 Node-only 值。
 
 已实施：
 
@@ -36,9 +44,17 @@
 - 空态已有 `Empty` 组件，文案与下一步指引合格；
 - 待样板范围：列表行、添加表单、信任提示、共享资源弹窗的规格统一 + 验收。
 
-### projects（htmx，样板候选 #2）
+### projects（Solid 整页 client，样板候选 #2）
 
-**状态：待视觉验收（2026-10-26 部分实施：两个弹窗迁移到 shared/ui `Modal`，扫描目录 sm 384 / 新建项目 md 480）**
+**状态：待视觉验收（2026-11-16 整页 Solid 迁移完成，浏览器未验）**
+
+2026-11-16 渲染器收敛（源码已改，待浏览器验收）：
+
+- 删除 `projects.page.tsx` / `projects.partials.tsx`，新增 `client/`（`index.tsx` / `app.tsx` / `modals.tsx` / `api.ts`），路由 `/projects` 改由 shell HTMLBundle 服务；
+- `projects.actions.ts` 改为 JSON 端点（列表模型、扫描目录 GET/POST、GitHub 仓库列表、编辑器/lazygit 打开、创建/删除）；
+- 扫描目录弹窗与新建项目弹窗改用共享 Solid `Modal`（Kobalte 行为 + Panda 外观），提交加载态由客户端信号驱动（不再依赖 `.htmx-request`）；
+- 编辑器 split-button 保留原交互（主按钮直开 + 下拉换默认编辑器），行内操作阻止冒泡以保持整行进画布；
+- `projects.types.ts` 提供纯类型（LocalProject / ProjectListModel / RepoBrief），client 只做 type import。
 
 现状差异：
 
@@ -52,6 +68,11 @@
 ### canvas（Solid 整页，例外页；2026-10-25 起语义升级为世界地图）
 
 **状态：待视觉验收（已有 Kobalte 反馈、xterm 日志等局部实施；本轮 Panda 控件迁移仍需浏览器验收，几何模型不动）**
+
+2026-11-16 侧边栏挂载（源码已改，待浏览器验收）：
+
+- canvas 根组件改用 `shared/solid-ui` 的 `Nav` / `MobileNav`（与 htmx AppLayout 同一视觉：w-52、h-14 品牌条、44px 导航项、aria-current），整页布局改为「侧边栏 + 主区」；
+- 画布工作条仍为 56px、Board 几何与交互未改；Board 可用宽度随侧边栏收缩（期望行为）。
 
 > 画布语义已反转：物理服务器卡全局唯一（本机/远程分区），项目只是过滤透镜。新增待验收项：透镜切换、分区线、项目徽章、透镜外建内容禁用。原差异条目仍有效：
 
@@ -108,18 +129,19 @@
 - **自动依赖连线**：app/服务变量保存时，精确匹配同项目 dockyard 托管库连接串，派生 `origin=env` 依赖边并落库；`depEdges/dependsOn` 双写，画布重拉后直接出现 db→app/服务的 Brass 虚线。删除变量或取消勾选即断线；手动拖线保留。任务范围限定为本次功能，视觉细节仍待浏览器验收。
 - **compose 自带数据库**：用户自己 compose 里的 postgres/mysql/mariadb/redis/mongo 服务（按 `serviceName` 单独成 target 时）也会在变量页导出连接信息：内网用 compose 服务名（如同项目里的 `postgres:5432`），外网仅在 compose 发布宿主端口或绑定域名时给出；凭据从 override compose 的服务 `environment` 读取并默认打码。这类库同时进入「引用数据库」候选：变量里贴 `postgres://` / `postgresql://` 连接串即可自动派生依赖边，画布源节点是该 app 卡（按 target kind 解析）。
 
-### 全局层（app.layout + global.css + shared/ui）
+### 全局层（AppShell + global.css + shared/solid-ui）
 
 **状态：待视觉验收（导航、确认框、Toast 与本轮 Panda 共享样式均有局部源码实施）**
 
 现状差异：
 
 - 侧边导航已使用 Harbor 色源，与全局基座一致；
-- 导航无当前项状态（无 `aria-current`、无选中底色）；
-- 内嵌 CDN 的 htmx/idiomorph 脚本（jsdelivr），桌面离线/内网场景是外部依赖——非视觉项，但与“工具自包含”相关，待决策是否本地化；
+- 2026-11-16 全局层改为纯客户端：删除 `app.layout.tsx` 与 `shared/ui`，`@elysiax/htmx` 依赖移出；页面外框统一为 `shared/solid-ui` 的 `AppShell`（侧边栏 + 移动导航 + 主区）；
+- 导航当前项按 `location.pathname` 写 `aria-current` 与选中底色，窄屏为可横向滚动的顶部导航；
+- htmx/idiomorph CDN 脚本随 layout 删除，桌面/内网不再有外部脚本依赖；
 - `global.css` 保留 Tailwind 颜色原语与布局工具；Button/Field/Badge/Modal/Drawer/Menu 的 token 与 recipe 由 Panda 统一维护；第二轮已迁移 servers、projects、Canvas 的剩余主要内联按钮、表单控件与状态徽章，仍待浏览器验收；
 - `shared/ui` 已有 Button/Badge/PageHeader/Field/Empty/Modal 六件；第二轮扩展 Button/Field 的向后兼容 props，页头采用 64px 最小高与窄屏换行；Drawer/SubmitBtn 仍在画布私有，只共享 Panda 样式，不抽取跨运行时组件。
-- 2026-11-05 导航补键盘焦点、44px 命中区与窄屏折叠入口；折叠使用原生 hidden 显示态，#main 外层布局避免 htmx 替换导航。当前项 aria-current 仍需 layout 提供路径后补。
+- 2026-11-05 导航补键盘焦点、44px 命中区与窄屏折叠入口；2026-11-16 随整页 Solid 迁移，导航并入 `shared/solid-ui`，当前项 aria-current 已由客户端按路径实现。
 
 2026-11-05 Panda 第一轮迁移（**源码已改，待用户验证与视觉验收**）：
 
@@ -133,7 +155,7 @@
 | 页面  | 状态   | 备注                                                                   |
 | ----- | ------ | ---------------------------------------------------------------------- |
 | index | 未开始 | 纯 302 重定向，无视觉面                                                |
-| ping  | 未开始 | 测试页，原生按钮无样式；不纳入正式设计范围，但不允许作为新页面样式参考 |
+| ping  | 待视觉验收 | 2026-11-16 迁为 Solid client（`/api/ping/hello` JSON + 共享控件）；保留为端点连通测试页，不纳入正式设计范围 |
 
 ## 待办全局任务（按序）
 

@@ -14,7 +14,6 @@
       "dependencies": {
         "@elysia/eden": "^2.0.0-rc.0",
         "@elysiax/core": "link:../../../elysiax/packages/core",
-        "@elysiax/htmx": "link:../../../elysiax/packages/htmx",
         "@inferdi/elysia": "link:../../../elysiax/packages/elysia",
         "@inferdi/inferdi": "^6.1.0",
         "@kobalte/core": "^0.13.14",
@@ -177,8 +176,6 @@
     "@elysiax/core": ["@elysiax/core@link:../elysiax/packages/core", {}],
 
     "@elysiax/flow": ["@elysiax/flow@link:../elysiax/packages/flow", {}],
-
-    "@elysiax/htmx": ["@elysiax/htmx@link:../elysiax/packages/htmx", {}],
 
     "@elysiax/solid": ["@elysiax/solid@link:../elysiax/packages/solid", {}],
 

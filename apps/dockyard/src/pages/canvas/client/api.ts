@@ -35,6 +35,7 @@ export async function unwrap<R extends AnyTreaty>(
   p: Promise<R>,
 ): Promise<NonNullable<R["data"]>> {
   const { data, error } = await p;
-  if (error) throw new Error(errMessage(error.value) ?? `HTTP ${String(error.status)}`);
+  if (error)
+    throw new Error(errMessage(error.value) ?? `HTTP ${String(error.status)}`);
   return data as NonNullable<R["data"]>;
 }

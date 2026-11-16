@@ -11,9 +11,20 @@ export type CanvasEvent =
   // runId = 该状态属于哪次 run（必填）：日志抽屉据此判断「实时状态是不是我看的这条」，
   // 否则看历史 run 的日志时，当前新 run 的 building 会冒充成历史 run 的状态。
   // 必填是权限约定：能推状态的人一定知道 run 是谁；客户端仍对线上坏帧做防御式解析。
-  | { type: "status"; targetId: number; status: string; stage?: DeployStage; runId: number }
+  | {
+      type: "status";
+      targetId: number;
+      status: string;
+      stage?: DeployStage;
+      runId: number;
+    }
   | { type: "running"; targetId: number; running: boolean; runId: number }
-  | { type: "state"; targetId: number; service: string; state: "running" | "exited" | "unknown" }
+  | {
+      type: "state";
+      targetId: number;
+      service: string;
+      state: "running" | "exited" | "unknown";
+    }
   // 发现层（未纳管容器）集合变化：无载荷——客户端收到后重拉 /board（发现卡数据是现查快照）
   | { type: "discovery" }
   // 部署日志增量（service 侧 100ms/50 行窗口合并后推送，不是逐行；日志抽屉订阅此事件免轮询）

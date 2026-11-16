@@ -56,8 +56,18 @@ export const button = defineRecipe({
       },
     },
     size: {
-      md: { height: "36px", paddingLeft: "12px", paddingRight: "12px", fontSize: "14px" },
-      sm: { height: "32px", paddingLeft: "8px", paddingRight: "8px", fontSize: "12px" },
+      md: {
+        height: "36px",
+        paddingLeft: "12px",
+        paddingRight: "12px",
+        fontSize: "14px",
+      },
+      sm: {
+        height: "32px",
+        paddingLeft: "8px",
+        paddingRight: "8px",
+        fontSize: "12px",
+      },
     },
   },
   defaultVariants: { variant: "primary", size: "md" },
@@ -102,7 +112,8 @@ export const badge = defineRecipe({
     paddingBottom: "2px",
     fontSize: "11px",
     fontWeight: "500",
-    fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace",
+    fontFamily:
+      "ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace",
   },
   variants: {
     tone: {
@@ -144,13 +155,19 @@ export const menu = defineSlotRecipe({
         outline: "2px solid {colors.brass.500}",
         outlineOffset: "-2px",
       },
-      _disabled: { color: "neutral.500", opacity: "0.6", cursor: "not-allowed" },
+      _disabled: {
+        color: "neutral.500",
+        opacity: "0.6",
+        cursor: "not-allowed",
+      },
     },
   },
   variants: {
     tone: {
       default: {},
-      danger: { item: { color: "signal.500", _hover: { background: "signal.500/10" } } },
+      danger: {
+        item: { color: "signal.500", _hover: { background: "signal.500/10" } },
+      },
     },
   },
   defaultVariants: { tone: "default" },
@@ -269,6 +286,9 @@ export const drawer = defineSlotRecipe({
     body: {
       flex: "1",
       overflowY: "auto",
+      // 预留滚动条槽位：滚动条出现/消失时不改变内容宽度，避免抽屉里的 xterm
+      // 在滚动条边缘被压住、拖选坐标随之抖动
+      scrollbarGutter: "stable",
       paddingLeft: "20px",
       paddingRight: "20px",
       paddingTop: "16px",

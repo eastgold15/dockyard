@@ -9,7 +9,11 @@
  * stage=null（旁路逻辑库/存量行）整体降级，不渲染步骤条。
  */
 import type { JSX } from "solid-js";
-import type { DeployStage, DeployTarget, DeploymentRow } from "../../deploy/deploy.socket";
+import type {
+  DeployStage,
+  DeployTarget,
+  DeploymentRow,
+} from "../../deploy/deploy.socket";
 
 export const STAGES: readonly DeployStage[] = [
   "sourcing",
@@ -29,12 +33,15 @@ export const STAGE_LABEL: Record<DeployStage, string> = {
   packaging: "产物",
 };
 
-export type StepState = "done" | "active" | "failed" | "skipped" | "na" | "pending";
+export type StepState =
+  "done" | "active" | "failed" | "skipped" | "na" | "pending";
 
 /** 形态/trigger 推导各段的静态姿态。run.stage===null → null（降级为旧徽章行）。
  *  sourceType 由服务端判定（与部署分派同口径）；缺失时才退回 repoUrl 启发式（旧快照/单测）。 */
 export function stagePosture(
-  target: Pick<DeployTarget, "kind" | "repoUrl" | "instanceOf"> & { sourceType?: "local" | "github" },
+  target: Pick<DeployTarget, "kind" | "repoUrl" | "instanceOf"> & {
+    sourceType?: "local" | "github";
+  },
   run: Pick<DeploymentRow, "trigger" | "stage">,
 ): { skipped: ReadonlySet<DeployStage>; na: ReadonlySet<DeployStage> } | null {
   if (run.stage == null) return null;
@@ -42,7 +49,11 @@ export function stagePosture(
   const na = new Set<DeployStage>();
   if (run.trigger === "rollback") {
     // 回滚 = 激活旧产物：只走 运行→暴露，不产新产物
-    skipped.add("sourcing").add("building").add("transferring").add("packaging");
+    skipped
+      .add("sourcing")
+      .add("building")
+      .add("transferring")
+      .add("packaging");
     return { skipped, na };
   }
   if (run.trigger === "ship") {
@@ -68,13 +79,19 @@ export function stepStates(
     if (posture.skipped.has(s)) return "skipped";
     if (posture.na.has(s)) return "na";
     if (status === "success") return "done";
-    if (status === "failed") return i < idx ? "done" : i === idx ? "failed" : "pending";
+    if (status === "failed")
+      return i < idx ? "done" : i === idx ? "failed" : "pending";
     return i < idx ? "done" : i === idx ? "active" : "pending";
   });
 }
 
 /** 进行中的粗状态（与 DeployStatus 一致）：只有这些行才吃 SSE 实时值 */
-const ACTIVE_STATUSES = new Set(["queued", "building", "transferring", "deploying"]);
+const ACTIVE_STATUSES = new Set([
+  "queued",
+  "building",
+  "transferring",
+  "deploying",
+]);
 
 /**
  * 行内状态合并：只有「在跑的那一行」吃 SSE 实时值，历史行永远回落到库值。
@@ -83,12 +100,18 @@ const ACTIVE_STATUSES = new Set(["queued", "building", "transferring", "deployin
  */
 export function mergeLiveRow(
   row: Pick<DeploymentRow, "id" | "status" | "stage">,
-  live: { status: string | null; stage: DeployStage | null; runId?: number | null },
+  live: {
+    status: string | null;
+    stage: DeployStage | null;
+    runId?: number | null;
+  },
 ): { status: string; stage: DeployStage | null } {
-  if (!ACTIVE_STATUSES.has(row.status)) return { status: row.status, stage: row.stage };
+  if (!ACTIVE_STATUSES.has(row.status))
+    return { status: row.status, stage: row.stage };
   // 再按 runId 收一道：在跑的可能是「上一轮残留的非终态行」，
   // 当前 SSE 状态属于新 run 时不能写到它头上
-  if (live.runId != null && live.runId !== row.id) return { status: row.status, stage: row.stage };
+  if (live.runId != null && live.runId !== row.id)
+    return { status: row.status, stage: row.stage };
   return { status: live.status ?? row.status, stage: live.stage ?? row.stage };
 }
 
@@ -112,11 +135,19 @@ const LINE: Record<StepState, string> = {
 
 export function PipelineSteps(props: { states: StepState[] }): JSX.Element {
   return (
-    <span class="flex min-w-0 flex-1 items-center gap-0.5" aria-label="部署流水线">
+    <span
+      class="flex min-w-0 flex-1 items-center gap-0.5"
+      aria-label="部署流水线"
+    >
       {props.states.map((s, i) => (
         <>
-          <span class={`h-2 w-2 shrink-0 rounded-full ${DOT[s]}`} title={STAGE_LABEL[STAGES[i]!]} />
-          {i < props.states.length - 1 ? <span class={`h-px min-w-1 flex-1 ${LINE[s]}`} /> : null}
+          <span
+            class={`h-2 w-2 shrink-0 rounded-full ${DOT[s]}`}
+            title={STAGE_LABEL[STAGES[i]!]}
+          />
+          {i < props.states.length - 1 ? (
+            <span class={`h-px min-w-1 flex-1 ${LINE[s]}`} />
+          ) : null}
         </>
       ))}
     </span>

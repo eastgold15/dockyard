@@ -2,11 +2,31 @@
 import { expect, test } from "bun:test";
 import { mergeLiveRow, stagePosture, stepStates } from "./pipeline-steps";
 
-const githubApp = { kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null, sourceType: "github" } as const;
-const localApp = { kind: "app", repoUrl: null, instanceOf: null, sourceType: "local" } as const;
+const githubApp = {
+  kind: "app",
+  repoUrl: "https://github.com/x/y",
+  instanceOf: null,
+  sourceType: "github",
+} as const;
+const localApp = {
+  kind: "app",
+  repoUrl: null,
+  instanceOf: null,
+  sourceType: "local",
+} as const;
 // 克隆到本地后导入：带 repoUrl 但服务端走 localAppForm（可 ship、传输段真实执行）
-const localAppWithRepo = { kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null, sourceType: "local" } as const;
-const dbContainer = { kind: "db", repoUrl: null, instanceOf: null, sourceType: "local" } as const;
+const localAppWithRepo = {
+  kind: "app",
+  repoUrl: "https://github.com/x/y",
+  instanceOf: null,
+  sourceType: "local",
+} as const;
+const dbContainer = {
+  kind: "db",
+  repoUrl: null,
+  instanceOf: null,
+  sourceType: "local",
+} as const;
 
 test("stage=null（旁路/存量）整体降级", () => {
   expect(stagePosture(githubApp, { trigger: "ui", stage: null })).toBeNull();
@@ -16,7 +36,10 @@ test("stage=null（旁路/存量）整体降级", () => {
 test("形态推导：github 免传输 / db 容器免构建 / local 全段", () => {
   const gh = stagePosture(githubApp, { trigger: "ui", stage: "building" })!;
   expect([...gh.skipped]).toEqual(["transferring"]);
-  const db = stagePosture(dbContainer, { trigger: "ui", stage: "transferring" })!;
+  const db = stagePosture(dbContainer, {
+    trigger: "ui",
+    stage: "transferring",
+  })!;
   expect([...db.skipped]).toEqual(["building"]);
   const local = stagePosture(localApp, { trigger: "ui", stage: "building" })!;
   expect(local.skipped.size).toBe(0);
@@ -24,16 +47,30 @@ test("形态推导：github 免传输 / db 容器免构建 / local 全段", () =
 
 test("来源形态以 sourceType 为准：local 项目带 repoUrl 时传输段不能标成跳过", () => {
   // 服务端 sourceOf 判 local → localAppForm（本地构建 + 推送），传输段真实执行
-  const p = stagePosture(localAppWithRepo, { trigger: "ui", stage: "transferring" })!;
+  const p = stagePosture(localAppWithRepo, {
+    trigger: "ui",
+    stage: "transferring",
+  })!;
   expect(p.skipped.size).toBe(0);
   // 旧快照没有 sourceType 时才退回 repoUrl 启发式（保持旧行为，不误判为 local）
-  const legacy = stagePosture({ kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null }, { trigger: "ui", stage: "building" })!;
+  const legacy = stagePosture(
+    { kind: "app", repoUrl: "https://github.com/x/y", instanceOf: null },
+    { trigger: "ui", stage: "building" },
+  )!;
   expect([...legacy.skipped]).toEqual(["transferring"]);
 });
 
 test("回滚：前三段跳过 + 不产新产物", () => {
-  const p = stagePosture(githubApp, { trigger: "rollback", stage: "deploying" })!;
-  expect([...p.skipped]).toEqual(["sourcing", "building", "transferring", "packaging"]);
+  const p = stagePosture(githubApp, {
+    trigger: "rollback",
+    stage: "deploying",
+  })!;
+  expect([...p.skipped]).toEqual([
+    "sourcing",
+    "building",
+    "transferring",
+    "packaging",
+  ]);
 });
 
 test("仅传输：后三段不适用", () => {
@@ -44,33 +81,58 @@ test("仅传输：后三段不适用", () => {
 test("完成态推导：success 全绿（跳过段保持跳过）", () => {
   const p = stagePosture(githubApp, { trigger: "ui", stage: "packaging" })!;
   expect(stepStates("packaging", "success", p)).toEqual([
-    "done", "done", "skipped", "done", "done", "done",
+    "done",
+    "done",
+    "skipped",
+    "done",
+    "done",
+    "done",
   ]);
 });
 
 test("失败断点：驻留段红叉，前段绿，后段灰", () => {
   const p = stagePosture(localApp, { trigger: "ui", stage: "transferring" })!;
   expect(stepStates("transferring", "failed", p)).toEqual([
-    "done", "done", "failed", "pending", "pending", "pending",
+    "done",
+    "done",
+    "failed",
+    "pending",
+    "pending",
+    "pending",
   ]);
 });
 
 test("进行中：当前段脉冲", () => {
   const p = stagePosture(localApp, { trigger: "ui", stage: "building" })!;
   expect(stepStates("building", "building", p)).toEqual([
-    "done", "active", "pending", "pending", "pending", "pending",
+    "done",
+    "active",
+    "pending",
+    "pending",
+    "pending",
+    "pending",
   ]);
 });
 
 test("ship 成功：前三段绿、后三段 na（不是 pending 假象）", () => {
   const p = stagePosture(localApp, { trigger: "ship", stage: "transferring" })!;
   expect(stepStates("transferring", "success", p)).toEqual([
-    "done", "done", "done", "na", "na", "na",
+    "done",
+    "done",
+    "done",
+    "na",
+    "na",
+    "na",
   ]);
 });
 
 test("实时合并：在跑的行吃 SSE（库行 stage 还是 null 也能出步骤条）", () => {
-  expect(mergeLiveRow({ id: 7, status: "queued", stage: null }, { status: "building", stage: "building", runId: 7 })).toEqual({
+  expect(
+    mergeLiveRow(
+      { id: 7, status: "queued", stage: null },
+      { status: "building", stage: "building", runId: 7 },
+    ),
+  ).toEqual({
     status: "building",
     stage: "building",
   });
@@ -78,12 +140,20 @@ test("实时合并：在跑的行吃 SSE（库行 stage 还是 null 也能出步
 
 test("实时合并：历史行不被当前 run 污染", () => {
   expect(
-    mergeLiveRow({ id: 5, status: "success", stage: "packaging" }, { status: "deploying", stage: "deploying", runId: 8 }),
+    mergeLiveRow(
+      { id: 5, status: "success", stage: "packaging" },
+      { status: "deploying", stage: "deploying", runId: 8 },
+    ),
   ).toEqual({ status: "success", stage: "packaging" });
 });
 
 test("实时合并：live 缺省时回落库值（未收到 SSE 也不抖动）", () => {
-  expect(mergeLiveRow({ id: 7, status: "transferring", stage: "transferring" }, { status: null, stage: null, runId: 7 })).toEqual({
+  expect(
+    mergeLiveRow(
+      { id: 7, status: "transferring", stage: "transferring" },
+      { status: null, stage: null, runId: 7 },
+    ),
+  ).toEqual({
     status: "transferring",
     stage: "transferring",
   });
@@ -91,10 +161,16 @@ test("实时合并：live 缺省时回落库值（未收到 SSE 也不抖动）"
 
 test("实时合并：SSE 状态属于别的 run 时不写到本行（残留非终态行不被新 run 顶替）", () => {
   expect(
-    mergeLiveRow({ id: 5, status: "building", stage: "building" }, { status: "deploying", stage: "exposing", runId: 8 }),
+    mergeLiveRow(
+      { id: 5, status: "building", stage: "building" },
+      { status: "deploying", stage: "exposing", runId: 8 },
+    ),
   ).toEqual({ status: "building", stage: "building" });
   // 不知道属于哪次 run（旧服务端事件）时按原有语义合并
   expect(
-    mergeLiveRow({ id: 5, status: "building", stage: "building" }, { status: "deploying", stage: "exposing", runId: null }),
+    mergeLiveRow(
+      { id: 5, status: "building", stage: "building" },
+      { status: "deploying", stage: "exposing", runId: null },
+    ),
   ).toEqual({ status: "deploying", stage: "exposing" });
 });

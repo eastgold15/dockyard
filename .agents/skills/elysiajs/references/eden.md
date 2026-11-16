@@ -17,27 +17,31 @@ Select compatible `elysia` and `@elysia/eden` releases from [versions.md](versio
 
 ```ts
 // server/app.ts
-import { Elysia, t } from 'elysia'
+import { Elysia, t } from "elysia";
 
 export const app = new Elysia()
-	.get('/hi', () => 'Hello')
-	.get('/users/:id', ({ params }) => params.id)
-	.post('/mirror', {
-		body: t.Object({ id: t.Number(), name: t.String() })
-	}, ({ body }) => body)
+  .get("/hi", () => "Hello")
+  .get("/users/:id", ({ params }) => params.id)
+  .post(
+    "/mirror",
+    {
+      body: t.Object({ id: t.Number(), name: t.String() }),
+    },
+    ({ body }) => body,
+  );
 
-export type App = typeof app
+export type App = typeof app;
 ```
 
 ```ts
 // client.ts
-import { treaty } from '@elysia/eden'
-import type { App } from './server/app'
+import { treaty } from "@elysia/eden";
+import type { App } from "./server/app";
 
-const api = treaty<App>('http://localhost:3000')
-const { data, error } = await api.mirror.post({ id: 1, name: 'Elysia' })
-if (error) throw error
-console.log(data.name)
+const api = treaty<App>("http://localhost:3000");
+const { data, error } = await api.mirror.post({ id: 1, name: "Elysia" });
+if (error) throw error;
+console.log(data.name);
 ```
 
 The network example requires a server at that origin. Keep `.listen()` in a separate entry file. Use type-only imports in browser clients to exclude server code.
@@ -45,23 +49,23 @@ The network example requires a server at that origin. Keep `.listen()` in a sepa
 On the server or in a test, pass the instance directly:
 
 ```ts
-import { treaty } from '@elysia/eden'
-import { app } from './server/app'
+import { treaty } from "@elysia/eden";
+import { app } from "./server/app";
 
-const api = treaty(app)
-const result = await api.hi.get()
+const api = treaty(app);
+const result = await api.hi.get();
 ```
 
 Instance mode uses `app.handle()` without networking or listening. See [testing.md](testing.md) for runtime and type checks.
 
 ## Paths and parameters
 
-| Route | Treaty call |
-| --- | --- |
-| `GET /` | `api.get()` |
-| `GET /hi` | `api.hi.get()` |
-| `POST /deep/nested` | `api.deep.nested.post(body)` |
-| `GET /users/:id` | `api.users({ id: '1' }).get()` |
+| Route                  | Treaty call                          |
+| ---------------------- | ------------------------------------ |
+| `GET /`                | `api.get()`                          |
+| `GET /hi`              | `api.hi.get()`                       |
+| `POST /deep/nested`    | `api.deep.nested.post(body)`         |
+| `GET /users/:id`       | `api.users({ id: '1' }).get()`       |
 | `GET /users/:id/posts` | `api.users({ id: '1' }).posts.get()` |
 
 Pass dynamic segments as objects keyed by parameter name. Include the full prefix, such as `.api.users` for `prefix: '/api'`.
@@ -73,55 +77,56 @@ Pass dynamic segments as objects keyed by parameter name. Include the full prefi
 
 ```ts
 // For a route with body { name: string } and query { page: number }:
-await api.users.post({ name: 'Elysia' }, { query: { page: 1 } })
+await api.users.post({ name: "Elysia" }, { query: { page: 1 } });
 
 // For a route with an optional body:
-await api.search.post(undefined, { query: { name: 'Elysia' } })
+await api.search.post(undefined, { query: { name: "Elysia" } });
 ```
 
 Per-call `fetch` takes `RequestInit`, including an abort signal:
 
 ```ts
-await api.hi.get({ fetch: { signal: AbortSignal.timeout(5000) } })
+await api.hi.get({ fetch: { signal: AbortSignal.timeout(5000) } });
 ```
 
 Files in the body trigger `multipart/form-data`. Match the server schema. Use a `File` for a required file, and convert a `FileList` to `File[]` for `t.Files()`.
 
 ```ts
 // Server body schema: t.Object({ images: t.Files() })
-const input = document.querySelector<HTMLInputElement>('#images')!
-await api.upload.post({ images: Array.from(input.files ?? []) })
+const input = document.querySelector<HTMLInputElement>("#images")!;
+await api.upload.post({ images: Array.from(input.files ?? []) });
 ```
 
 ## Responses and errors
 
 By default, Treaty resolves to `{ data, error, status, response, headers }`.
 
-| Field | Meaning |
-| --- | --- |
-| `data` | Parsed success body, or `null` on failure |
-| `error` | Failure with `status` and `value`, or `null` on success |
-| `status` | HTTP status. Transport failures use 503 |
-| `response` | Raw `Response`, absent on transport failure |
-| `headers` | Response headers, absent on transport failure |
+| Field      | Meaning                                                 |
+| ---------- | ------------------------------------------------------- |
+| `data`     | Parsed success body, or `null` on failure               |
+| `error`    | Failure with `status` and `value`, or `null` on success |
+| `status`   | HTTP status. Transport failures use 503                 |
+| `response` | Raw `Response`, absent on transport failure             |
+| `headers`  | Response headers, absent on transport failure           |
 
 Check `error` before using `data`. Return `status(code, value)` for typed server errors. Thrown errors are absent from the inferred route return type.
 
 ```ts
-import { Elysia } from 'elysia'
-import { treaty } from '@elysia/eden'
+import { Elysia } from "elysia";
+import { treaty } from "@elysia/eden";
 
-const app = new Elysia().get('/users/:id', ({ params, status }) => {
-	if (params.id === 'missing') return status(404, { message: 'User not found' })
-	return { id: params.id }
-})
+const app = new Elysia().get("/users/:id", ({ params, status }) => {
+  if (params.id === "missing")
+    return status(404, { message: "User not found" });
+  return { id: params.id };
+});
 
-const { data, error } = await treaty(app).users({ id: 'missing' }).get()
+const { data, error } = await treaty(app).users({ id: "missing" }).get();
 if (error) {
-	if (error.status === 404) console.log(error.value.message)
-	throw error
+  if (error.status === 404) console.log(error.value.message);
+  throw error;
 }
-console.log(data.id)
+console.log(data.id);
 ```
 
 Non-2xx responses become errors. Fetch follows redirects by default, so a redirect may resolve to its destination response. `throwHttpError` can opt into throwing instead. Custom `onResponse` handlers override normal parsing, so only replace data deliberately.
@@ -131,25 +136,25 @@ Non-2xx responses become errors. Fetch follows redirects by default, so a redire
 Generator handlers and SSE can return an `AsyncGenerator` in `data`. Handle the error before consuming the stream:
 
 ```ts
-import { Elysia, sse } from 'elysia'
-import { treaty } from '@elysia/eden'
+import { Elysia, sse } from "elysia";
+import { treaty } from "@elysia/eden";
 
-const app = new Elysia().get('/events', function* () {
-	yield sse({ event: 'message', data: 'Hello' })
-})
+const app = new Elysia().get("/events", function* () {
+  yield sse({ event: "message", data: "Hello" });
+});
 
-const { data, error } = await treaty(app).events.get()
-if (error) throw error
-for await (const event of data) console.log(event)
+const { data, error } = await treaty(app).events.get();
+if (error) throw error;
+for await (const event of data) console.log(event);
 ```
 
 Extract client types without duplicating server interfaces:
 
 ```ts
-import type { Treaty } from '@elysia/eden'
+import type { Treaty } from "@elysia/eden";
 
-type MirrorData = Treaty.Data<typeof api.mirror.post>
-type MirrorError = Treaty.Error<typeof api.mirror.post>
+type MirrorData = Treaty.Data<typeof api.mirror.post>;
+type MirrorError = Treaty.Error<typeof api.mirror.post>;
 ```
 
 `Treaty.Data` and `Treaty.Error` also accept a resolved Treaty response type.
@@ -158,22 +163,22 @@ type MirrorError = Treaty.Error<typeof api.mirror.post>
 
 `treaty<App>(origin, options)` accepts these options. Prefer an explicit URL scheme. Inferred schemes use HTTP for local addresses and HTTPS otherwise.
 
-| Option | Behavior |
-| --- | --- |
-| `fetch` | Default `RequestInit` excluding headers and method, for example `{ credentials: 'include' }` |
-| `fetcher` | Custom fetch-compatible function returning a Web Standard `Response` |
-| `headers` | Object, `(path, options) => headers`, or array of header functions |
-| `onRequest` | Function or array. Returned `RequestInit` values are shallow-merged into the request |
-| `onResponse` | Function or array. First non-null, non-undefined return overrides parsed data |
-| `parseDate` | Defaults to `true`. Converts recognized date strings to `Date` |
-| `throwHttpError` | Defaults to `false`. Accepts `true` or an error predicate |
+| Option           | Behavior                                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| `fetch`          | Default `RequestInit` excluding headers and method, for example `{ credentials: 'include' }` |
+| `fetcher`        | Custom fetch-compatible function returning a Web Standard `Response`                         |
+| `headers`        | Object, `(path, options) => headers`, or array of header functions                           |
+| `onRequest`      | Function or array. Returned `RequestInit` values are shallow-merged into the request         |
+| `onResponse`     | Function or array. First non-null, non-undefined return overrides parsed data                |
+| `parseDate`      | Defaults to `true`. Converts recognized date strings to `Date`                               |
+| `throwHttpError` | Defaults to `false`. Accepts `true` or an error predicate                                    |
 
 ```ts
-const api = treaty<App>('https://api.example.com', {
-	fetch: { credentials: 'include' },
-	headers: { 'x-client': 'web' },
-	throwHttpError: (error) => error.status === 503
-})
+const api = treaty<App>("https://api.example.com", {
+  fetch: { credentials: "include" },
+  headers: { "x-client": "web" },
+  throwHttpError: (error) => error.status === 503,
+});
 ```
 
 Request hook and header callback paths exclude the hostname. Set default headers through `headers`, not `fetch.headers`. Per-call headers override configured defaults. In a configured header array, later entries override earlier entries. Every header callback and `onRequest` callback runs. `onResponse` stops when a callback returns replacement data or throws.
@@ -185,28 +190,28 @@ A custom fetcher must return `Response`; Axios needs an adapter. Per-call `throw
 Eden v2 plugins add client methods and mutation hooks. They do not install server-side [Elysia plugins](composition.md).
 
 ```ts
-import { Elysia } from 'elysia'
-import { createPlugin, treaty } from '@elysia/eden'
+import { Elysia } from "elysia";
+import { createPlugin, treaty } from "@elysia/eden";
 
 const routeInfo = createPlugin({
-	name: 'route-info',
-	verbs: {
-		routePath(context) {
-			return context.path
-		}
-	},
-	before(context) {
-		console.log('Sending', context.method, context.paths)
-	},
-	after(result, context) {
-		console.log('Received', context.method, result.status)
-	}
-})
+  name: "route-info",
+  verbs: {
+    routePath(context) {
+      return context.path;
+    },
+  },
+  before(context) {
+    console.log("Sending", context.method, context.paths);
+  },
+  after(result, context) {
+    console.log("Received", context.method, result.status);
+  },
+});
 
-const app = new Elysia().get('/users/:id', ({ params }) => params.id)
-const client = treaty(app)
-const api = client.use(routeInfo)
-api.users({ id: '1' }).routePath() // '/users/1', no request
+const app = new Elysia().get("/users/:id", ({ params }) => params.id);
+const client = treaty(app);
+const api = client.use(routeInfo);
+api.users({ id: "1" }).routePath(); // '/users/1', no request
 ```
 
 Call `.use()` on the root client and keep the returned client. The previous client stays unchanged. Chain `.use()` to combine plugins.
@@ -222,22 +227,24 @@ Call `.use()` on the root client and keep the returned client. The previous clie
 Use the v2 `websocket()` server plugin, then call `.subscribe()` on the client route. This connects over WebSocket, even when other Treaty calls use instance mode.
 
 ```ts
-import { Elysia, t } from 'elysia'
-import { websocket } from 'elysia/websocket'
-import { treaty } from '@elysia/eden'
+import { Elysia, t } from "elysia";
+import { websocket } from "elysia/websocket";
+import { treaty } from "@elysia/eden";
 
 const app = new Elysia()
-	.use(websocket())
-	.ws('/chat', {
-		body: t.String(),
-		response: t.String(),
-		message({ body }) { return body }
-	})
-	.listen(3000)
+  .use(websocket())
+  .ws("/chat", {
+    body: t.String(),
+    response: t.String(),
+    message({ body }) {
+      return body;
+    },
+  })
+  .listen(3000);
 
-const chat = treaty<typeof app>('http://localhost:3000').chat.subscribe()
-chat.subscribe((message) => console.log(message.data))
-chat.on('open', () => chat.send('Hello'))
+const chat = treaty<typeof app>("http://localhost:3000").chat.subscribe();
+chat.subscribe((message) => console.log(message.data));
+chat.on("open", () => chat.send("Hello"));
 ```
 
 `subscribe` accepts query options. The `EdenWS` wrapper provides typed `send`, `subscribe`, `on`, `off`, and `close`. Access the native WebSocket through `.ws`. Browser WebSockets cannot send arbitrary custom headers. Use cookies or the server's supported authentication flow.
@@ -247,17 +254,17 @@ chat.on('open', () => chat.send('Hello'))
 `edenFetch<App>(origin)` uses route patterns and fills parameters separately. It has no WebSocket support.
 
 ```ts
-import { edenFetch } from '@elysia/eden'
-import type { App } from './server/app'
+import { edenFetch } from "@elysia/eden";
+import type { App } from "./server/app";
 
-const apiFetch = edenFetch<App>('http://localhost:3000')
-await apiFetch('/users/:id', { params: { id: '1' } })
-const { data, error } = await apiFetch('/mirror', {
-	method: 'POST',
-	body: { id: 1, name: 'Elysia' }
-})
-if (error) throw error
-console.log(data.name)
+const apiFetch = edenFetch<App>("http://localhost:3000");
+await apiFetch("/users/:id", { params: { id: "1" } });
+const { data, error } = await apiFetch("/mirror", {
+  method: "POST",
+  body: { id: 1, name: "Elysia" },
+});
+if (error) throw error;
+console.log(data.name);
 ```
 
 Prefer Treaty unless the project uses Fetch or measurements favor Fetch's inference cost. Neither is always faster to type-check.

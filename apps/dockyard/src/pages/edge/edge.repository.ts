@@ -13,14 +13,26 @@ export class EdgeRepository {
   }
 
   domainById(id: number): Promise<Domain | undefined> {
-    return this.db.select().from(domains).where(eq(domains.id, id)).limit(1).then((r) => r[0]);
+    return this.db
+      .select()
+      .from(domains)
+      .where(eq(domains.id, id))
+      .limit(1)
+      .then((r) => r[0]);
   }
 
   domainByHostname(hostname: string): Promise<Domain | undefined> {
-    return this.db.select().from(domains).where(eq(domains.hostname, hostname)).limit(1).then((r) => r[0]);
+    return this.db
+      .select()
+      .from(domains)
+      .where(eq(domains.hostname, hostname))
+      .limit(1)
+      .then((r) => r[0]);
   }
 
-  async addDomain(input: Omit<typeof domains.$inferInsert, "id" | "createdAt">): Promise<Domain> {
+  async addDomain(
+    input: Omit<typeof domains.$inferInsert, "id" | "createdAt">,
+  ): Promise<Domain> {
     const [row] = await this.db.insert(domains).values(input).returning();
     return row!;
   }
@@ -34,7 +46,9 @@ export class EdgeRepository {
   }
 
   /** 只读探针：target 的 kind/name（域名抢占/绑定校验的报错信息用） */
-  async targetBrief(id: number): Promise<{ kind: string; name: string } | undefined> {
+  async targetBrief(
+    id: number,
+  ): Promise<{ kind: string; name: string } | undefined> {
     const rows = await this.db
       .select({ kind: deployTargets.kind, name: deployTargets.name })
       .from(deployTargets)

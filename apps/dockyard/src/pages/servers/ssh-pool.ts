@@ -1,7 +1,12 @@
 import { ServiceError } from "@elysiax/core";
 import { readFileSync } from "node:fs";
 import net from "node:net";
-import { connect, acceptHostKeys, type Credential, type SshClient } from "@meitaim/ssh";
+import {
+  connect,
+  acceptHostKeys,
+  type Credential,
+  type SshClient,
+} from "@meitaim/ssh";
 import { sshAgent } from "@meitaim/ssh/agent";
 import type { Server } from "./schema";
 import { decryptSecret } from "../../shared/crypto";
@@ -25,7 +30,11 @@ function nodeSocketDuplex(socket: net.Socket) {
       start(controller) {
         // bun-types 1.4.4 把 data 标成 string|Buffer（未 setEncoding 时实为 Buffer）
         socket.on("data", (d) =>
-          controller.enqueue(typeof d === "string" ? new TextEncoder().encode(d) : new Uint8Array(d)),
+          controller.enqueue(
+            typeof d === "string"
+              ? new TextEncoder().encode(d)
+              : new Uint8Array(d),
+          ),
         );
         socket.on("end", () => controller.close());
         socket.on("error", (e) => controller.error(e));
@@ -40,7 +49,8 @@ function nodeSocketDuplex(socket: net.Socket) {
 
 async function agentCredentials(): Promise<Credential[]> {
   const sockPath = Bun.env.SSH_AUTH_SOCK;
-  if (!sockPath) throw new ServiceError("SSH_AUTH_SOCK 未设置（ssh-agent 不可用）");
+  if (!sockPath)
+    throw new ServiceError("SSH_AUTH_SOCK 未设置（ssh-agent 不可用）");
   const socket = net.createConnection(sockPath);
   await new Promise<void>((resolve, reject) => {
     socket.once("connect", resolve);
@@ -48,7 +58,8 @@ async function agentCredentials(): Promise<Credential[]> {
   });
   const agent = sshAgent(nodeSocketDuplex(socket));
   const identities = await agent.identities();
-  if (identities.length === 0) throw new ServiceError("ssh-agent 里没有可用密钥（先 ssh-add）");
+  if (identities.length === 0)
+    throw new ServiceError("ssh-agent 里没有可用密钥（先 ssh-add）");
   return identities.map((signer) => ({ signer }));
 }
 
@@ -113,7 +124,11 @@ export class SshPool {
         verifyHostKey,
       });
     } catch (error) {
-      if (presented) throw new UnknownHostKeyError(presented.fingerprint, presented.algorithm);
+      if (presented)
+        throw new UnknownHostKeyError(
+          presented.fingerprint,
+          presented.algorithm,
+        );
       throw error;
     }
   }

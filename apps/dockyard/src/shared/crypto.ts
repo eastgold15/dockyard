@@ -24,7 +24,14 @@ export function encryptSecret(plain: string): string {
 export function decryptSecret(stored: string): string {
   if (!stored.startsWith("enc1:")) return stored; // 兼容未加密历史值
   const [iv, tag, data] = stored.slice(5).split(".");
-  const decipher = createDecipheriv("aes-256-gcm", loadKey(), Buffer.from(iv!, "base64"));
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    loadKey(),
+    Buffer.from(iv!, "base64"),
+  );
   decipher.setAuthTag(Buffer.from(tag!, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(data!, "base64")), decipher.final()]).toString("utf8");
+  return Buffer.concat([
+    decipher.update(Buffer.from(data!, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
 }

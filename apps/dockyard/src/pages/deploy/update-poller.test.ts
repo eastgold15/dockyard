@@ -10,23 +10,69 @@ import { join } from "node:path";
 import { gitHeadSha, updateDecision } from "./update-poller";
 
 test("updateDecision：无基线不亮徽章，sha 变化才亮", () => {
-  expect(updateDecision({ lastKnownSha: null, headSha: "abc12345", deployPolicy: "notify" }).available).toBe(false);
-  expect(updateDecision({ lastKnownSha: "abc12345", headSha: "abc12345", deployPolicy: "notify" }).available).toBe(false);
-  expect(updateDecision({ lastKnownSha: "abc12345", headSha: "def67890", deployPolicy: "notify" }).available).toBe(true);
+  expect(
+    updateDecision({
+      lastKnownSha: null,
+      headSha: "abc12345",
+      deployPolicy: "notify",
+    }).available,
+  ).toBe(false);
+  expect(
+    updateDecision({
+      lastKnownSha: "abc12345",
+      headSha: "abc12345",
+      deployPolicy: "notify",
+    }).available,
+  ).toBe(false);
+  expect(
+    updateDecision({
+      lastKnownSha: "abc12345",
+      headSha: "def67890",
+      deployPolicy: "notify",
+    }).available,
+  ).toBe(true);
 });
 
 test("updateDecision：auto 只在有新 sha 且未触发过时触发", () => {
-  expect(updateDecision({ lastKnownSha: "abc12345", headSha: "def67890", deployPolicy: "auto" }).autoTrigger).toBe(true);
+  expect(
+    updateDecision({
+      lastKnownSha: "abc12345",
+      headSha: "def67890",
+      deployPolicy: "auto",
+    }).autoTrigger,
+  ).toBe(true);
   // 同 sha 已 auto 触发过（失败不重试）
   expect(
-    updateDecision({ lastKnownSha: "abc12345", headSha: "def67890", deployPolicy: "auto", lastAutoSha: "def67890" })
-      .autoTrigger,
+    updateDecision({
+      lastKnownSha: "abc12345",
+      headSha: "def67890",
+      deployPolicy: "auto",
+      lastAutoSha: "def67890",
+    }).autoTrigger,
   ).toBe(false);
   // notify/manual 永不自动部署
-  expect(updateDecision({ lastKnownSha: "abc12345", headSha: "def67890", deployPolicy: "notify" }).autoTrigger).toBe(false);
-  expect(updateDecision({ lastKnownSha: "abc12345", headSha: "def67890", deployPolicy: "manual" }).autoTrigger).toBe(false);
+  expect(
+    updateDecision({
+      lastKnownSha: "abc12345",
+      headSha: "def67890",
+      deployPolicy: "notify",
+    }).autoTrigger,
+  ).toBe(false);
+  expect(
+    updateDecision({
+      lastKnownSha: "abc12345",
+      headSha: "def67890",
+      deployPolicy: "manual",
+    }).autoTrigger,
+  ).toBe(false);
   // 无变化不触发
-  expect(updateDecision({ lastKnownSha: "abc12345", headSha: "abc12345", deployPolicy: "auto" }).autoTrigger).toBe(false);
+  expect(
+    updateDecision({
+      lastKnownSha: "abc12345",
+      headSha: "abc12345",
+      deployPolicy: "auto",
+    }).autoTrigger,
+  ).toBe(false);
 });
 
 test("gitHeadSha：git 目录返回 8 位短 sha，非 git 目录返回 null", async () => {

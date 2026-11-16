@@ -35,54 +35,57 @@ Use the project's test runner. This Bun example opens no port.
 
 ```ts
 // src/app.ts
-import { Elysia, t } from 'elysia'
+import { Elysia, t } from "elysia";
 
-export const app = new Elysia()
-	.get('/users/:id', {
-		params: t.Object({ id: t.Number() })
-	}, ({ params }) => ({ id: params.id }))
+export const app = new Elysia().get(
+  "/users/:id",
+  {
+    params: t.Object({ id: t.Number() }),
+  },
+  ({ params }) => ({ id: params.id }),
+);
 
-export type App = typeof app
+export type App = typeof app;
 ```
 
 ```ts
 // test/app.test.ts
-import { expect, test } from 'bun:test'
-import { app } from '../src/app'
+import { expect, test } from "bun:test";
+import { app } from "../src/app";
 
-test('coerces the id and rejects nonnumeric input', async () => {
-	const response = await app.handle('/users/42')
-	expect(response.status).toBe(200)
-	expect(await response.json()).toEqual({ id: 42 })
-	expect((await app.handle('/users/nope')).status).toBe(422)
-})
+test("coerces the id and rejects nonnumeric input", async () => {
+  const response = await app.handle("/users/42");
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ id: 42 });
+  expect((await app.handle("/users/nope")).status).toBe(422);
+});
 ```
 
 Run `bun test` and the project's type check. For new projects, see [runtime setup](references/runtimes.md). Keep `.listen()` in the process entry. See [project structure](references/project-structure.md).
 
 ## Choose a reference
 
-| Task | Read |
-| --- | --- |
-| Versions, peer dependencies, source versus docs | [Versions](references/versions.md) |
-| Configuration, routing, context, files, streams | [Core API](references/api.md) |
-| Hooks, parsing, derived context, disposal | [Lifecycle](references/lifecycle.md) |
-| Plugins, hook scope, guards, macros | [Composition](references/composition.md) |
-| Schemas, coercion, uploads, inferred types | [Validation](references/validation.md) |
-| Expected errors, exception mapping, production responses | [Errors](references/errors.md) |
-| Folders, services, models, dependency injection | [Project structure](references/project-structure.md) |
-| Cookie values, validation, signing | [Cookies](references/cookie.md) |
-| WebSocket routes | [WebSockets](references/websocket.md) |
-| Route tests, type checks, lazy plugins | [Testing](references/testing.md) |
-| Typed client calls | [Eden](references/eden.md) |
-| OpenAPI schemas and documentation | [OpenAPI](references/openapi.md) |
-| Bun, Node, Deno, Workers, frontend framework integration | [Runtimes](references/runtimes.md) |
-| Bundles, AOT, binaries, Docker, deployment | [Deployment](references/deploy.md) |
-| Traces, spans, request timing | [Observability](references/observability.md) |
-| CORS, JWT, static files, cron, HTML, GraphQL | [Official plugins](references/plugins.md) |
-| Databases and external libraries | [Drizzle](references/drizzle.md), [Prisma](references/prisma.md), [Better Auth](references/better-auth.md), [AI SDK](references/ai-sdk.md), [React Email](references/react-email.md) |
-| v1 syntax and migration | [Migration](references/migration.md) |
-| Find an example by pattern | [Pattern index](references/cheat-sheet.md) |
+| Task                                                     | Read                                                                                                                                                                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Versions, peer dependencies, source versus docs          | [Versions](references/versions.md)                                                                                                                                                   |
+| Configuration, routing, context, files, streams          | [Core API](references/api.md)                                                                                                                                                        |
+| Hooks, parsing, derived context, disposal                | [Lifecycle](references/lifecycle.md)                                                                                                                                                 |
+| Plugins, hook scope, guards, macros                      | [Composition](references/composition.md)                                                                                                                                             |
+| Schemas, coercion, uploads, inferred types               | [Validation](references/validation.md)                                                                                                                                               |
+| Expected errors, exception mapping, production responses | [Errors](references/errors.md)                                                                                                                                                       |
+| Folders, services, models, dependency injection          | [Project structure](references/project-structure.md)                                                                                                                                 |
+| Cookie values, validation, signing                       | [Cookies](references/cookie.md)                                                                                                                                                      |
+| WebSocket routes                                         | [WebSockets](references/websocket.md)                                                                                                                                                |
+| Route tests, type checks, lazy plugins                   | [Testing](references/testing.md)                                                                                                                                                     |
+| Typed client calls                                       | [Eden](references/eden.md)                                                                                                                                                           |
+| OpenAPI schemas and documentation                        | [OpenAPI](references/openapi.md)                                                                                                                                                     |
+| Bun, Node, Deno, Workers, frontend framework integration | [Runtimes](references/runtimes.md)                                                                                                                                                   |
+| Bundles, AOT, binaries, Docker, deployment               | [Deployment](references/deploy.md)                                                                                                                                                   |
+| Traces, spans, request timing                            | [Observability](references/observability.md)                                                                                                                                         |
+| CORS, JWT, static files, cron, HTML, GraphQL             | [Official plugins](references/plugins.md)                                                                                                                                            |
+| Databases and external libraries                         | [Drizzle](references/drizzle.md), [Prisma](references/prisma.md), [Better Auth](references/better-auth.md), [AI SDK](references/ai-sdk.md), [React Email](references/react-email.md) |
+| v1 syntax and migration                                  | [Migration](references/migration.md)                                                                                                                                                 |
+| Find an example by pattern                               | [Pattern index](references/cheat-sheet.md)                                                                                                                                           |
 
 ## Defaults for a new project
 

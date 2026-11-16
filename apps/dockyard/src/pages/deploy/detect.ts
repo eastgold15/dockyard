@@ -1,6 +1,6 @@
 /**
  * 部署自动识别（借鉴 openship 的 overlay 模型：检测先行、声明覆盖）。
- * - 仓库根有 openship.json → 按声明解析（services/domains/env），错误/警告带回 UI
+ * - 仓库根有 dockyard.json → 按声明解析（services/domains/env），错误/警告带回 UI
  * - 没有 → 回退解析 compose 文件的 services + ports，生成同样的 DetectResult
  * 形状校验用 typebox（Value.Check 逐项判定），未知字段只警告不报错——同 openship 的宽容策略。
  */
@@ -8,7 +8,7 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-// ── openship.json 类型（对齐 tradeflow/openship.json 的实际形状）──
+// ── dockyard.json 类型（对齐 tradeflow/openship.json 的实际形状）──
 export interface OpenshipEnvValue {
   value: string;
   secret: boolean;
@@ -42,7 +42,8 @@ export interface ParseResult {
 }
 
 type Obj = Record<string, unknown>;
-const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
+const isObj = (v: unknown): v is Obj =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
 // ── typebox 形状定义（Value.Check 只做判定，宽容策略：坏项跳过、能救的救回来）──
 const EnvValueSchema = Type.Union([
@@ -61,7 +62,11 @@ const ResourcesSchema = Type.Object({
 });
 const ServiceNameSchema = Type.Object({ name: Type.String({ minLength: 1 }) });
 
-function parseEnvValue(key: string, raw: unknown, warnings: string[]): OpenshipEnvValue | null {
+function parseEnvValue(
+  key: string,
+  raw: unknown,
+  warnings: string[],
+): OpenshipEnvValue | null {
   if (!Value.Check(EnvValueSchema, raw)) {
     warnings.push(`env.${key} 形状无法识别，已跳过`);
     return null;
@@ -71,7 +76,11 @@ function parseEnvValue(key: string, raw: unknown, warnings: string[]): OpenshipE
     : { value: raw.value, secret: raw.secret === true };
 }
 
-function parseEnvMap(raw: unknown, scope: string, warnings: string[]): Record<string, OpenshipEnvValue> {
+function parseEnvMap(
+  raw: unknown,
+  scope: string,
+  warnings: string[],
+): Record<string, OpenshipEnvValue> {
   const out: Record<string, OpenshipEnvValue> = {};
   if (!isObj(raw)) return out;
   for (const [k, v] of Object.entries(raw)) {
@@ -85,10 +94,21 @@ function parseEnvMap(raw: unknown, scope: string, warnings: string[]): Record<st
 export function parseOpenshipConfig(raw: unknown): ParseResult {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (!isObj(raw)) return { config: null, errors: ["openship.json 顶层必须是对象"], warnings };
+  if (!isObj(raw))
+    return { config: null, errors: ["dockyard.json 顶层必须是对象"], warnings };
 
-  const KNOWN = new Set(["$schema", "framework", "composePath", "domains", "volumes", "env", "services", "resources"]);
-  for (const key of Object.keys(raw)) if (!KNOWN.has(key)) warnings.push(`未知字段 ${key}（忽略）`);
+  const KNOWN = new Set([
+    "$schema",
+    "framework",
+    "composePath",
+    "domains",
+    "volumes",
+    "env",
+    "services",
+    "resources",
+  ]);
+  for (const key of Object.keys(raw))
+    if (!KNOWN.has(key)) warnings.push(`未知字段 ${key}（忽略）`);
 
   const domains: OpenshipDomain[] = [];
   if (raw.domains !== undefined) {
@@ -100,7 +120,11 @@ export function parseOpenshipConfig(raw: unknown): ParseResult {
           continue;
         }
         const dd = d as Static<typeof DomainSchema>;
-        domains.push({ domain: dd.domain, port: dd.port, type: dd.type ?? "custom" });
+        domains.push({
+          domain: dd.domain,
+          port: dd.port,
+          type: dd.type ?? "custom",
+        });
       }
     }
   }
@@ -118,10 +142,16 @@ export function parseOpenshipConfig(raw: unknown): ParseResult {
         services.push({
           name: svc.name,
           exposed: svc.exposed === true,
-          exposedPort: typeof svc.exposedPort === "string" ? Number(svc.exposedPort) || undefined
-            : typeof svc.exposedPort === "number" ? svc.exposedPort : undefined,
+          exposedPort:
+            typeof svc.exposedPort === "string"
+              ? Number(svc.exposedPort) || undefined
+              : typeof svc.exposedPort === "number"
+                ? svc.exposedPort
+                : undefined,
           domain: typeof svc.domain === "string" ? svc.domain : undefined,
-          resources: Value.Check(ResourcesSchema, svc.resources) ? svc.resources : undefined,
+          resources: Value.Check(ResourcesSchema, svc.resources)
+            ? svc.resources
+            : undefined,
           env: parseEnvMap(svc.env, `services.${svc.name}.env`, warnings),
         });
       }
@@ -130,14 +160,20 @@ export function parseOpenshipConfig(raw: unknown): ParseResult {
 
   const volumes: string[] = [];
   if (raw.volumes !== undefined) {
-    if (!Array.isArray(raw.volumes)) warnings.push("volumes 应为字符串数组，已忽略");
-    else for (const v of raw.volumes) typeof v === "string" ? volumes.push(v) : warnings.push(`volumes 里的非字符串项已忽略`);
+    if (!Array.isArray(raw.volumes))
+      warnings.push("volumes 应为字符串数组，已忽略");
+    else
+      for (const v of raw.volumes)
+        typeof v === "string"
+          ? volumes.push(v)
+          : warnings.push(`volumes 里的非字符串项已忽略`);
   }
 
   return {
     config: {
       framework: typeof raw.framework === "string" ? raw.framework : undefined,
-      composePath: typeof raw.composePath === "string" ? raw.composePath : undefined,
+      composePath:
+        typeof raw.composePath === "string" ? raw.composePath : undefined,
       domains,
       volumes,
       env: parseEnvMap(raw.env, "env", warnings),
@@ -152,11 +188,15 @@ export function parseOpenshipConfigJson(text: string): ParseResult {
   try {
     return parseOpenshipConfig(JSON.parse(text));
   } catch (e) {
-    return { config: null, errors: [`openship.json 不是合法 JSON：${(e as Error).message}`], warnings: [] };
+    return {
+      config: null,
+      errors: [`dockyard.json 不是合法 JSON：${(e as Error).message}`],
+      warnings: [],
+    };
   }
 }
 
-// ── UI/创建共用的识别结果（openship.json 与 compose 回退统一成这个形状）──
+// ── UI/创建共用的识别结果（dockyard.json 与 compose 回退统一成这个形状）──
 export interface DetectedService {
   name: string;
   exposed: boolean;
@@ -169,7 +209,10 @@ export interface DetectedService {
 }
 
 /** 从服务 image / 名称猜测中间件类型（部署前置检查：对比服务器共享资源清单） */
-export function guessDbType(svc: { name: string; image?: string }): "postgres" | "mysql" | "redis" | "mongo" | null {
+export function guessDbType(svc: {
+  name: string;
+  image?: string;
+}): "postgres" | "mysql" | "redis" | "mongo" | null {
   const hay = `${svc.image ?? ""} ${svc.name}`.toLowerCase();
   if (/postgres|pgvector|postgis/.test(hay)) return "postgres";
   if (/mysql|mariadb/.test(hay)) return "mysql";
@@ -178,7 +221,7 @@ export function guessDbType(svc: { name: string; image?: string }): "postgres" |
   return null;
 }
 export interface DetectResult {
-  source: "openship.json" | "compose" | "none";
+  source: "dockyard.json" | "compose" | "none";
   composePath: string;
   services: DetectedService[];
   rootEnv: Record<string, OpenshipEnvValue>;
@@ -186,16 +229,29 @@ export interface DetectResult {
   warnings: string[];
 }
 
-/** openship.json → DetectResult（services[] 为空时退回 compose 探测端口） */
-export function configToDetect(parsed: ParseResult, composeText: string | null): DetectResult {
+/** dockyard.json → DetectResult（services[] 为空时退回 compose 探测端口） */
+export function configToDetect(
+  parsed: ParseResult,
+  composeText: string | null,
+): DetectResult {
   const { config, errors, warnings } = parsed;
-  if (!config) return { source: "openship.json", composePath: "docker-compose.yml", services: [], rootEnv: {}, errors, warnings };
+  if (!config)
+    return {
+      source: "dockyard.json",
+      composePath: "docker-compose.yml",
+      services: [],
+      rootEnv: {},
+      errors,
+      warnings,
+    };
   const composePath = config.composePath ?? "docker-compose.yml";
   const domainByPort = new Map(config.domains.map((d) => [d.port, d.domain]));
   let services: DetectedService[] = config.services.map((s) => ({
     name: s.name,
     exposed: s.exposed,
-    port: s.exposedPort ?? (s.exposed ? domainByPortPort(config.domains, s.domain) : undefined),
+    port:
+      s.exposedPort ??
+      (s.exposed ? domainByPortPort(config.domains, s.domain) : undefined),
     domain: s.domain,
     cpuCores: s.resources?.cpuCores,
     memoryMb: s.resources?.memoryMb,
@@ -203,12 +259,14 @@ export function configToDetect(parsed: ParseResult, composeText: string | null):
   }));
   if (services.length === 0 && composeText) {
     services = detectFromCompose(composeText).services;
-    warnings.push("openship.json 未声明 services，已从 compose 探测");
+    warnings.push("dockyard.json 未声明 services，已从 compose 探测");
   }
   // domains[] 里未被任何 service 认领的，按端口挂到同名/同端口 exposed 服务
   for (const d of config.domains) {
     if (services.some((s) => s.domain === d.domain)) continue;
-    const svc = services.find((s) => s.exposed && s.port === d.port) ?? services.find((s) => s.exposed);
+    const svc =
+      services.find((s) => s.exposed && s.port === d.port) ??
+      services.find((s) => s.exposed);
     if (svc) {
       svc.domain = svc.domain ?? d.domain;
       svc.port = svc.port ?? d.port;
@@ -216,10 +274,20 @@ export function configToDetect(parsed: ParseResult, composeText: string | null):
       warnings.push(`域名 ${d.domain}:${d.port} 没有可挂靠的 exposed 服务`);
     }
   }
-  return { source: "openship.json", composePath, services, rootEnv: config.env, errors, warnings };
+  return {
+    source: "dockyard.json",
+    composePath,
+    services,
+    rootEnv: config.env,
+    errors,
+    warnings,
+  };
 }
 
-function domainByPortPort(domains: OpenshipDomain[], domain?: string): number | undefined {
+function domainByPortPort(
+  domains: OpenshipDomain[],
+  domain?: string,
+): number | undefined {
   if (!domain) return undefined;
   return domains.find((d) => d.domain === domain)?.port;
 }
@@ -240,10 +308,16 @@ export function envFilePaths(composeText: string): string[] {
     const raw = def.env_file;
     const list = Array.isArray(raw) ? raw : raw !== undefined ? [raw] : [];
     for (const item of list) {
-      const p = typeof item === "string" ? item : isObj(item) && typeof item.path === "string" ? item.path : null;
+      const p =
+        typeof item === "string"
+          ? item
+          : isObj(item) && typeof item.path === "string"
+            ? item.path
+            : null;
       if (!p) continue;
       const expanded = p.replace(/\$\{[^}]*:-([^}]*)\}/g, "$1");
-      if (!expanded.startsWith("/") && !expanded.includes("${")) paths.add(expanded);
+      if (!expanded.startsWith("/") && !expanded.includes("${"))
+        paths.add(expanded);
     }
   }
   return [...paths];
@@ -257,7 +331,14 @@ export function detectFromCompose(composeText: string): DetectResult {
   try {
     doc = parseYaml(composeText);
   } catch (e) {
-    return { source: "compose", composePath: "docker-compose.yml", services: [], rootEnv: {}, errors: [`compose 解析失败：${(e as Error).message}`], warnings };
+    return {
+      source: "compose",
+      composePath: "docker-compose.yml",
+      services: [],
+      rootEnv: {},
+      errors: [`compose 解析失败：${(e as Error).message}`],
+      warnings,
+    };
   }
   const svcs = isObj(doc) && isObj(doc.services) ? doc.services : {};
   for (const [name, def] of Object.entries(svcs)) {
@@ -269,11 +350,25 @@ export function detectFromCompose(composeText: string): DetectResult {
       const m = first.match(/^(?:(\d+):)?(\d+)(?:\/(?:tcp|udp))?$/);
       if (m) port = Number(m[1] ?? m[2]);
     }
-    if (def.image === undefined && def.build === undefined) warnings.push(`服务 ${name} 既无 image 也无 build，部署可能失败`);
-    services.push({ name, exposed: port !== undefined, port, image: typeof def.image === "string" ? def.image : undefined, env: {} });
+    if (def.image === undefined && def.build === undefined)
+      warnings.push(`服务 ${name} 既无 image 也无 build，部署可能失败`);
+    services.push({
+      name,
+      exposed: port !== undefined,
+      port,
+      image: typeof def.image === "string" ? def.image : undefined,
+      env: {},
+    });
   }
   if (services.length === 0) warnings.push("compose 里没发现任何 service");
-  return { source: "compose", composePath: "docker-compose.yml", services, rootEnv: {}, errors: [], warnings };
+  return {
+    source: "compose",
+    composePath: "docker-compose.yml",
+    services,
+    rootEnv: {},
+    errors: [],
+    warnings,
+  };
 }
 
 import { envMapToText } from "../../shared/env-text";
@@ -287,17 +382,21 @@ export function detectToEnvText(detect: Pick<DetectResult, "rootEnv">): string {
 }
 
 /** 资源限制 + 服务级 environment → compose override。
- *  environment 是 openship.json 服务 env 真正送达容器的通道（用户 compose 的 env_file 相对路径远端不存在）；
+ *  environment 是 dockyard.json 服务 env 真正送达容器的通道（用户 compose 的 env_file 相对路径远端不存在）；
  *  资源限制对应 openship 的 HostConfig.NanoCpus/Memory（compose 里是 cpus/mem_limit）。
  *  不写 name: —— 远端 up 用 -p 定死项目名，override 里的 name 反而会抢。
  *  含秘密值，落库前必须 enc1: 加密。 */
-export function detectToOverrideCompose(detect: Pick<DetectResult, "services">): string | null {
+export function detectToOverrideCompose(
+  detect: Pick<DetectResult, "services">,
+): string | null {
   const services: Record<string, Record<string, unknown>> = {};
   for (const s of detect.services) {
     const def: Record<string, unknown> = {};
     if (s.cpuCores) def.cpus = s.cpuCores;
     if (s.memoryMb) def.mem_limit = `${s.memoryMb}m`;
-    const env = Object.fromEntries(Object.entries(s.env).map(([k, v]) => [k, v.value]));
+    const env = Object.fromEntries(
+      Object.entries(s.env).map(([k, v]) => [k, v.value]),
+    );
     if (Object.keys(env).length > 0) def.environment = env;
     if (Object.keys(def).length > 0) services[s.name] = def;
   }
@@ -309,19 +408,30 @@ export function detectToOverrideCompose(detect: Pick<DetectResult, "services">):
 import { join } from "node:path";
 import { parseOwnerRepo, type GithubService } from "../github/github.socket";
 
-/** 仓库识别：gh contents API 直读文件（不克隆，秒级）→ openship.json 声明覆盖 → compose 回退 */
-export async function detectRepo(github: GithubService, input: { repoUrl: string; branch: string }): Promise<DetectResult> {
+/** 清单文件名：产品定名 dockyard.json */
+const MANIFEST_FILE = "dockyard.json";
+
+/** 仓库识别：gh contents API 直读文件（不克隆，秒级）→ dockyard.json 声明覆盖 → compose 回退 */
+export async function detectRepo(
+  github: GithubService,
+  input: { repoUrl: string; branch: string },
+): Promise<DetectResult> {
   const ownerRepo = parseOwnerRepo(input.repoUrl);
   const branch = input.branch || "main";
   const read = (path: string) => github.fileContent(ownerRepo, path, branch);
 
-  const openshipText = await read("openship.json");
-  if (openshipText !== null) {
-    const parsed = parseOpenshipConfigJson(openshipText);
+  const manifestText = await read(MANIFEST_FILE);
+  if (manifestText !== null) {
+    const parsed = parseOpenshipConfigJson(manifestText);
     const composePath = parsed.config?.composePath ?? "docker-compose.yml";
     return configToDetect(parsed, await read(composePath));
   }
-  for (const candidate of ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]) {
+  for (const candidate of [
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+  ]) {
     const text = await read(candidate);
     if (text !== null) {
       const result = detectFromCompose(text);
@@ -335,24 +445,34 @@ export async function detectRepo(github: GithubService, input: { repoUrl: string
     services: [],
     rootEnv: {},
     errors: [],
-    warnings: ["仓库里既没有 openship.json 也没有 compose 文件，请手动填写部署参数"],
+    warnings: [
+      "仓库里既没有 dockyard.json 也没有 compose 文件，请手动填写部署参数",
+    ],
   };
 }
 
-/** 本地文件夹导入的识别：直接读本机目录的 openship.json / compose（不走 GitHub API） */
-export async function detectLocal(input: { localPath: string; rootDir?: string }): Promise<DetectResult> {
+/** 本地文件夹导入的识别：直接读本机目录的 dockyard.json / compose（不走 GitHub API） */
+export async function detectLocal(input: {
+  localPath: string;
+  rootDir?: string;
+}): Promise<DetectResult> {
   const dir = join(input.localPath, input.rootDir ?? "");
   const read = async (path: string): Promise<string | null> => {
     const file = Bun.file(join(dir, path));
     return (await file.exists()) ? file.text() : null;
   };
-  const openshipText = await read("openship.json");
-  if (openshipText !== null) {
-    const parsed = parseOpenshipConfigJson(openshipText);
+  const manifestText = await read(MANIFEST_FILE);
+  if (manifestText !== null) {
+    const parsed = parseOpenshipConfigJson(manifestText);
     const composePath = parsed.config?.composePath ?? "docker-compose.yml";
     return configToDetect(parsed, await read(composePath));
   }
-  for (const candidate of ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]) {
+  for (const candidate of [
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+  ]) {
     const text = await read(candidate);
     if (text !== null) {
       const result = detectFromCompose(text);
@@ -366,6 +486,8 @@ export async function detectLocal(input: { localPath: string; rootDir?: string }
     services: [],
     rootEnv: {},
     errors: [],
-    warnings: ["本地目录里既没有 openship.json 也没有 compose 文件，请手动填写部署参数"],
+    warnings: [
+      "本地目录里既没有 dockyard.json 也没有 compose 文件，请手动填写部署参数",
+    ],
   };
 }

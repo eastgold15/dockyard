@@ -60,7 +60,9 @@ export class LocalTransport implements ServerTransport {
   async sftp(): Promise<ServerSftp> {
     return {
       async write(path, contents) {
-        const abs = path.startsWith("~/") ? `${homedir()}${path.slice(1)}` : path;
+        const abs = path.startsWith("~/")
+          ? `${homedir()}${path.slice(1)}`
+          : path;
         await writeFile(abs, contents, { mode: 0o600 });
       },
       async close() {},
@@ -90,6 +92,8 @@ export interface ServerSftp {
  * 打开文件通道（远程 SFTP / 本机落盘的分派在实现方，见 ServerTransport.sftp）。
  * 调用方纪律不变——写秘密文件前先过 preflight 归属校验。
  */
-export function openServerSftp(transport: ServerTransport): Promise<ServerSftp> {
+export function openServerSftp(
+  transport: ServerTransport,
+): Promise<ServerSftp> {
   return transport.sftp();
 }

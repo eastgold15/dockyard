@@ -6,12 +6,21 @@ import { encryptSecret } from "../../shared/crypto";
 import { isLocalHost } from "./host";
 import { SshPool, UnknownHostKeyError } from "./ssh-pool";
 import { DockerRelay } from "./docker-relay";
-import { LocalTransport, openServerSftp, remoteTransport, type ServerTransport } from "./transport";
+import {
+  LocalTransport,
+  openServerSftp,
+  remoteTransport,
+  type ServerTransport,
+} from "./transport";
 import type { ServerRepository, NewServer } from "./servers.repository";
 
 export type CheckResult =
   | { ok: true; dockerVersion: string; warning?: string }
-  | { ok: false; reason: "docker-missing" | "ssh-failed" | "local-failed"; message: string }
+  | {
+      ok: false;
+      reason: "docker-missing" | "ssh-failed" | "local-failed";
+      message: string;
+    }
   | { ok: false; reason: "need-trust"; fingerprint: string; algorithm: string };
 
 /** 内置本机行的固定字段：地址/用户/端口由程序定死，UI 不可编辑 */
@@ -62,7 +71,9 @@ export class ServerService {
     const me = userInfo().username;
     const own =
       all.find((s) => s.builtin) ??
-      all.find((s) => isLocalHost(s.host) && s.port === LOCAL_PORT && s.user === me);
+      all.find(
+        (s) => isLocalHost(s.host) && s.port === LOCAL_PORT && s.user === me,
+      );
     if (!own) return this.repo.create(fixed);
     await this.repo.update(own.id, fixed);
     return (await this.repo.byId(own.id))!;
@@ -71,7 +82,9 @@ export class ServerService {
   create(input: NewServer) {
     // 本机是内置资源：回环地址不允许走「添加服务器」
     if (isLocalHost(input.host)) {
-      throw new ServiceError("本机由程序自动认领，不能手动添加；请填写远程服务器地址");
+      throw new ServiceError(
+        "本机由程序自动认领，不能手动添加；请填写远程服务器地址",
+      );
     }
     return this.repo.create({
       ...input,
@@ -96,7 +109,10 @@ export class ServerService {
         "docker version --format '{{.Server.Version}}'",
       );
       if (code !== 0) {
-        await this.repo.update(id, { dockerStatus: "missing", lastCheckedAt: new Date() });
+        await this.repo.update(id, {
+          dockerStatus: "missing",
+          lastCheckedAt: new Date(),
+        });
         // 本机没有 SSH 这层：失败可能是 daemon 没跑 / 当前用户不在 docker 组，
         // 说成「远端未安装」会把用户引去装第二遍 docker。把 stderr 末行带出来。
         const detail = stderr.trim().split("\n").at(-1) ?? "";
@@ -111,8 +127,12 @@ export class ServerService {
       const version = stdout.trim();
       // 机器指纹：/etc/machine-id + docker Server ID，防同机重复添加 / IP 漂移误部署
       const [machineId, dockerId] = await Promise.all([
-        client.exec("cat /etc/machine-id 2>/dev/null").then((r) => r.stdout.trim() || null),
-        client.exec("docker info --format '{{.ID}}' 2>/dev/null").then((r) => r.stdout.trim() || null),
+        client
+          .exec("cat /etc/machine-id 2>/dev/null")
+          .then((r) => r.stdout.trim() || null),
+        client
+          .exec("docker info --format '{{.ID}}' 2>/dev/null")
+          .then((r) => r.stdout.trim() || null),
       ]);
       let warning: string | undefined;
       if (server.machineId && machineId && server.machineId !== machineId) {
@@ -121,7 +141,8 @@ export class ServerService {
         const dup = (await this.repo.list()).find(
           (s) => s.id !== id && s.machineId === machineId,
         );
-        if (dup) warning = `与「${dup.name}」是同一台物理机（machine-id 相同），注意别部署串了`;
+        if (dup)
+          warning = `与「${dup.name}」是同一台物理机（machine-id 相同），注意别部署串了`;
       }
       await this.repo.update(id, {
         dockerStatus: "ok",
@@ -133,7 +154,12 @@ export class ServerService {
       return { ok: true, dockerVersion: version, warning };
     } catch (error) {
       if (error instanceof UnknownHostKeyError) {
-        return { ok: false, reason: "need-trust", fingerprint: error.fingerprint, algorithm: error.algorithm };
+        return {
+          ok: false,
+          reason: "need-trust",
+          fingerprint: error.fingerprint,
+          algorithm: error.algorithm,
+        };
       }
       return {
         ok: false,
@@ -171,13 +197,19 @@ export class ServerService {
   ): Promise<{ applied: boolean; mirrors: string[]; output: string }> {
     const server = await this.mustGet(id);
     if (server.builtin)
-      throw new ServiceError("本机镜像源由本机 daemon 配置管理，不需要在 dockyard 里应用");
+      throw new ServiceError(
+        "本机镜像源由本机 daemon 配置管理，不需要在 dockyard 里应用",
+      );
     const mirrors = normalizeMirrors(text);
     await this.repo.update(id, {
       registryMirrors: mirrors.length ? JSON.stringify(mirrors) : null,
     });
     if (mirrors.length === 0)
-      return { applied: false, mirrors: [], output: "镜像源已清空（仅保存设置，未触碰远端 daemon.json）" };
+      return {
+        applied: false,
+        mirrors: [],
+        output: "镜像源已清空（仅保存设置，未触碰远端 daemon.json）",
+      };
     const client = await this.transport(id);
     const final = await applyMirrorsToServer(client, mirrors);
     // dockerd 重启后立刻探测可能撞上 daemon 还没起来（systemctl 阻塞等待则首轮就成功）；
@@ -244,7 +276,10 @@ export function normalizeMirrors(text: string): string[] {
     } catch {
       throw new ServiceError(`非法镜像源地址：${raw}`);
     }
-    if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname)
+    if (
+      (url.protocol !== "https:" && url.protocol !== "http:") ||
+      !url.hostname
+    )
       throw new ServiceError(`镜像源只支持 http(s) 地址：${raw}`);
     const normalized = value.replace(/\/+$/, "");
     if (!mirrors.includes(normalized)) mirrors.push(normalized);
@@ -253,12 +288,16 @@ export function normalizeMirrors(text: string): string[] {
 }
 
 /** DB 存的是 JSON 数组字符串；解析失败/空值一律当 [] 处理（存量行没有该列） */
-export function parseMirrors(server: Pick<Server, "registryMirrors">): string[] {
+export function parseMirrors(
+  server: Pick<Server, "registryMirrors">,
+): string[] {
   if (!server.registryMirrors) return [];
   try {
     const arr = JSON.parse(server.registryMirrors) as unknown;
     return Array.isArray(arr)
-      ? arr.filter((m): m is string => typeof m === "string" && m.trim().length > 0)
+      ? arr.filter(
+          (m): m is string => typeof m === "string" && m.trim().length > 0,
+        )
       : [];
   } catch {
     return [];
@@ -267,25 +306,36 @@ export function parseMirrors(server: Pick<Server, "registryMirrors">): string[] 
 
 /** 现有 daemon.json + dockyard 配置 → 合并后的 JSON 文本。
  *  只追加不覆盖（保留用户在远端手工配的其他镜像源/配置项），去重后写回。 */
-export function mergeRegistryMirrors(existing: unknown, mirrors: string[]): string {
+export function mergeRegistryMirrors(
+  existing: unknown,
+  mirrors: string[],
+): string {
   const base =
     existing && typeof existing === "object" && !Array.isArray(existing)
       ? (existing as Record<string, unknown>)
       : {};
   const cur = Array.isArray(base["registry-mirrors"])
-    ? (base["registry-mirrors"] as unknown[]).filter((m): m is string => typeof m === "string")
+    ? (base["registry-mirrors"] as unknown[]).filter(
+        (m): m is string => typeof m === "string",
+      )
     : [];
   // 新增列表逐条并入并去重：既不能覆盖远端原有镜像源，新列表内部也不能出现重复
   const merged: string[] = [...cur];
   for (const m of mirrors) if (!merged.includes(m)) merged.push(m);
-  return JSON.stringify({ ...base, "registry-mirrors": merged }, null, 2) + "\n";
+  return (
+    JSON.stringify({ ...base, "registry-mirrors": merged }, null, 2) + "\n"
+  );
 }
 
 /** 把镜像源应用到远端传输通道：探测 root/sudo → 读 daemon.json → 合并写回 → 重启 dockerd。
  *  返回最终生效的 registry-mirrors 列表（含远端原有的，供 UI 展示核对）。 */
-export async function applyMirrorsToServer(client: ServerTransport, mirrors: string[]): Promise<string[]> {
+export async function applyMirrorsToServer(
+  client: ServerTransport,
+  mirrors: string[],
+): Promise<string[]> {
   const normalized = normalizeMirrors(mirrors.join("\n"));
-  if (normalized.length === 0) throw new ServiceError("镜像源列表为空，没有可应用的内容");
+  if (normalized.length === 0)
+    throw new ServiceError("镜像源列表为空，没有可应用的内容");
 
   const uid = await client.exec("id -u");
   const isRoot = uid.code === 0 && uid.stdout.trim() === "0";
@@ -293,19 +343,26 @@ export async function applyMirrorsToServer(client: ServerTransport, mirrors: str
   if (!isRoot) {
     const sudoOk = await client.exec("sudo -n true 2>/dev/null");
     if (sudoOk.code !== 0)
-      throw new ServiceError("远端用户非 root 且没有免密 sudo，无法写 /etc/docker/daemon.json");
+      throw new ServiceError(
+        "远端用户非 root 且没有免密 sudo，无法写 /etc/docker/daemon.json",
+      );
   }
 
   // 非 root 时读取也要走 sudo；读失败必须中止，不能当成空配置覆盖原文件
   const raw = await client.exec(
     `if [ -f /etc/docker/daemon.json ]; then ${prefix}cat /etc/docker/daemon.json; else printf '{}'; fi`,
   );
-  if (raw.code !== 0) throw new ServiceError(`读取远端 daemon.json 失败：${raw.stderr || raw.stdout}`);
+  if (raw.code !== 0)
+    throw new ServiceError(
+      `读取远端 daemon.json 失败：${raw.stderr || raw.stdout}`,
+    );
   let existing: unknown = {};
   try {
     existing = JSON.parse(raw.stdout.trim() || "{}");
   } catch {
-    throw new ServiceError(`远端 /etc/docker/daemon.json 不是合法 JSON，拒绝覆盖：${raw.stdout.trim().slice(0, 160)}`);
+    throw new ServiceError(
+      `远端 /etc/docker/daemon.json 不是合法 JSON，拒绝覆盖：${raw.stdout.trim().slice(0, 160)}`,
+    );
   }
   const next = mergeRegistryMirrors(existing, normalized);
 
@@ -313,10 +370,14 @@ export async function applyMirrorsToServer(client: ServerTransport, mirrors: str
   const sftp = await client.sftp();
   await sftp.write("/tmp/dockyard-daemon.json", next);
   await sftp.close();
-  const validation = await client.exec(`${prefix}dockerd --validate --config-file=/tmp/dockyard-daemon.json`);
+  const validation = await client.exec(
+    `${prefix}dockerd --validate --config-file=/tmp/dockyard-daemon.json`,
+  );
   if (validation.code !== 0) {
     await client.exec("rm -f /tmp/dockyard-daemon.json");
-    throw new ServiceError(`dockerd 配置校验失败，未修改远端配置：${validation.stderr || validation.stdout}`);
+    throw new ServiceError(
+      `dockerd 配置校验失败，未修改远端配置：${validation.stderr || validation.stdout}`,
+    );
   }
 
   // 备份 → 同目录临时文件原子替换 → 重启。重启失败则恢复备份（原先无文件则删除新文件）
@@ -354,8 +415,12 @@ export async function applyMirrorsToServer(client: ServerTransport, mirrors: str
     ].join("\n"),
   );
   if (apply.code !== 0)
-    throw new ServiceError(`应用镜像源失败（已自动恢复原配置并尝试重启）：${apply.stderr || apply.stdout}`);
+    throw new ServiceError(
+      `应用镜像源失败（已自动恢复原配置并尝试重启）：${apply.stderr || apply.stdout}`,
+    );
 
-  const final = (JSON.parse(next) as { "registry-mirrors": unknown[] })["registry-mirrors"];
+  const final = (JSON.parse(next) as { "registry-mirrors": unknown[] })[
+    "registry-mirrors"
+  ];
   return (final ?? []).map((m) => String(m));
 }

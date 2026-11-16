@@ -17,7 +17,10 @@ export class CanvasService {
     return this.repo.add(serverId, x, y);
   }
 
-  moveNode(id: number, patch: { x?: number; y?: number; w?: number; h?: number }) {
+  moveNode(
+    id: number,
+    patch: { x?: number; y?: number; w?: number; h?: number },
+  ) {
     return this.repo.move(id, patch);
   }
 
@@ -35,7 +38,10 @@ export class CanvasService {
     return this.repo.addGroup(nodeId, name.trim());
   }
 
-  updateGroup(id: number, patch: { name?: string; x?: number; y?: number; w?: number; h?: number }) {
+  updateGroup(
+    id: number,
+    patch: { name?: string; x?: number; y?: number; w?: number; h?: number },
+  ) {
     return this.repo.updateGroup(id, patch);
   }
 

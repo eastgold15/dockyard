@@ -17,7 +17,12 @@ export interface RawContainer {
   Image?: string;
   State?: string;
   Labels?: Record<string, string>;
-  Ports?: { PrivatePort?: number; PublicPort?: number; Type?: string; IP?: string }[];
+  Ports?: {
+    PrivatePort?: number;
+    PublicPort?: number;
+    Type?: string;
+    IP?: string;
+  }[];
 }
 
 export interface ProjectRef {
@@ -43,7 +48,8 @@ export function matchProjectId(
     let best: ProjectRef | null = null;
     for (const p of projects) {
       if (!p.localPath) continue;
-      if (workDir !== p.localPath && !workDir.startsWith(`${p.localPath}/`)) continue;
+      if (workDir !== p.localPath && !workDir.startsWith(`${p.localPath}/`))
+        continue;
       if (!best || p.localPath.length > best.localPath!.length) best = p;
     }
     if (best) return best.id;
@@ -60,7 +66,9 @@ export function matchProjectId(
   const composeProject = labels["com.docker.compose.project"];
   if (composeProject) {
     const hit = projects.find(
-      (p) => norm(p.slug) === norm(composeProject) || norm(p.name) === norm(composeProject),
+      (p) =>
+        norm(p.slug) === norm(composeProject) ||
+        norm(p.name) === norm(composeProject),
     );
     if (hit) return hit.id;
   }
@@ -81,20 +89,31 @@ export function matchProjectId(
 
 /** 端口摘要：5444→5432/tcp, 6379→6379/tcp（同一私有端口有公网映射时不再单列裸端口） */
 export function portsSummary(ports: RawContainer["Ports"]): string {
-  const exposed = new Set(ports?.filter((p) => p.PrivatePort && p.PublicPort).map((p) => p.PrivatePort));
+  const exposed = new Set(
+    ports
+      ?.filter((p) => p.PrivatePort && p.PublicPort)
+      .map((p) => p.PrivatePort),
+  );
   const seen = new Set<string>();
   for (const p of ports ?? []) {
     if (!p.PrivatePort) continue;
     const proto = p.Type ?? "tcp";
     if (!p.PublicPort && exposed.has(p.PrivatePort)) continue;
-    seen.add(p.PublicPort ? `${p.PublicPort}→${p.PrivatePort}/${proto}` : `${p.PrivatePort}/${proto}`);
+    seen.add(
+      p.PublicPort
+        ? `${p.PublicPort}→${p.PrivatePort}/${proto}`
+        : `${p.PrivatePort}/${proto}`,
+    );
   }
   return [...seen].join(", ");
 }
 
 /** 发现层命中口径（卡片与变更指纹共用一个定义，避免两处漂移） */
 function isDiscoverable(c: RawContainer): boolean {
-  return c.Labels?.["dockyard.managed"] !== "true" && c.Labels?.["com.docker.compose.oneoff"] !== "True";
+  return (
+    c.Labels?.["dockyard.managed"] !== "true" &&
+    c.Labels?.["com.docker.compose.oneoff"] !== "True"
+  );
 }
 
 /**

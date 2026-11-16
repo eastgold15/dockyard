@@ -20,26 +20,31 @@
 
 修改 Panda 配置后运行 `bun run css:panda`；开发时可另开 `bun run panda:watch`。`styled-system/` 与 `panda.gen.css` 都是生成物，不手改。现有 Tailwind 布局类在渐进迁移期间保留。
 
-
-
-
-
 ## 依赖优先原则
+
 实现任何通用功能前，必须先检查是否有现成的成熟库可用：
+
 1. 先查 package.json 已有依赖能否满足
 2. 再评估 npm 上的主流包（周下载量、维护状态），优先用 Context7 查其文档；UI/组件类需求优先选所用框架官方生态的库（Solid → Kobalte，对标 React 的 Radix），禁止手写弹层、焦点管理、可访问性原语
 3. 只有确认现成方案不满足需求时才手写实现，并在回复中说明为什么不用现成库
-通用功能包括但不限于：日期处理、校验、ID 生成、重试/限流、文件监听、CLI 解析、日志等。
-
-
-
+   通用功能包括但不限于：日期处理、校验、ID 生成、重试/限流、文件监听、CLI 解析、日志等。
 
 不要让 htmx 和 Solid 操作同一个 DOM 元素。画布已是整页 Solid client 模式（src/pages/canvas/client/），/canvas 由壳 HTMLBundle 服务、不走 htmx；htmx 页面（servers/projects）与 Solid 页天然隔离，不存在共享 DOM。client 代码依赖链禁 Node-only 包（dotenv/bun:sqlite → 浏览器打包 500）。
 
 错误处理约定：services 抛 ServiceError（@elysiax/core），actions 不写 try/catch 回显；预期错误 return status(code, { error })。
 
-进行测试，需要询问我
+## 类型纪律
 
+类型只从单一来源派生，禁止重抄已有形状：
+
+- `di.get()` 的类型由 codegen 的 `ServiceMap` 自动推导。禁止手写 `get(k: "xxx"): Xxx` 重载，禁止 `di: { get(name: string): any }` 这类把类型擦成 `any`。跨文件统一用 `type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] }`。
+- 表行/插入类型从 drizzle 派生：`typeof t.$inferSelect`、`Pick<typeof t.$inferInsert, ...>`。禁止手抄表字段。
+- 引用别的原子的 service 类型时用 `ServiceMap["xxxService"]` / `Pick<ServiceMap, ...>` 索引，不重复声明类名。
+- 只有三类类型允许手写：`t.Object` 校验 schema、`ServiceError` 判别、形状确实变了的跨原子 DTO / 视图模型。
+
+新增冗余类型视为缺陷；`as` / `as unknown as` 只在第三方类型缺口处使用，并在注释里写明缺口来源。
+
+进行测试，需要询问我
 
 - 熟悉的框架和现有代码模式直接修改；
 - 只读实际要改的文件及其直接依赖；

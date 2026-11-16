@@ -39,24 +39,35 @@ export default defineLayout(({ title, content }) => (
           ⚓ Dockyard
           <button
             type="button"
-            class={cx(button({ variant: "ghost", size: "sm" }), "ml-auto sm:hidden")}
+            class={cx(
+              button({ variant: "ghost", size: "sm" }),
+              "ml-auto sm:hidden",
+            )}
             aria-label="关闭导航"
             onclick="const n=document.getElementById('site-nav');n.classList.add('hidden');const t=document.getElementById('nav-toggle');if(t)t.setAttribute('aria-expanded','false')"
-          >✕</button>
+          >
+            ✕
+          </button>
         </div>
         <nav class="flex flex-col gap-0.5 overflow-y-auto p-2">
           <a
             class="flex min-h-11 items-center rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-brass-500"
             href="/projects"
-          >项目</a>
+          >
+            项目
+          </a>
           <a
             class="flex min-h-11 items-center rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-brass-500"
             href="/canvas"
-          >画布</a>
+          >
+            画布
+          </a>
           <a
             class="flex min-h-11 items-center rounded px-3 py-2 text-sm text-neutral-400 hover:bg-harbor-800 hover:text-neutral-100 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-brass-500"
             href="/servers"
-          >服务器</a>
+          >
+            服务器
+          </a>
         </nav>
       </aside>
 
@@ -71,7 +82,9 @@ export default defineLayout(({ title, content }) => (
             aria-controls="site-nav"
             aria-expanded="false"
             onclick="const n=document.getElementById('site-nav');const closed=n.classList.toggle('hidden');this.setAttribute('aria-expanded',closed?'false':'true')"
-          >导航</button>
+          >
+            导航
+          </button>
         </div>
         <main id="main" class="flex min-w-0 flex-1 flex-col overflow-hidden">
           {content}
@@ -100,13 +113,17 @@ export default defineLayout(({ title, content }) => (
             type="button"
             class={button({ variant: "ghost", size: "md" })}
             onclick="this.closest('dialog').close()"
-          >取消</button>
+          >
+            取消
+          </button>
           <button
             type="button"
             data-confirm-ok
             autofocus
             class={button({ variant: "danger", size: "md" })}
-          >确认</button>
+          >
+            确认
+          </button>
         </div>
       </dialog>
       <ToastRoot />

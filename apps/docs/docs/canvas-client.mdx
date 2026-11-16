@@ -56,11 +56,11 @@ src/pages/canvas/
 
 ## 三条数据通道
 
-| 通道 | 内容 | 传输 | 更新时机 |
-| --- | --- | --- | --- |
-| 结构数据 | 卡片/连线/位置（nodes/edges） | `GET /api/canvas/board` JSON（全局） | 挂载拉一次 + body `refresh` 事件 refetch |
-| 节点几何 | 拖拽/拉伸中的位置尺寸 | **本地权威**（Solid signal） | 合并时保留 `dragging` 节点 |
-| 实时数据 | 部署状态、容器 state | SSE `/api/canvas/events`（全局频道） | 服务端 publish 即推，进 LiveContext store |
+| 通道     | 内容                          | 传输                                 | 更新时机                                  |
+| -------- | ----------------------------- | ------------------------------------ | ----------------------------------------- |
+| 结构数据 | 卡片/连线/位置（nodes/edges） | `GET /api/canvas/board` JSON（全局） | 挂载拉一次 + body `refresh` 事件 refetch  |
+| 节点几何 | 拖拽/拉伸中的位置尺寸         | **本地权威**（Solid signal）         | 合并时保留 `dragging` 节点                |
+| 实时数据 | 部署状态、容器 state          | SSE `/api/canvas/events`（全局频道） | 服务端 publish 即推，进 LiveContext store |
 
 **首帧是全量快照，不是空流**：订阅即收到「最近一次部署状态（含 stage）」+「全部容器 state」，不必先等下一轮 diff。否则刷新页面后已部署的卡会短暂显示「未部署」（SSE 已连上，但还没人推事件）。快照要在请求作用域内**先取出服务**再闭包使用——`di` 随请求结束释放，异步快照跑完再 `di.get` 会撞 `Container is disposed`。
 
@@ -93,7 +93,7 @@ src/pages/canvas/
 ```ts
 // ui.ts：事件总线 + View 判别联合（new-app/new-db/service/env/domains/log）
 const ui = useUi();
-ui.open({ kind: "new-app", nodeId });   // 卡片/右键菜单触发
+ui.open({ kind: "new-app", nodeId }); // 卡片/右键菜单触发
 
 // app.tsx：<Show when={view()} keyed> + <Switch>/<Match> 整体重建抽屉
 ```
@@ -122,7 +122,8 @@ import { setupClientTest } from "@elysiax/solid/testing";
 // 的 toast.tsx）被 Solid 编译会注入 solid-js/web 而解析失败。
 // 放行「本应用 client/」+ flow 包——link: 装进来时路径可能是包名也可能是真实目录，两个都写。
 setupClientTest({
-  filter: /(apps\/myapp\/src\/pages\/.*\/client|(packages\/flow|@elysiax\/flow)\/src).*\.tsx$/,
+  filter:
+    /(apps\/myapp\/src\/pages\/.*\/client|(packages\/flow|@elysiax\/flow)\/src).*\.tsx$/,
 });
 ```
 
@@ -134,7 +135,7 @@ setupClientTest({
 "scripts": { "test": "bun test --conditions=browser" }
 ```
 
-测试文件放组件旁边（`*.test.tsx`，无需 jsx pragma——编译走插件）。只断 DOM 结构与行为钩子（data-* 属性、文本），不断样式像素。样例见 `client/flow.test.tsx`。
+测试文件放组件旁边（`*.test.tsx`，无需 jsx pragma——编译走插件）。只断 DOM 结构与行为钩子（data-\* 属性、文本），不断样式像素。样例见 `client/flow.test.tsx`。
 
 **服务端 repository 测试**（非 client，另一套约定）：内存 sqlite 跑真迁移——`new Database(":memory:")` + `PRAGMA foreign_keys = ON`（FK cascade 行为必须真实）+ `migrate(db, migrationsJournal)`，journal 从 `shared/migrations-journal.ts` 引（与生产同一份聚合，跨原子 import 只能落 shared）。裸 SQL 造上游行时注意 drizzle `$defaultFn` 列要手工给值。样例见 `deploy/deploy.repository.test.ts`——它就靠这套抓住了一个潜伏 bug：0011 迁移的 `groupId REFERENCES service_groups(id)` 是悬空外键（真名 canvas_groups），老库因改名历史无恙，全新装库 FK ON 下插入必炸。
 

@@ -2,9 +2,7 @@
   "version": "7",
   "dialect": "sqlite",
   "id": "b226e204-c21f-44bb-b05a-f46bf1171d00",
-  "prevIds": [
-    "44eb211e-fcb7-4ccf-b361-6bdaeaeb5ac0"
-  ],
+  "prevIds": ["44eb211e-fcb7-4ccf-b361-6bdaeaeb5ac0"],
   "ddl": [
     {
       "name": "canvas_nodes",
@@ -631,13 +629,9 @@
       "table": "servers"
     },
     {
-      "columns": [
-        "projectId"
-      ],
+      "columns": ["projectId"],
       "tableTo": "projects",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -646,13 +640,9 @@
       "table": "canvas_nodes"
     },
     {
-      "columns": [
-        "serverId"
-      ],
+      "columns": ["serverId"],
       "tableTo": "servers",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -661,13 +651,9 @@
       "table": "canvas_nodes"
     },
     {
-      "columns": [
-        "nodeId"
-      ],
+      "columns": ["nodeId"],
       "tableTo": "canvas_nodes",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -676,13 +662,9 @@
       "table": "deploy_targets"
     },
     {
-      "columns": [
-        "instanceOf"
-      ],
+      "columns": ["instanceOf"],
       "tableTo": "deploy_targets",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "nameExplicit": false,
@@ -691,13 +673,9 @@
       "table": "deploy_targets"
     },
     {
-      "columns": [
-        "targetId"
-      ],
+      "columns": ["targetId"],
       "tableTo": "deploy_targets",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -706,13 +684,9 @@
       "table": "deployments"
     },
     {
-      "columns": [
-        "targetId"
-      ],
+      "columns": ["targetId"],
       "tableTo": "deploy_targets",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -721,84 +695,63 @@
       "table": "domains"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "canvas_nodes_pk",
       "table": "canvas_nodes",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "deploy_targets_pk",
       "table": "deploy_targets",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "deployments_pk",
       "table": "deployments",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "domains_pk",
       "table": "domains",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "projects_pk",
       "table": "projects",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "name": "servers_pk",
       "table": "servers",
       "entityType": "pks"
     },
     {
-      "columns": [
-        "nodeId",
-        "kind",
-        "name"
-      ],
+      "columns": ["nodeId", "kind", "name"],
       "nameExplicit": false,
       "name": "deploy_targets_nodeId_kind_name_unique",
       "entityType": "uniques",
       "table": "deploy_targets"
     },
     {
-      "columns": [
-        "targetId",
-        "hostname"
-      ],
+      "columns": ["targetId", "hostname"],
       "nameExplicit": false,
       "name": "domains_targetId_hostname_unique",
       "entityType": "uniques",
       "table": "domains"
     },
     {
-      "columns": [
-        "slug"
-      ],
+      "columns": ["slug"],
       "nameExplicit": false,
       "name": "projects_slug_unique",
       "entityType": "uniques",

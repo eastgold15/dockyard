@@ -37,7 +37,9 @@ export { PORTS as DB_PORTS };
 const SAFE_RESOURCE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 export function assertSafeResourceName(name: string): void {
   if (!SAFE_RESOURCE_NAME.test(name))
-    throw new ServiceError(`名称只允许字母/数字/下划线/点/连字符，且以字母或数字开头: ${name}`);
+    throw new ServiceError(
+      `名称只允许字母/数字/下划线/点/连字符，且以字母或数字开头: ${name}`,
+    );
 }
 
 /** 容器命名规范：定死，部署前对账和 docker exec 都靠它 */
@@ -46,7 +48,10 @@ export function containerNameOf(targetId: number, name: string): string {
 }
 
 /** 共享资源容器命名规范：dockyard-res-<resourceId>-<name>（与 deploy target 的 dockyard-<id>- 前缀区分） */
-export function sharedContainerNameOf(resourceId: number, name: string): string {
+export function sharedContainerNameOf(
+  resourceId: number,
+  name: string,
+): string {
   return `dockyard-res-${resourceId}-${name}`;
 }
 
@@ -92,11 +97,16 @@ export function dbCompose(
   // provision 目录不同名，项目名会随目录漂移（容器靠 container_name 收养，但 compose 项目标签会变）。
   // 项目名只算一次：YAML 顶层 name 与返回的 project 必须同源，否则 -p 与卷名会各说各话
   const project = ownership
-    ? ("resourceId" in ownership ? sharedProjectNameOf(ownership.resourceId) : dbProjectNameOf(ownership.targetId))
+    ? "resourceId" in ownership
+      ? sharedProjectNameOf(ownership.resourceId)
+      : dbProjectNameOf(ownership.targetId)
     : undefined;
   const projectName = project ? `name: ${project}\n` : "";
 
-  const envByType: Record<DbType, { env: Record<string, string>; lines: string[] }> = {
+  const envByType: Record<
+    DbType,
+    { env: Record<string, string>; lines: string[] }
+  > = {
     postgres: {
       env: { POSTGRES_PASSWORD: password },
       lines: [`POSTGRES_PASSWORD=${password}`],
@@ -107,15 +117,19 @@ export function dbCompose(
     },
     redis: { env: {}, lines: [] },
     mongo: {
-      env: { MONGO_INITDB_ROOT_USERNAME: "root", MONGO_INITDB_ROOT_PASSWORD: password },
-      lines: [`MONGO_INITDB_ROOT_USERNAME=root`, `MONGO_INITDB_ROOT_PASSWORD=${password}`],
+      env: {
+        MONGO_INITDB_ROOT_USERNAME: "root",
+        MONGO_INITDB_ROOT_PASSWORD: password,
+      },
+      lines: [
+        `MONGO_INITDB_ROOT_USERNAME=root`,
+        `MONGO_INITDB_ROOT_PASSWORD=${password}`,
+      ],
     },
   };
   const { env, lines } = envByType[dbType];
 
-  const envBlock = Object.keys(env).length
-    ? `    env_file: .env\n`
-    : "";
+  const envBlock = Object.keys(env).length ? `    env_file: .env\n` : "";
   const compose = `${projectName}services:
   ${name}:
     image: ${image}
@@ -151,7 +165,9 @@ const SAFE_NAME = /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/;
 /** 逻辑库名会拼进 CREATE DATABASE/USER 的 SQL 与连接串：创建时就要拒，别等异步部署才炸 */
 export function assertSafeLogicalName(name: string) {
   if (!SAFE_NAME.test(name))
-    throw new ServiceError(`逻辑库名只允许字母/数字/下划线且以字母开头: ${name}`);
+    throw new ServiceError(
+      `逻辑库名只允许字母/数字/下划线且以字母开头: ${name}`,
+    );
 }
 
 /** 实例内执行的管理命令（在宿主容器里 docker exec）。
@@ -163,27 +179,66 @@ export function logicalDbCommands(
   password: string,
 ): { exists: string[]; create: string[][] } {
   assertSafeLogicalName(name);
-  if (!LOGICAL_DB_SUPPORT[dbType]) throw new ServiceError(`${dbType} 不支持逻辑库`);
+  if (!LOGICAL_DB_SUPPORT[dbType])
+    throw new ServiceError(`${dbType} 不支持逻辑库`);
   switch (dbType) {
     case "postgres":
       return {
-        exists: ["psql", "-U", "postgres", "-tAc", `SELECT 1 FROM pg_database WHERE datname='${name}'`],
+        exists: [
+          "psql",
+          "-U",
+          "postgres",
+          "-tAc",
+          `SELECT 1 FROM pg_database WHERE datname='${name}'`,
+        ],
         create: [
           // 上次在 CREATE DATABASE 失败时会留下孤儿 role；库不存在的前提下 DROP 是安全的
-          ["psql", "-U", "postgres", "-c", `DROP USER IF EXISTS "${name}"; CREATE USER "${name}" PASSWORD '${password}'`],
-          ["psql", "-U", "postgres", "-c", `CREATE DATABASE "${name}" OWNER "${name}"`],
+          [
+            "psql",
+            "-U",
+            "postgres",
+            "-c",
+            `DROP USER IF EXISTS "${name}"; CREATE USER "${name}" PASSWORD '${password}'`,
+          ],
+          [
+            "psql",
+            "-U",
+            "postgres",
+            "-c",
+            `CREATE DATABASE "${name}" OWNER "${name}"`,
+          ],
         ],
       };
     case "mysql":
       return {
-        exists: ["sh", "-c", `mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='${name}'"`],
-        create: [["sh", "-c", `mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE \\\`${name}\\\`; CREATE USER '${name}'@'%' IDENTIFIED BY '${password}'; GRANT ALL ON \\\`${name}\\\`.* TO '${name}'@'%';"`]],
+        exists: [
+          "sh",
+          "-c",
+          `mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='${name}'"`,
+        ],
+        create: [
+          [
+            "sh",
+            "-c",
+            `mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE \\\`${name}\\\`; CREATE USER '${name}'@'%' IDENTIFIED BY '${password}'; GRANT ALL ON \\\`${name}\\\`.* TO '${name}'@'%';"`,
+          ],
+        ],
       };
     case "mongo":
       // mongo 没有 CREATE DATABASE，建用户即隐式建库
       return {
-        exists: ["sh", "-c", `mongosh -u root -p "$MONGO_INITDB_ROOT_PASSWORD" --quiet --eval "db.getMongo().getDBNames().includes('${name}')"`],
-        create: [["sh", "-c", `mongosh -u root -p "$MONGO_INITDB_ROOT_PASSWORD" --quiet --eval "db.getSiblingDB('${name}').createUser({user:'${name}',pwd:'${password}',roles:[{role:'readWrite',db:'${name}'}]})"`]],
+        exists: [
+          "sh",
+          "-c",
+          `mongosh -u root -p "$MONGO_INITDB_ROOT_PASSWORD" --quiet --eval "db.getMongo().getDBNames().includes('${name}')"`,
+        ],
+        create: [
+          [
+            "sh",
+            "-c",
+            `mongosh -u root -p "$MONGO_INITDB_ROOT_PASSWORD" --quiet --eval "db.getSiblingDB('${name}').createUser({user:'${name}',pwd:'${password}',roles:[{role:'readWrite',db:'${name}'}]})"`,
+          ],
+        ],
       };
     default:
       throw new ServiceError(`${dbType} 不支持逻辑库`);
@@ -192,7 +247,11 @@ export function logicalDbCommands(
 
 /** 逻辑库连接串 */
 /** 实例目标的根连接串：从创建时生成的 env 文本里取密码推导（env 缺密码的类型返回 null） */
-export function instanceUrl(dbType: DbType, host: string, envText: string): string | null {
+export function instanceUrl(
+  dbType: DbType,
+  host: string,
+  envText: string,
+): string | null {
   const port = PORTS[dbType];
   const env = parseDotenv(envText);
   const pick = (key: string) => env[key];
@@ -214,17 +273,71 @@ export function instanceUrl(dbType: DbType, host: string, envText: string): stri
   }
 }
 
+/** 从镜像名识别数据库类型（用户 compose 里自带的 postgres/mysql/redis/mongo 服务）。
+ *  只看镜像仓库名，不猜 tag；识别不出来返回 null（调用方忽略该服务）。 */
+export function dbTypeOfImage(image?: string | null): DbType | null {
+  if (!image) return null;
+  const repo = image.split("@")[0]!.split(":")[0]!;
+  const name = repo.split("/").pop() ?? "";
+  if (name === "postgres" || name === "postgis") return "postgres";
+  if (name === "mysql" || name === "mariadb") return "mysql";
+  if (name === "redis" || name === "valkey") return "redis";
+  if (name === "mongo" || name === "mongodb") return "mongo";
+  return null;
+}
+
+/** 按给定主机/端口/凭据拼连接串（托管实例与用户 compose 里的数据库服务共用）。
+ *  凭据缺省时省略 auth 段（trust 认证 / 无密码 redis）。 */
+export function dbConnectionUrl(
+  dbType: DbType,
+  p: {
+    host: string;
+    port?: number;
+    user?: string;
+    password?: string;
+    database?: string;
+  },
+): string {
+  const port = p.port ?? PORTS[dbType];
+  const enc = encodeURIComponent;
+  const auth = p.password
+    ? `${p.user ? enc(p.user) : ""}:${enc(p.password)}@`
+    : p.user
+      ? `${enc(p.user)}@`
+      : "";
+  const database = p.database ? `/${enc(p.database)}` : "";
+  switch (dbType) {
+    case "postgres":
+      return `postgres://${auth}${p.host}:${port}${database}`;
+    case "mysql":
+      return `mysql://${auth}${p.host}:${port}${database}`;
+    case "mongo":
+      return `mongodb://${auth}${p.host}:${port}${database}`;
+    case "redis":
+      return `redis://${p.password ? `:${enc(p.password)}@` : ""}${p.host}:${port}`;
+  }
+}
+
 /** 连接串建议注入的环境变量名（app 侧惯例） */
 export function suggestedEnvKey(dbType: DbType): string {
   return dbType === "redis" ? "REDIS_URL" : "DATABASE_URL";
 }
 
-export function logicalDbUrl(dbType: DbType, host: string, name: string, password: string): string {
+export function logicalDbUrl(
+  dbType: DbType,
+  host: string,
+  name: string,
+  password: string,
+): string {
   const port = PORTS[dbType];
   switch (dbType) {
-    case "postgres": return `postgres://${name}:${password}@${host}:${port}/${name}`;
-    case "mysql": return `mysql://${name}:${password}@${host}:${port}/${name}`;
-    case "mongo": return `mongodb://${name}:${password}@${host}:${port}/${name}`;
-    default: throw new ServiceError(`${dbType} 不支持逻辑库`);
+    case "postgres":
+      return `postgres://${name}:${password}@${host}:${port}/${name}`;
+    case "mysql":
+      return `mysql://${name}:${password}@${host}:${port}/${name}`;
+    case "mongo":
+      return `mongodb://${name}:${password}@${host}:${port}/${name}`;
+    default:
+      throw new ServiceError(`${dbType} 不支持逻辑库`);
   }
 }

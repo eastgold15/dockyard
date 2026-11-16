@@ -26,12 +26,19 @@ export function ConsoleView(props: { targetId: number; service?: string }) {
     fit.fit();
 
     // Eden Treaty WS：路径/params/query 类型安全（协议 ws/wss 由 treaty 自动推导）
-    const sock = api.console({ id: props.targetId }).subscribe({ query: { svc: props.service || undefined } });
-    sock.on("message", ({ data }) => term.write(typeof data === "string" ? data : ""));
+    const sock = api
+      .console({ id: props.targetId })
+      .subscribe({ query: { svc: props.service || undefined } });
+    sock.on("message", ({ data }) =>
+      term.write(typeof data === "string" ? data : ""),
+    );
     sock.on("close", () => term.write("\r\n\x1b[90m[连接已关闭]\x1b[0m\r\n"));
-    const send = (msg: { type: string } & Record<string, unknown>) => sock.send(msg);
+    const send = (msg: { type: string } & Record<string, unknown>) =>
+      sock.send(msg);
     term.onData((d) => send({ type: "input", data: d }));
-    sock.on("open", () => send({ type: "resize", cols: term.cols, rows: term.rows }));
+    sock.on("open", () =>
+      send({ type: "resize", cols: term.cols, rows: term.rows }),
+    );
 
     const ro = new ResizeObserver(() => {
       fit.fit();

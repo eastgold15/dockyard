@@ -19,10 +19,18 @@ import { openServerSftp } from "../servers/servers.socket";
 import type { ServerTransport } from "../servers/servers.socket";
 import type { DeployRepository } from "./deploy.repository";
 import { envFilePaths } from "./detect";
-import type { DeployArtifact, Deployment, DeployStage, DeployTarget } from "./schema";
+import type {
+  DeployArtifact,
+  Deployment,
+  DeployStage,
+  DeployTarget,
+} from "./schema";
 
 export type Log = (line: string) => Promise<void>;
-export type SetStatus = (s: Deployment["status"], p?: Partial<Deployment>) => Promise<unknown>;
+export type SetStatus = (
+  s: Deployment["status"],
+  p?: Partial<Deployment>,
+) => Promise<unknown>;
 /** 细步骤进度（best-effort，不是状态机）：只写 stage 列 + SSE，永不触碰 status */
 export type SetStage = (s: DeployStage) => Promise<unknown>;
 
@@ -59,6 +67,8 @@ export interface Provision {
   labelsCompose?: string;
   /** 实际 up 的服务子集（共享资源复用过滤中间件；undefined = 全量） */
   upServices?: string[];
+  /** 单服务目标不连带启动 depends_on；数据库等基础设施必须先独立部署 */
+  noDeps?: boolean;
   /** 是否 --force-recreate（默认 true）。只构建镜像的形态需要它（同名 tag 内容会变）；
    *  db 模板不构建、镜像/配置都不变，重部署不该无谓重启数据库容器 */
   forceRecreate?: boolean;
@@ -93,40 +103,78 @@ export interface Harness {
   project: ProjectService;
   paths: AppPaths;
   /** 带断线重连的短命令 */
-  sshExec(serverId: number, cmd: string, retries?: number): Promise<SshExecResult>;
+  sshExec(
+    serverId: number,
+    cmd: string,
+    retries?: number,
+  ): Promise<SshExecResult>;
   /** 长跑命令远端后台执行 + 轮询日志（防 SIGHUP） */
-  execLongRemote(serverId: number, cmd: string, tag: string, log: Log): Promise<{ code: number }>;
+  execLongRemote(
+    serverId: number,
+    cmd: string,
+    tag: string,
+    log: Log,
+  ): Promise<{ code: number }>;
   /** 同一服务器的远端构建互斥；不同服务器仍可并行 */
-  withBuildLock<T>(serverId: number, task: () => Promise<T>, log?: Log): Promise<T>;
+  withBuildLock<T>(
+    serverId: number,
+    task: () => Promise<T>,
+    log?: Log,
+  ): Promise<T>;
   serverCaps(serverId: number): Promise<ServerCaps>;
   /** SFTP 不做 shell 展开，`~` 先解析成绝对路径 */
   resolveRemoteDir(client: ServerTransport, dir: string): Promise<string>;
   /** 部署前对账：远端同名容器归属校验，绝不动别人的容器 */
-  preflightCheck(target: DeployTarget, serverId: number, containerNames: string[], log: Log): Promise<void>;
+  preflightCheck(
+    target: DeployTarget,
+    serverId: number,
+    containerNames: string[],
+    log: Log,
+  ): Promise<void>;
   /** target → node → serverId */
   nodeServerId(target: DeployTarget): Promise<number>;
 }
 
 /** 流式执行本地命令，输出写入部署日志；env 用于注入 DOCKER_DEFAULT_PLATFORM 等覆盖 */
-export async function run(cmd: string[], cwd: string, log: Log, env?: Record<string, string>): Promise<void> {
+export async function run(
+  cmd: string[],
+  cwd: string,
+  log: Log,
+  env?: Record<string, string>,
+): Promise<void> {
   log(`$ ${cmd.join(" ")}`);
-  const proc = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", env: env ? { ...process.env, ...env } : undefined });
+  const proc = Bun.spawn(cmd, {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: env ? { ...process.env, ...env } : undefined,
+  });
   const pump = async (stream: ReadableStream<Uint8Array>) => {
-    for await (const chunk of stream) await log(new TextDecoder().decode(chunk).trimEnd());
+    for await (const chunk of stream)
+      await log(new TextDecoder().decode(chunk).trimEnd());
   };
   await Promise.all([pump(proc.stdout), pump(proc.stderr)]);
   const code = await proc.exited;
-  if (code !== 0) throw new ServiceError(`命令失败（exit ${code}）: ${cmd.join(" ")}`);
+  if (code !== 0)
+    throw new ServiceError(`命令失败（exit ${code}）: ${cmd.join(" ")}`);
 }
 
 /** 归属标签 override：容器标签创建后不可变，必须在 up 的同一批 -f 里带上 */
-export function ownershipCompose(targetId: number, serviceNames: string[]): string | undefined {
+export function ownershipCompose(
+  targetId: number,
+  serviceNames: string[],
+): string | undefined {
   if (!serviceNames.length) return undefined;
   return stringifyYaml({
     services: Object.fromEntries(
       serviceNames.map((svc) => [
         svc,
-        { labels: { "dockyard.managed": "true", "dockyard.target-id": String(targetId) } },
+        {
+          labels: {
+            "dockyard.managed": "true",
+            "dockyard.target-id": String(targetId),
+          },
+        },
       ]),
     ),
   });
@@ -141,12 +189,14 @@ export function composeUpCommand(opts: {
   /** -f 参数段（已含引号），空 = compose 默认发现 */
   files?: string;
   upServices?: string[];
+  noDeps?: boolean;
   /** 默认 true；只有明确「本次镜像/配置没变」才传 false */
   forceRecreate?: boolean;
 }): string {
   const upArg = opts.upServices?.length ? ` ${opts.upServices.join(" ")}` : "";
+  const noDeps = opts.noDeps ? " --no-deps" : "";
   const force = opts.forceRecreate === false ? "" : " --force-recreate";
-  return `cd "${opts.dir}" && docker compose${opts.project ? ` -p ${opts.project}` : ""}${opts.files ? ` ${opts.files}` : ""} up -d${force}${upArg}`;
+  return `cd "${opts.dir}" && docker compose${opts.project ? ` -p ${opts.project}` : ""}${opts.files ? ` ${opts.files}` : ""} up -d${noDeps}${force}${upArg}`;
 }
 
 /** uname -m / process.arch → docker 架构名 */
@@ -173,11 +223,17 @@ export function createHarness(deps: {
   /** 每个服务器一条构建队列：compose 内逐服务构建之外，再挡住不同目标的并行构建。 */
   const buildQueues = new Map<number, Promise<void>>();
 
-  const withBuildLock = async <T>(serverId: number, task: () => Promise<T>, log?: Log): Promise<T> => {
+  const withBuildLock = async <T>(
+    serverId: number,
+    task: () => Promise<T>,
+    log?: Log,
+  ): Promise<T> => {
     const previous = buildQueues.get(serverId);
     if (previous) await log?.("服务器已有构建任务，当前部署排队等待 …");
     let release!: () => void;
-    const current = new Promise<void>((resolve) => { release = resolve; });
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const tail = (previous ?? Promise.resolve()).then(() => current);
     buildQueues.set(serverId, tail);
     await previous;
@@ -190,7 +246,11 @@ export function createHarness(deps: {
   };
 
   /** 带断线重连的短命令：连接失效则丢弃缓存重建后重试 */
-  const sshExec = async (serverId: number, cmd: string, retries = 2): Promise<SshExecResult> => {
+  const sshExec = async (
+    serverId: number,
+    cmd: string,
+    retries = 2,
+  ): Promise<SshExecResult> => {
     for (;;) {
       try {
         return await (await serverService.transport(serverId)).exec(cmd);
@@ -221,7 +281,8 @@ export function createHarness(deps: {
       // < /dev/null 必须：后台进程继承通道 stdin 会让 sshd 一直等 EOF，start 命令挂到构建结束才返回
       `rm -f ${logFile} ${codeFile} ${partFile} && nohup sh -c '${quoted}; echo $? > ${codeFile}' > ${logFile} 2>&1 < /dev/null & echo started`,
     );
-    if (start.code !== 0) throw new ServiceError(`远端后台命令启动失败：${start.stderr}`);
+    if (start.code !== 0)
+      throw new ServiceError(`远端后台命令启动失败：${start.stderr}`);
     let offset = 0;
     let delay = 4_000;
     for (;;) {
@@ -324,7 +385,17 @@ export async function inspectCompose(
     /** github 路径的 token 脱敏（config 输出理论上不含 token，纪律保持） */
     redact?: (s: string) => string;
   },
-): Promise<Pick<Provision, "project" | "containerNames" | "services" | "composeArgs" | "labelsCompose">> {
+): Promise<
+  Pick<
+    Provision,
+    | "project"
+    | "containerNames"
+    | "services"
+    | "composeArgs"
+    | "labelsCompose"
+    | "noDeps"
+  >
+> {
   const redact = opts.redact ?? ((s: string) => s);
   const cfgOut = await h.sshExec(
     opts.serverId,
@@ -336,41 +407,64 @@ export async function inspectCompose(
     throw new ServiceError(
       redact(
         `远端 compose config 失败：${cfgOut.stderr}\n` +
-        `（校验发生在秘密文件写入前：若 compose 的 ${"${VAR:?}"} 依赖 .env 变量，请给默认值或改用 override 注入）`,
+          `（校验发生在秘密文件写入前：若 compose 的 ${"${VAR:?}"} 依赖 .env 变量，请给默认值或改用 override 注入）`,
       ),
     );
   const cfg = JSON.parse(cfgOut.stdout) as {
     name?: string;
     services?: Record<string, { container_name?: string; image?: string }>;
   };
-  // 对账用容器名：compose 项目名定死（远端 -p 一致），显式 container_name 优先
+  // 部署边界就是服务边界：单服务 target 不校验、不标记同 compose 里的其他服务。
+  // 多服务共享中间件复用时也只拥有 upServices，避免不同 target 抢同一份 compose 的全部容器。
   const project = cfg.name ?? `dockyard-${opts.target.id}`;
-  const containerNames = Object.entries(cfg.services ?? {}).map(
+  const selectedNames = opts.target.serviceName
+    ? [opts.target.serviceName]
+    : opts.target.upServices?.length
+      ? opts.target.upServices
+      : Object.keys(cfg.services ?? {});
+  const selected = selectedNames.map((name) => {
+    const def = cfg.services?.[name];
+    if (!def) throw new ServiceError(`compose 中不存在服务「${name}」`);
+    return [name, def] as const;
+  });
+  const containerNames = selected.map(
     ([svc, def]) => def.container_name ?? `${project}-${svc}-1`,
   );
   if (containerNames.length > 0)
-    await h.preflightCheck(opts.target, opts.serverId, containerNames, opts.log);
+    await h.preflightCheck(
+      opts.target,
+      opts.serverId,
+      containerNames,
+      opts.log,
+    );
   // 归属标签必须随 up 一起创建（容器标签不可变）：单独一层 override，放在最后保证压过用户 override
-  const labelsCompose = ownershipCompose(opts.target.id, Object.keys(cfg.services ?? {}));
+  const labelsCompose = ownershipCompose(opts.target.id, selectedNames);
   const files = [`-f "${opts.composeFile}"`];
   if (opts.hasOverride) files.push("-f docker-compose.dockyard.yml");
   if (labelsCompose) files.push("-f docker-compose.dockyard-labels.yml");
   return {
     project,
     containerNames,
-    services: cfg.services,
+    services: Object.fromEntries(selected),
+    noDeps: Boolean(opts.target.serviceName),
     // 注意：-f 一旦指定就只认列出的文件，base 必须一起带上
     composeArgs: files.join(" "),
     labelsCompose,
   };
 }
 
-
 /** 组合形态：provision（源→构建→传输）→ activate（运行+暴露）→ captureArtifact（产物入库）；
  *  custom 形态（逻辑库）全程自控，不穿零点、无产物。 */
-export async function executeForm(h: Harness, ctx: StageCtx, form: DeployForm): Promise<void> {
+export async function executeForm(
+  h: Harness,
+  ctx: StageCtx,
+  form: DeployForm,
+): Promise<void> {
   if (form.run) return form.run(ctx, h);
-  if (!form.provision) throw new ServiceError(`部署形态 ${form.name} 未实现 provision/run 任一入口`);
+  if (!form.provision)
+    throw new ServiceError(
+      `部署形态 ${form.name} 未实现 provision/run 任一入口`,
+    );
   const provision = await form.provision(ctx, h);
   await activate(h, ctx, provision);
   await captureArtifact(h, ctx, provision);
@@ -378,14 +472,21 @@ export async function executeForm(h: Harness, ctx: StageCtx, form: DeployForm): 
 
 /** Run + Expose 共享段：up -d → 有域名则 edge 全量对账 → sha 回写。
  *  preflight 不在此——它是「首次远端写入前的门禁」，归 provision（见 Provision.containerNames）。 */
-export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise<void> {
+export async function activate(
+  h: Harness,
+  ctx: StageCtx,
+  p: Provision,
+): Promise<void> {
   const { target, log } = ctx;
   const serverId = await h.nodeServerId(target);
   await ctx.setStage("deploying");
   await ctx.setStatus("deploying", p.sha ? { commitSha: p.sha } : {});
 
-  // 共享资源复用时只 up 业务服务子集（compose 仍会拉起 depends_on 依赖——复用场景的 compose 不应依赖被跳过的中间件）
-  if (p.upServices?.length) await log(`只部署业务服务：${p.upServices.join("、")}（中间件复用服务器共享资源）`);
+  // 单服务部署使用 --no-deps，基础设施必须先由各自的 target 独立启动。
+  if (p.upServices?.length)
+    await log(
+      `本次只部署服务：${p.upServices.join("、")}${p.noDeps ? "（不连带启动依赖）" : ""}`,
+    );
   const upLog = p.log ?? log;
   await upLog("远端 docker compose up -d …");
   // 注意：-f 一旦指定就只认列出的文件，base 必须一起带上（composeArgs 由 provision 拼好）
@@ -396,11 +497,13 @@ export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise
       project: p.project,
       files: p.composeArgs,
       upServices: p.upServices,
+      noDeps: p.noDeps,
       forceRecreate: p.forceRecreate,
     }),
   );
   await upLog(up.stdout + up.stderr);
-  if (up.code !== 0) throw new ServiceError(`远端 compose up 失败（exit ${up.code}）`);
+  if (up.code !== 0)
+    throw new ServiceError(`远端 compose up 失败（exit ${up.code}）`);
 
   // 项目名回写：compose config 的 name（缺省=目录名）才是容器标签里的项目名，
   // 创建 target 时还不知道它——不回写的话运行时按 dockyard-<id> 对账永远找不到容器
@@ -415,10 +518,15 @@ export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise
     // 回写失败时运行时对账会退回 dockyard-<id>，直到下次部署成功
     try {
       await h.repo.updateTarget(target.id, {
-        servicesJson: { project: p.project, services: services.length ? services : prev },
+        servicesJson: {
+          project: p.project,
+          services: services.length ? services : prev,
+        },
       });
     } catch (error) {
-      await log(`⚠️ 项目名回写失败（运行时对账可能不准）：${(error as Error).message}`);
+      await log(
+        `⚠️ 项目名回写失败（运行时对账可能不准）：${(error as Error).message}`,
+      );
     }
   }
 
@@ -431,14 +539,22 @@ export async function activate(h: Harness, ctx: StageCtx, p: Provision): Promise
     await h.edge.syncServer(serverId, log);
   }
 
-  if (p.sha) await h.repo.updateTarget(target.id, { lastKnownSha: p.sha, updateAvailable: false });
+  if (p.sha)
+    await h.repo.updateTarget(target.id, {
+      lastKnownSha: p.sha,
+      updateAvailable: false,
+    });
 }
 
 /**
  * 部署成功收尾：产物入库（compose/env/override 快照 enc1 加密 + 镜像打 run tag + run.artifactId 回写）。
  * 这是回滚的唯一原料；此处失败只记警告，绝不让成功的部署翻盘成失败。
  */
-export async function captureArtifact(h: Harness, ctx: StageCtx, p: Provision): Promise<void> {
+export async function captureArtifact(
+  h: Harness,
+  ctx: StageCtx,
+  p: Provision,
+): Promise<void> {
   const { target, run: dep, log } = ctx;
   try {
     await ctx.setStage("packaging");
@@ -453,7 +569,10 @@ export async function captureArtifact(h: Harness, ctx: StageCtx, p: Provision): 
         // upServices 子集外的服务本次没起来，跳过 pin（回滚时 pin 不存在的 tag 会让 up 拉取失败）
         if (p.upServices?.length && !p.upServices.includes(svc)) continue;
         const tag = `dockyard-${target.id}-${svc.toLowerCase()}:run-${dep.id}`;
-        const r = await h.sshExec(serverId, `docker tag "${def.image}" "${tag}"`);
+        const r = await h.sshExec(
+          serverId,
+          `docker tag "${def.image}" "${tag}"`,
+        );
         if (r.code !== 0) {
           await log(`⚠️ 镜像快照 tag 失败（${svc}）：${r.stderr}`);
           continue;
@@ -479,7 +598,11 @@ export async function captureArtifact(h: Harness, ctx: StageCtx, p: Provision): 
 
 // ── 回滚 = 激活旧产物：快照文件写独立回滚目录（不污染在跑的 remoteDir，更不弄脏远端 git 检出目录），
 //    有 imageTags 时生成 pin 覆盖文件锁死旧镜像，up 时 -p 沿用当初项目名 ──
-export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: DeployArtifact): Promise<void> {
+export async function activateArtifact(
+  h: Harness,
+  ctx: StageCtx,
+  artifact: DeployArtifact,
+): Promise<void> {
   const { target, log } = ctx;
   // 回滚只走 运行→暴露 两段（产物是激活旧件，前三段在步骤条上显示跳过）
   await ctx.setStage("deploying");
@@ -490,7 +613,10 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
   };
   const serverId = await h.nodeServerId(target);
   const client = await h.serverService.transport(serverId);
-  const rollbackDir = await h.resolveRemoteDir(client, `~/dockyard/rollback/${target.id}`);
+  const rollbackDir = await h.resolveRemoteDir(
+    client,
+    `~/dockyard/rollback/${target.id}`,
+  );
   // 回滚目录按 target 固定复用：先清掉上一件产物留下的生成文件。否则「先回滚到带 .env
   // 的产物 A、再回滚到无 .env 的产物 B」时，B 的 compose 会在该目录里自动加载 A 的 .env
   //（错误数据库地址/密钥静默生效）
@@ -500,7 +626,11 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
   const sftp = await openServerSftp(client);
   await sftp.write(`${rollbackDir}/docker-compose.yml`, snapshot.compose);
   if (snapshot.env) await sftp.write(`${rollbackDir}/.env`, snapshot.env);
-  if (snapshot.override) await sftp.write(`${rollbackDir}/docker-compose.dockyard.yml`, snapshot.override);
+  if (snapshot.override)
+    await sftp.write(
+      `${rollbackDir}/docker-compose.dockyard.yml`,
+      snapshot.override,
+    );
 
   const files = ["-f docker-compose.yml"];
   if (snapshot.override) files.push("-f docker-compose.dockyard.yml");
@@ -509,7 +639,11 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
     ([svc]) => !target.upServices?.length || target.upServices.includes(svc),
   );
   if (pinned.length) {
-    const yaml = ["services:", ...pinned.map(([svc, img]) => `  ${svc}:\n    image: ${img}`), ""].join("\n");
+    const yaml = [
+      "services:",
+      ...pinned.map(([svc, img]) => `  ${svc}:\n    image: ${img}`),
+      "",
+    ].join("\n");
     await sftp.write(`${rollbackDir}/docker-compose.rollback.yml`, yaml);
     files.push("-f docker-compose.rollback.yml");
   }
@@ -525,40 +659,74 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
 
   // -p 与当初一致才不会起第二套容器；容器名从远端 config 推导做对账
   const project = artifact.project ?? `dockyard-${target.id}`;
-  const cfgOut = await h.sshExec(serverId, `cd "${rollbackDir}" && docker compose ${files.join(" ")} config --format json`);
+  const cfgOut = await h.sshExec(
+    serverId,
+    `cd "${rollbackDir}" && docker compose ${files.join(" ")} config --format json`,
+  );
   // config 失败必须中止：跳过去会连 preflight 与归属标签一起跳过，up 出来的容器没有
   // dockyard 标签，之后 container-poller/运行时对账全把它们当未纳管容器（且日志无任何提示）
-  if (cfgOut.code !== 0) throw new ServiceError(`回滚 compose config 失败（exit ${cfgOut.code}）：${cfgOut.stderr}`);
+  if (cfgOut.code !== 0)
+    throw new ServiceError(
+      `回滚 compose config 失败（exit ${cfgOut.code}）：${cfgOut.stderr}`,
+    );
   const cfg = JSON.parse(cfgOut.stdout) as {
     services?: Record<string, { container_name?: string }>;
   };
-  const names = Object.entries(cfg.services ?? {}).map(([svc, def]) => def.container_name ?? `${project}-${svc}-1`);
+  const selectedNames = target.serviceName
+    ? [target.serviceName]
+    : target.upServices?.length
+      ? target.upServices
+      : Object.keys(cfg.services ?? {});
+  const selected = selectedNames.map((name) => {
+    const def = cfg.services?.[name];
+    if (!def) throw new ServiceError(`回滚 compose 中不存在服务「${name}」`);
+    return [name, def] as const;
+  });
+  const names = selected.map(
+    ([svc, def]) => def.container_name ?? `${project}-${svc}-1`,
+  );
   if (names.length) await h.preflightCheck(target, serverId, names, log);
   // 归属标签与正常部署同一层 override：回滚重建的容器也必须带 dockyard 标签
-  const labelsYaml = ownershipCompose(target.id, Object.keys(cfg.services ?? {}));
+  const labelsYaml = ownershipCompose(target.id, selectedNames);
   if (labelsYaml) {
     const labelSftp = await openServerSftp(client);
-    await labelSftp.write(`${rollbackDir}/docker-compose.labels.yml`, labelsYaml);
+    await labelSftp.write(
+      `${rollbackDir}/docker-compose.labels.yml`,
+      labelsYaml,
+    );
     await labelSftp.close();
     files.push("-f docker-compose.labels.yml");
   }
 
   // id=0 是存量合成产物（artifactOfRun 兜底路径），没有真实编号可展示
-  await log(`回滚到${artifact.id ? `产物 #${artifact.id}` : "存量快照"}（${artifact.sha ?? "无 sha"}）…`);
+  await log(
+    `回滚到${artifact.id ? `产物 #${artifact.id}` : "存量快照"}（${artifact.sha ?? "无 sha"}）…`,
+  );
   const up = await h.sshExec(
     serverId,
-    composeUpCommand({ dir: rollbackDir, project, files: files.join(" "), upServices: target.upServices ?? undefined }),
+    composeUpCommand({
+      dir: rollbackDir,
+      project,
+      files: files.join(" "),
+      upServices: target.upServices ?? undefined,
+      noDeps: Boolean(target.serviceName),
+    }),
   );
   await log(up.stdout + up.stderr);
-  if (up.code !== 0) throw new ServiceError(`回滚 compose up 失败（exit ${up.code}）`);
+  if (up.code !== 0)
+    throw new ServiceError(`回滚 compose up 失败（exit ${up.code}）`);
 
   // 回滚也可能换项目名（旧产物的 compose 顶层 name 与当前不同）：同步回写，
   // 否则 container-poller / RuntimeService 还在按新项目名找容器，回滚后全部对账失败
   try {
     const prev = target.servicesJson?.services ?? [];
-    await h.repo.updateTarget(target.id, { servicesJson: { project, services: prev } });
+    await h.repo.updateTarget(target.id, {
+      servicesJson: { project, services: prev },
+    });
   } catch (error) {
-    await log(`⚠️ 项目名回写失败（运行时对账可能不准）：${(error as Error).message}`);
+    await log(
+      `⚠️ 项目名回写失败（运行时对账可能不准）：${(error as Error).message}`,
+    );
   }
 
   const domains = await h.edge.domainsOfTarget(target.id);
@@ -568,5 +736,6 @@ export async function activateArtifact(h: Harness, ctx: StageCtx, artifact: Depl
     await h.edge.syncServer(serverId, log);
   }
   // sha 回退到旧值：徽章与"有更新"语义跟着回滚走
-  if (artifact.sha) await h.repo.updateTarget(target.id, { lastKnownSha: artifact.sha });
+  if (artifact.sha)
+    await h.repo.updateTarget(target.id, { lastKnownSha: artifact.sha });
 }

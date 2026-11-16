@@ -16,16 +16,16 @@ This review used source, tests, and v2 docs under `interdoc/src/content`. Using 
 
 These versions come from local repositories. They do not prove release availability or end-to-end integration compatibility. Before installing, check availability and peer requirements.
 
-| Package | Baseline |
-| --- | --- |
-| `elysia` | `2.0.0-beta.32` |
-| `@elysia/eden` | `2.0.0-beta.7` |
-| `@elysia/openapi` | `2.0.0-beta.6` |
-| `@elysia/node` | `2.0.0-beta.3` |
-| `@elysia/static` | `2.0.0-beta.3` |
-| `@elysia/cors` | `2.0.0-beta.2` |
-| `@elysia/opentelemetry` | `2.0.0-beta.2` |
-| `@elysia/bearer`, `@elysia/cron`, `@elysia/apollo`, `@elysia/graphql-yoga`, `@elysia/html`, `@elysia/jwt`, `@elysia/server-timing` | `2.0.0-beta.1` |
+| Package                                                                                                                            | Baseline        |
+| ---------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `elysia`                                                                                                                           | `2.0.0-beta.32` |
+| `@elysia/eden`                                                                                                                     | `2.0.0-beta.7`  |
+| `@elysia/openapi`                                                                                                                  | `2.0.0-beta.6`  |
+| `@elysia/node`                                                                                                                     | `2.0.0-beta.3`  |
+| `@elysia/static`                                                                                                                   | `2.0.0-beta.3`  |
+| `@elysia/cors`                                                                                                                     | `2.0.0-beta.2`  |
+| `@elysia/opentelemetry`                                                                                                            | `2.0.0-beta.2`  |
+| `@elysia/bearer`, `@elysia/cron`, `@elysia/apollo`, `@elysia/graphql-yoga`, `@elysia/html`, `@elysia/jwt`, `@elysia/server-timing` | `2.0.0-beta.1`  |
 
 Install only what the task needs. New plugin packages use `@elysia/*`. Check peer requirements before mixing releases. Baseline cron requires Elysia beta.32 or newer; CORS, static, OpenTelemetry, and server-timing require at least beta.30.
 

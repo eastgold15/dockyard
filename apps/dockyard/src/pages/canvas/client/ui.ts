@@ -35,4 +35,5 @@ export const UiContext = createContext<UiBus>({
 export const useUi = () => useContext(UiContext);
 
 /** 结构刷新约定：board.tsx 监听 body 的 refresh 事件 */
-export const emitRefresh = () => document.body.dispatchEvent(new Event("refresh"));
+export const emitRefresh = () =>
+  document.body.dispatchEvent(new Event("refresh"));

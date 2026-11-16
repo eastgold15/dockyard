@@ -1,8 +1,9 @@
 import { ServiceError } from "@elysiax/core";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { $ } from "bun";
 import { parse as parseYaml } from "yaml";
+import { appPaths } from "../../shared/paths";
 
 export interface RepoBrief {
   fullName: string;
@@ -26,10 +27,17 @@ export class GithubService {
       this.tokenCache = { token, at: Date.now() };
       return token;
     }
-    const hostsYml = readFileSync(join(Bun.env.HOME ?? "", ".config", "gh", "hosts.yml"), "utf8");
-    const doc = parseYaml(hostsYml) as Record<string, { oauth_token?: string }> | null;
+    const hostsYml = readFileSync(
+      join(Bun.env.HOME ?? "", ".config", "gh", "hosts.yml"),
+      "utf8",
+    );
+    const doc = parseYaml(hostsYml) as Record<
+      string,
+      { oauth_token?: string }
+    > | null;
     const fallback = doc?.["github.com"]?.oauth_token;
-    if (!fallback) throw new ServiceError("未找到 GitHub 凭据：请先 `gh auth login`");
+    if (!fallback)
+      throw new ServiceError("未找到 GitHub 凭据：请先 `gh auth login`");
     this.tokenCache = { token: fallback, at: Date.now() };
     return fallback;
   }
@@ -51,8 +59,10 @@ export class GithubService {
     etag?: string,
   ): Promise<{ sha: string; etag?: string } | null> {
     const args = [
-      "api", `repos/${ownerRepo}/commits/${branch}`,
-      "--jq", ".sha",
+      "api",
+      `repos/${ownerRepo}/commits/${branch}`,
+      "--jq",
+      ".sha",
       "--include",
     ];
     if (etag) args.push("-H", `If-None-Match: ${etag}`);
@@ -60,19 +70,59 @@ export class GithubService {
     const raw = proc.stdout.toString();
     // 304 时 gh 对空 body 解析 JSON 报错退出——headers 已打印，先判 304 再判错误
     if (/\b304\b/.test(raw.split("\n")[0] ?? "")) return null;
-    if (proc.exitCode !== 0) throw new ServiceError(`gh api 失败: ${proc.stderr.toString()}`);
+    if (proc.exitCode !== 0)
+      throw new ServiceError(`gh api 失败: ${proc.stderr.toString()}`);
     const etagMatch = raw.match(/^[Ee][Tt]ag:\s*(\S+)/m);
     const sha = raw.trim().split("\n").pop()?.trim();
-    if (!sha || !/^[0-9a-f]{40}$/.test(sha)) throw new ServiceError(`解析 sha 失败: ${raw.slice(-200)}`);
+    if (!sha || !/^[0-9a-f]{40}$/.test(sha))
+      throw new ServiceError(`解析 sha 失败: ${raw.slice(-200)}`);
     return { sha, etag: etagMatch?.[1] };
   }
 
-  /** 账号可选仓库列表（部署向导的仓库选择器；缓存 5 分钟，160+ 仓库不能每次都拉） */
+  /**
+   * 账号仓库列表（部署向导的仓库选择器）。
+   * 持久缓存：拉一次落盘（~/.cache/dockyard/gh-repos.json），之后用缓存，
+   * 只有手动「刷新仓库列表」才重新拉——避免每次开向导都打 gh repo list（160+ 仓库很慢）。
+   */
   private reposCache: { repos: RepoBrief[]; at: number } | null = null;
-  async listRepos(): Promise<RepoBrief[]> {
-    if (this.reposCache && Date.now() - this.reposCache.at < 5 * 60_000) return this.reposCache.repos;
-    const proc = await $`gh repo list --limit 300 --json nameWithOwner,defaultBranchRef,visibility,updatedAt`
-      .nothrow().quiet();
+  private get reposFile() {
+    return join(appPaths.cacheDir, "gh-repos.json");
+  }
+
+  private loadReposFromDisk(): RepoBrief[] | null {
+    try {
+      const parsed = JSON.parse(readFileSync(this.reposFile, "utf8"));
+      return Array.isArray(parsed) ? (parsed as RepoBrief[]) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private saveReposToDisk(repos: RepoBrief[]) {
+    try {
+      writeFileSync(this.reposFile, JSON.stringify(repos), { mode: 0o600 });
+    } catch {
+      /* 缓存写失败不致命：下次仍可现拉 */
+    }
+  }
+
+  /** 缓存读（内存 → 磁盘），永不触发 API；无缓存返回 null（向导据此提示手动刷新） */
+  async cachedRepos(): Promise<RepoBrief[] | null> {
+    if (this.reposCache) return this.reposCache.repos;
+    const disk = this.loadReposFromDisk();
+    if (disk) {
+      this.reposCache = { repos: disk, at: Date.now() };
+      return disk;
+    }
+    return null;
+  }
+
+  /** 手动刷新：拉新 → 内存 + 落盘（首次无缓存时客户端后台触发这一次） */
+  async refreshRepos(): Promise<RepoBrief[]> {
+    const proc =
+      await $`gh repo list --limit 300 --json nameWithOwner,defaultBranchRef,visibility,updatedAt`
+        .nothrow()
+        .quiet();
     if (proc.exitCode !== 0)
       throw new ServiceError(`gh repo list 失败: ${proc.stderr.toString()}`);
     const raw = proc.json() as {
@@ -88,20 +138,34 @@ export class GithubService {
       updatedAt: r.updatedAt,
     }));
     this.reposCache = { repos, at: Date.now() };
+    this.saveReposToDisk(repos);
     return repos;
   }
 
+  /** 兼容入口：缓存优先，冷启动时现拉一次（项目创建弹窗用；部署向导走 cachedRepos 不阻塞抽屉） */
+  async listRepos(): Promise<RepoBrief[]> {
+    return (await this.cachedRepos()) ?? (await this.refreshRepos());
+  }
+
   /** 单文件内容（contents API，base64）。404 → null；识别流程用它免去整库克隆 */
-  async fileContent(ownerRepo: string, path: string, ref: string): Promise<string | null> {
-    const proc = await $`gh api ${`repos/${ownerRepo}/contents/${path}?ref=${encodeURIComponent(ref)}`} --jq .content`
-      .nothrow().quiet();
+  async fileContent(
+    ownerRepo: string,
+    path: string,
+    ref: string,
+  ): Promise<string | null> {
+    const proc =
+      await $`gh api ${`repos/${ownerRepo}/contents/${path}?ref=${encodeURIComponent(ref)}`} --jq .content`
+        .nothrow()
+        .quiet();
     if (proc.exitCode !== 0) {
       const err = proc.stderr.toString();
       if (/404|Not Found/i.test(err)) return null;
       throw new ServiceError(`gh api 读 ${path} 失败: ${err.slice(0, 200)}`);
     }
-    // base64 里带换行，Buffer.from 容忍；contents API 单文件上限 1MB，openship.json/compose 远低于此
-    return Buffer.from(proc.stdout.toString().trim(), "base64").toString("utf8");
+    // base64 里带换行，Buffer.from 容忍；contents API 单文件上限 1MB，dockyard.json/compose 远低于此
+    return Buffer.from(proc.stdout.toString().trim(), "base64").toString(
+      "utf8",
+    );
   }
 
   /** clone / fetch 用的带 token URL（用完必须重写 remote，见 deploy） */

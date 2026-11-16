@@ -14,7 +14,9 @@ export const projects = sqliteTable("projects", {
   // 默认分支与项目根目录（Source 配置；根目录是 monorepo 子目录场景）
   branch: text(),
   rootDir: text(),
-  createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  createdAt: integer({ mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
 });
 
 export type Project = typeof projects.$inferSelect;

@@ -11,7 +11,10 @@ import { appPaths } from "../../shared/paths";
  * 参考 openship docker-transport.ts 的 ssh 传输，但用 @meitaim/ssh。
  */
 export class DockerRelay {
-  private relays = new Map<number, { server: net.Server; socketPath: string }>();
+  private relays = new Map<
+    number,
+    { server: net.Server; socketPath: string }
+  >();
 
   /** 远端 docker 的 dockerode 实例（按 serverId 复用中继） */
   async get(serverId: number, client: SshClient): Promise<Docker> {
@@ -34,11 +37,17 @@ export class DockerRelay {
             }
           })();
           // 本地 → 远端
-          socket.on("data", (d) =>
-            void channel
-              // bun-types 1.4.4 同上：string|Buffer
-              .write(typeof d === "string" ? new TextEncoder().encode(d) : new Uint8Array(d))
-              .catch(() => socket.destroy()),
+          socket.on(
+            "data",
+            (d) =>
+              void channel
+                // bun-types 1.4.4 同上：string|Buffer
+                .write(
+                  typeof d === "string"
+                    ? new TextEncoder().encode(d)
+                    : new Uint8Array(d),
+                )
+                .catch(() => socket.destroy()),
           );
           socket.on("end", () => void channel.end().catch(() => {}));
           socket.on("error", () => void channel.close().catch(() => {}));

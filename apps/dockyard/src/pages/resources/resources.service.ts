@@ -30,13 +30,16 @@ function credsOf(resource: ServerResource): ResourceCreds | null {
   try {
     return JSON.parse(decryptSecret(resource.credsJson)) as ResourceCreds;
   } catch {
-    throw new ServiceError(`共享资源「${resource.name}」的凭据损坏（密钥变更或数据截断），请删除后重建`);
+    throw new ServiceError(
+      `共享资源「${resource.name}」的凭据损坏（密钥变更或数据截断），请删除后重建`,
+    );
   }
 }
 
 /** 键名会原样写进业务 app 的 .env：含空白/等号/换行就能注入额外变量 */
 function assertEnvKey(key: string): void {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new ServiceError(`非法的环境变量名: ${key}`);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+    throw new ServiceError(`非法的环境变量名: ${key}`);
 }
 
 /** 共享环境变量（注入业务 app 的 .env / Env 下拉引用用） */
@@ -63,7 +66,12 @@ export class ResourceService {
   }
 
   /** 创建共享资源：模板 compose + 凭据创建时生成一次，enc1: 加密存 credsJson（url 部署成功后回填） */
-  async create(input: { serverId: number; name: string; dbType: DbType; envKey?: string }) {
+  async create(input: {
+    serverId: number;
+    name: string;
+    dbType: DbType;
+    envKey?: string;
+  }) {
     const name = input.name.trim();
     assertSafeResourceName(name);
     const existing = await this.repo.ofServer(input.serverId);
@@ -79,7 +87,11 @@ export class ResourceService {
     const rendered = dbCompose(input.dbType, name, { resourceId: resource.id });
     await this.repo.update(resource.id, {
       containerName: sharedContainerNameOf(resource.id, name),
-      credsJson: encryptSecret(JSON.stringify({ ...rendered, url: null } satisfies ResourceCreds & { port: number })),
+      credsJson: encryptSecret(
+        JSON.stringify({ ...rendered, url: null } satisfies ResourceCreds & {
+          port: number;
+        }),
+      ),
     });
     return (await this.repo.byId(resource.id))!;
   }
@@ -87,7 +99,8 @@ export class ResourceService {
   /** 部署中间件到服务器（视角 B）：对账 → SFTP 推模板 → compose up → 生成连接串 */
   async deploy(id: number): Promise<void> {
     const resource = await this.mustGet(id);
-    if (!resource.containerName) throw new ServiceError("共享资源缺少容器名，请删除后重建");
+    if (!resource.containerName)
+      throw new ServiceError("共享资源缺少容器名，请删除后重建");
     // 存量行可能早于创建时白名单：名字要拼进远端路径，部署前再验一次
     assertSafeResourceName(resource.name);
     const creds = credsOf(resource);
@@ -98,7 +111,9 @@ export class ResourceService {
     // 部署前对账：远端同名容器必须是本资源管理的，绝不动别人的容器
     const remote = await this.serverService.docker(resource.serverId);
     const containers = await remote.listContainers({ all: true });
-    const hit = containers.find((c) => c.Names.includes(`/${resource.containerName}`));
+    const hit = containers.find((c) =>
+      c.Names.includes(`/${resource.containerName}`),
+    );
     if (hit) {
       const managed = hit.Labels?.["dockyard.managed"] === "true";
       const owner = hit.Labels?.["dockyard.shared-resource"];
@@ -127,12 +142,17 @@ export class ResourceService {
     // 不补 -p：新资源的项目名由模板顶层 name 定死；存量资源 compose 无 name，
     // 沿用目录名——强行 -p dockyard-res-<id> 会换 project，卷名跟着变，旧数据留在旧卷里
     const up = await client.exec(`cd ${shq(absDir)} && docker compose up -d`);
-    if (up.code !== 0) throw new ServiceError(`远端 compose up 失败（exit ${up.code}）\n${up.stdout}${up.stderr}`);
+    if (up.code !== 0)
+      throw new ServiceError(
+        `远端 compose up 失败（exit ${up.code}）\n${up.stdout}${up.stderr}`,
+      );
 
     // 部署成功：生成连接串，写入共享清单（服务器级共享变量）
     const url = instanceUrl(resource.dbType, server.host, creds.env);
     await this.repo.update(id, {
-      credsJson: encryptSecret(JSON.stringify({ ...creds, url } satisfies ResourceCreds)),
+      credsJson: encryptSecret(
+        JSON.stringify({ ...creds, url } satisfies ResourceCreds),
+      ),
     });
   }
 
@@ -158,7 +178,14 @@ export class ResourceService {
     const out: SharedEnv[] = [];
     for (const r of await this.repo.ofServer(serverId)) {
       const url = credsOf(r)?.url;
-      if (url) out.push({ resourceId: r.id, name: r.name, dbType: r.dbType, envKey: r.envKey, url });
+      if (url)
+        out.push({
+          resourceId: r.id,
+          name: r.name,
+          dbType: r.dbType,
+          envKey: r.envKey,
+          url,
+        });
     }
     return out;
   }

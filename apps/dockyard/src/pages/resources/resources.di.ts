@@ -7,6 +7,9 @@ export default defineModule({
   route: "/resources",
   provides: {
     resourceRepository: provide(ResourceRepository, ["db"]),
-    resourceService: provide(ResourceService, [ResourceRepository, ServerService]),
+    resourceService: provide(ResourceService, [
+      ResourceRepository,
+      ServerService,
+    ]),
   },
 });

@@ -6,41 +6,43 @@ Mount Better Auth's Web handler and use a macro for session-protected routes. In
 
 ```ts
 // auth.ts
-import { betterAuth } from 'better-auth'
-import { Pool } from 'pg'
+import { betterAuth } from "better-auth";
+import { Pool } from "pg";
 
 export const auth = betterAuth({
-	database: new Pool(),
-	basePath: '/api/auth'
-})
+  database: new Pool(),
+  basePath: "/api/auth",
+});
 ```
 
 ```ts
 // index.ts
-import { Elysia } from 'elysia'
-import { cors } from '@elysia/cors'
-import { auth } from './auth'
+import { Elysia } from "elysia";
+import { cors } from "@elysia/cors";
+import { auth } from "./auth";
 
-const authentication = new Elysia({ name: 'authentication' })
-	.mount(auth.handler)
-	.macro({
-		auth: {
-			async derive({ status, request: { headers } }) {
-				const session = await auth.api.getSession({ headers })
-				if (!session) return status(401, 'Unauthorized')
-				return { user: session.user, session: session.session }
-			}
-		}
-	})
+const authentication = new Elysia({ name: "authentication" })
+  .mount(auth.handler)
+  .macro({
+    auth: {
+      async derive({ status, request: { headers } }) {
+        const session = await auth.api.getSession({ headers });
+        if (!session) return status(401, "Unauthorized");
+        return { user: session.user, session: session.session };
+      },
+    },
+  });
 
 export const app = new Elysia()
-	.use(cors({
-		origin: 'http://localhost:3001',
-		credentials: true,
-		allowedHeaders: ['Content-Type', 'Authorization']
-	}))
-	.use(authentication)
-	.get('/user', { auth: true }, ({ user }) => user)
+  .use(
+    cors({
+      origin: "http://localhost:3001",
+      credentials: true,
+      allowedHeaders: ["Content-Type", "Authorization"],
+    }),
+  )
+  .use(authentication)
+  .get("/user", { auth: true }, ({ user }) => user);
 ```
 
 Auth endpoints use `/api/auth`. Routes with `auth: true` receive `user` and `session`; unauthenticated requests return 401. See [composition](composition.md) for macros and mounts.
@@ -54,37 +56,37 @@ A mount prefix changes the public URL. For example, `.mount('/auth', auth.handle
 Add `openAPI()` from `better-auth/plugins` to the `auth.ts` configuration. This exposes `auth.api.generateOpenAPISchema()`.
 
 ```ts
-import { betterAuth } from 'better-auth'
-import { openAPI } from 'better-auth/plugins'
-import { Pool } from 'pg'
+import { betterAuth } from "better-auth";
+import { openAPI } from "better-auth/plugins";
+import { Pool } from "pg";
 
 export const auth = betterAuth({
-	database: new Pool(),
-	basePath: '/api/auth',
-	plugins: [openAPI()]
-})
+  database: new Pool(),
+  basePath: "/api/auth",
+  plugins: [openAPI()],
+});
 ```
 
 Generate the schema once at startup. This prefix matches `.mount(auth.handler)` above.
 
 ```ts
-import { Elysia } from 'elysia'
-import { openapi } from '@elysia/openapi'
-import { auth } from './auth'
+import { Elysia } from "elysia";
+import { openapi } from "@elysia/openapi";
+import { auth } from "./auth";
 
-const schema = await auth.api.generateOpenAPISchema()
+const schema = await auth.api.generateOpenAPISchema();
 const paths = Object.fromEntries(
-	Object.entries(schema.paths).map(([path, operation]) => [
-		`/api/auth${path}`,
-		operation
-	])
-)
+  Object.entries(schema.paths).map(([path, operation]) => [
+    `/api/auth${path}`,
+    operation,
+  ]),
+);
 
-export const app = new Elysia()
-	.mount(auth.handler)
-	.use(openapi({
-		documentation: { components: schema.components, paths }
-	}))
+export const app = new Elysia().mount(auth.handler).use(
+  openapi({
+    documentation: { components: schema.components, paths },
+  }),
+);
 ```
 
 To combine this with the session example, add `openapi(...)` to that app. See [OpenAPI](openapi.md).

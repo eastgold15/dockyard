@@ -6,7 +6,11 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LocalTransport, openServerSftp, type ServerTransport } from "./transport";
+import {
+  LocalTransport,
+  openServerSftp,
+  type ServerTransport,
+} from "./transport";
 
 test("LocalTransport.exec：stdout 与退出码透传", async () => {
   const t = new LocalTransport();
@@ -26,7 +30,9 @@ test("LocalTransport.exec：非登录 shell（不读 profile，stdout 不被横�
   // 部署链路里有大量「输出即数据」的命令（printf $HOME、docker version、base64 备份）。
   // 若用 `bash -lc`，用户 ~/.bash_profile 里的 echo/fastfetch 会混进 stdout。
   // 直接问 bash 自己是不是登录 shell（比改 HOME 更可靠：Bun.spawn 不认进程内 env 改写）。
-  const r = await new LocalTransport().exec("shopt -q login_shell && echo login || echo plain");
+  const r = await new LocalTransport().exec(
+    "shopt -q login_shell && echo login || echo plain",
+  );
   expect(r.stdout.trim()).toBe("plain");
 });
 
@@ -35,9 +41,18 @@ test("openServerSftp：分派到 transport.sftp()（远程包装对象不能被�
   // 否则远端会抛 TypeError: client.session is not a function（本机测试跑不到那条路径）
   const written: { path: string; contents: string | Uint8Array }[] = [];
   const fake: ServerTransport = {
-    exec: async () => ({ stdout: "", stderr: "", code: 0, signal: null, coreDumped: null, errorMessage: null }),
+    exec: async () => ({
+      stdout: "",
+      stderr: "",
+      code: 0,
+      signal: null,
+      coreDumped: null,
+      errorMessage: null,
+    }),
     sftp: async () => ({
-      write: async (path, contents) => { written.push({ path, contents }); },
+      write: async (path, contents) => {
+        written.push({ path, contents });
+      },
       close: async () => {},
     }),
   };

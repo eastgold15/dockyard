@@ -22,8 +22,21 @@ export const Button: Component<{
   disabled?: boolean;
   ariaLabel?: string;
 }> = ({
-  label, variant = "primary", type = "button", small, hxGet, hxPost, hxDelete, hxTarget, hxSwap, hxConfirm,
-  onclick, class: className, disabled, ariaLabel, children,
+  label,
+  variant = "primary",
+  type = "button",
+  small,
+  hxGet,
+  hxPost,
+  hxDelete,
+  hxTarget,
+  hxSwap,
+  hxConfirm,
+  onclick,
+  class: className,
+  disabled,
+  ariaLabel,
+  children,
 }) => {
   return (
     <button
@@ -47,15 +60,24 @@ export const Button: Component<{
 export const Badge: Component<{
   label: string;
   tone?: "ok" | "warn" | "err" | "muted";
+  class?: string;
 }> = ({ label, tone = "muted", children, class: className }) => {
-  return <span class={cn(badge({ tone }), className)}>{children ?? label}</span>;
+  return (
+    <span class={cn(badge({ tone }), className)}>{children ?? label}</span>
+  );
 };
 
 /** 视图页头：标题 + 副标题 + 右侧操作区；目标 min-h 64px、24px 水平内边距（窄屏 16px、可换行） */
-export const PageHeader: Component<{ title: string; sub?: string }> = ({ title, sub, children }) => (
+export const PageHeader: Component<{ title: string; sub?: string }> = ({
+  title,
+  sub,
+  children,
+}) => (
   <div class="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-harbor-800 px-4 py-3 sm:px-6">
     <div class="flex items-baseline gap-3">
-      <h2 class="text-xl font-semibold tracking-wide text-neutral-100">{title}</h2>
+      <h2 class="text-xl font-semibold tracking-wide text-neutral-100">
+        {title}
+      </h2>
       {sub ? <span class="text-xs text-neutral-500">{sub}</span> : null}
     </div>
     <div class="flex items-center gap-2">{children}</div>
@@ -70,7 +92,15 @@ export const Field: Component<{
   placeholder?: string;
   value?: string;
   required?: boolean;
-}> = ({ label, name, type = "text", placeholder, value, required, children }) => (
+}> = ({
+  label,
+  name,
+  type = "text",
+  placeholder,
+  value,
+  required,
+  children,
+}) => (
   <label class="flex flex-col gap-1 text-sm">
     <span class="text-xs text-neutral-500">{label}</span>
     {/* 传入 children（select/textarea 等）时替代默认 input；控件外观仍由 field() recipe 统一供给 */}
@@ -100,10 +130,20 @@ export const Empty: Component<{ text: string }> = ({ text }) => (
  * （layout 的全局 <dialog> 单例接管）。
  * 行为保持原样；close 关闭逻辑从依赖布局类选择器改为 data-shell 标识，避免与样式类耦合。
  */
-export const Modal: Component<{ title: string; sub?: string; width?: "sm" | "md" | "lg" }> = ({
-  title, sub, width = "md", children,
-}) => {
-  const { overlay, panel, header, title: titleCls, sub: subCls, close, body } = modal({ width });
+export const Modal: Component<{
+  title: string;
+  sub?: string;
+  width?: "sm" | "md" | "lg";
+}> = ({ title, sub, width = "md", children }) => {
+  const {
+    overlay,
+    panel,
+    header,
+    title: titleCls,
+    sub: subCls,
+    close,
+    body,
+  } = modal({ width });
   return (
     <div
       data-shell="overlay"
@@ -115,10 +155,7 @@ export const Modal: Component<{ title: string; sub?: string; width?: "sm" | "md"
         onclick: "if(event.target===this)this.remove()",
       }}
     >
-      <div
-        class={panel}
-        role="dialog" aria-modal="true" aria-label={title}
-      >
+      <div class={panel} role="dialog" aria-modal="true" aria-label={title}>
         <div class={header}>
           <div class="flex flex-col gap-1">
             <h3 class={titleCls}>{title}</h3>
@@ -128,7 +165,9 @@ export const Modal: Component<{ title: string; sub?: string; width?: "sm" | "md"
             class={close}
             aria-label="关闭"
             onclick="this.closest('[data-shell=overlay]').remove()"
-          >✕</button>
+          >
+            ✕
+          </button>
         </div>
         <div class={body}>{children}</div>
       </div>

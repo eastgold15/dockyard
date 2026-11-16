@@ -18,42 +18,54 @@ This example uses `drizzle-orm`, PostgreSQL, and `pg`. It requires a migrated `u
 
 ```ts
 // database/schema.ts
-import { pgTable, serial, text } from 'drizzle-orm/pg-core'
+import { pgTable, serial, text } from "drizzle-orm/pg-core";
 
-export const users = pgTable('users', {
-	id: serial('id').primaryKey(),
-	name: text('name').notNull()
-})
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+});
 ```
 
 ```ts
 // users.ts
-import { Elysia, t } from 'elysia'
-import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-orm/typebox'
-import { db } from './database'
-import { users } from './database/schema'
+import { Elysia, t } from "elysia";
+import {
+  createInsertSchema,
+  createSelectSchema,
+  createUpdateSchema,
+} from "drizzle-orm/typebox";
+import { db } from "./database";
+import { users } from "./database/schema";
 
 const refineName = (schema: Parameters<typeof t.String>[0]) =>
-	t.String({ ...schema, minLength: 1 })
+  t.String({ ...schema, minLength: 1 });
 
-const insertUser = createInsertSchema(users, { name: refineName })
-const updateUser = createUpdateSchema(users, { name: refineName })
+const insertUser = createInsertSchema(users, { name: refineName });
+const updateUser = createUpdateSchema(users, { name: refineName });
 
-const createUserSchema = t.Pick(insertUser, ['name'], { additionalProperties: false })
-const updateUserSchema = t.Pick(updateUser, ['name'], { additionalProperties: false })
-const publicUserSchema = createSelectSchema(users)
+const createUserSchema = t.Pick(insertUser, ["name"], {
+  additionalProperties: false,
+});
+const updateUserSchema = t.Pick(updateUser, ["name"], {
+  additionalProperties: false,
+});
+const publicUserSchema = createSelectSchema(users);
 
-export const userRoutes = new Elysia().post('/users', {
-	body: createUserSchema,
-	response: publicUserSchema
-}, async ({ body }) => {
-	const [user] = await db.insert(users).values(body).returning({
-		id: users.id,
-		name: users.name
-	})
-	if (!user) throw new Error('Insert returned no user')
-	return user
-})
+export const userRoutes = new Elysia().post(
+  "/users",
+  {
+    body: createUserSchema,
+    response: publicUserSchema,
+  },
+  async ({ body }) => {
+    const [user] = await db.insert(users).values(body).returning({
+      id: users.id,
+      name: users.name,
+    });
+    if (!user) throw new Error("Insert returned no user");
+    return user;
+  },
+);
 ```
 
 Both request schemas allow only `name` as a writable field, keeping `id` under database control. The shared refinement rejects an empty name on creation and update. Use `updateUserSchema` for update request bodies; `name` remains optional, but must be nonempty when supplied.

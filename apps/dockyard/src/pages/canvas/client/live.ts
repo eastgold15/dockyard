@@ -10,7 +10,8 @@ import type { ServiceState } from "../canvas.model";
 import type { DeployStage } from "../../deploy/deploy.socket";
 import { STAGES } from "./pipeline-steps";
 
-export type DeployStatus = "queued" | "building" | "transferring" | "deploying" | "success" | "failed";
+export type DeployStatus =
+  "queued" | "building" | "transferring" | "deploying" | "success" | "failed";
 
 /** 单 target 的实时态（LiveProvider 按键写入 store 时使用） */
 export interface TargetLive {
@@ -22,7 +23,10 @@ export interface TargetLive {
 }
 
 /** 终态：run 已结束，running 必然为 false */
-const TERMINAL: ReadonlySet<string> = new Set<DeployStatus>(["success", "failed"]);
+const TERMINAL: ReadonlySet<string> = new Set<DeployStatus>([
+  "success",
+  "failed",
+]);
 
 /** 合法 status 取值域（与 schema 的 CHECK 约束一致）：坏帧整帧丢弃，不写进 store */
 const STATUSES: ReadonlySet<string> = new Set<DeployStatus>([
@@ -53,12 +57,19 @@ export const LiveContext = createContext<LiveState>(emptyLive);
 /** 返回 accessor：JSX 里 `live().status` 细粒度订阅该目标的实时状态 */
 export const useTargetLive = (targetId: number) => {
   const ctx = useContext(LiveContext);
-  return () => ctx.targets[targetId] ?? { status: null, running: false, stage: null, runId: null };
+  return () =>
+    ctx.targets[targetId] ?? {
+      status: null,
+      running: false,
+      stage: null,
+      runId: null,
+    };
 };
 
 export const useServiceState = (targetId: number, svcName: string) => {
   const ctx = useContext(LiveContext);
-  return (): ServiceState => ctx.services[`${targetId}:${svcName}`] ?? "unknown";
+  return (): ServiceState =>
+    ctx.services[`${targetId}:${svcName}`] ?? "unknown";
 };
 
 /** 返回 accessor：该目标当前 run 的 SSE 日志行（无则 null——未开播或非当前 run） */
@@ -96,15 +107,21 @@ export function nextTargetLive(
   }
   if (msg.type === "running") {
     // 新 run 开播清旧 stage（上一轮的断点不能污染本轮步骤条）
-    return msg.running ? { ...t, running: true, stage: null, runId } : { ...t, running: false, runId };
+    return msg.running
+      ? { ...t, running: true, stage: null, runId }
+      : { ...t, running: false, runId };
   }
   return null;
 }
 
 /** stage 帧值 → 合法 DeployStage；null 表示显式清空；未知值丢弃（保留旧值） */
-function parseStage(raw: unknown, prev: DeployStage | null): DeployStage | null {
+function parseStage(
+  raw: unknown,
+  prev: DeployStage | null,
+): DeployStage | null {
   if (raw === null) return null;
-  if (typeof raw === "string" && (STAGES as readonly string[]).includes(raw)) return raw as DeployStage;
+  if (typeof raw === "string" && (STAGES as readonly string[]).includes(raw))
+    return raw as DeployStage;
   return prev;
 }
 

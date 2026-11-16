@@ -18,7 +18,9 @@ const { root } = await start({
   api: {
     // OpenAPI 文档：/openapi（Scalar UI）。运行时路由注册表生成 spec，
     // 端点都有显式 t schema，无需 fromTypes
-    openapi: { documentation: { info: { title: "dockyard API", version: "0.1.0" } } },
+    openapi: {
+      documentation: { info: { title: "dockyard API", version: "0.1.0" } },
+    },
   },
 });
 
@@ -31,7 +33,8 @@ const local = await di.get("serverService").ensureLocal();
 await di.get("serverService").check(local.id);
 // 启动对账：上次进程中断留下的非终态 run 标记失败（否则画布永远显示「部署中」）
 const interrupted = await di.get("deployService").reconcileInterrupted();
-if (interrupted > 0) console.warn(`[deploy] 已将 ${interrupted} 个中断的部署标记为失败`);
+if (interrupted > 0)
+  console.warn(`[deploy] 已将 ${interrupted} 个中断的部署标记为失败`);
 // GitHub 更新轮询：只提示不自动部署
 di.get("updatePoller").start();
 // 容器状态轮询 → 事件总线 → SSE：SSH 频率与前端用户数无关

@@ -40,7 +40,9 @@ interface ConfirmOpts {
   /** 危险操作：确认按钮用 signal 红 */
   danger?: boolean;
 }
-const [confirmState, setConfirmState] = createSignal<(ConfirmOpts & { resolve(v: boolean): void }) | null>(null);
+const [confirmState, setConfirmState] = createSignal<
+  (ConfirmOpts & { resolve(v: boolean): void }) | null
+>(null);
 
 /** 应用内确认框（替代 confirm）；Esc/遮罩 = 取消 */
 export function confirmAction(opts: ConfirmOpts): Promise<boolean> {
@@ -50,12 +52,21 @@ export function confirmAction(opts: ConfirmOpts): Promise<boolean> {
 }
 const closeConfirm = (v: boolean) => {
   const s = confirmState();
-  if (s) { setConfirmState(null); s.resolve(v); }
+  if (s) {
+    setConfirmState(null);
+    s.resolve(v);
+  }
 };
 
 // ── 输入框 ────────────────────────────────────────────────
-interface PromptOpts { title: string; initial?: string; placeholder?: string }
-const [promptState, setPromptState] = createSignal<(PromptOpts & { resolve(v: string | null): void }) | null>(null);
+interface PromptOpts {
+  title: string;
+  initial?: string;
+  placeholder?: string;
+}
+const [promptState, setPromptState] = createSignal<
+  (PromptOpts & { resolve(v: string | null): void }) | null
+>(null);
 
 /** 应用内输入框（替代 prompt）；Esc/遮罩 = 取消（resolve null） */
 export function promptAction(opts: PromptOpts): Promise<string | null> {
@@ -64,7 +75,10 @@ export function promptAction(opts: PromptOpts): Promise<string | null> {
 }
 const closePrompt = (v: string | null) => {
   const s = promptState();
-  if (s) { setPromptState(null); s.resolve(v); }
+  if (s) {
+    setPromptState(null);
+    s.resolve(v);
+  }
 };
 
 // ── 宿主组件 ──────────────────────────────────────────────
@@ -79,19 +93,37 @@ export function FeedbackHost() {
       {/* 确认框（Dialog：Esc/遮罩关闭 = 取消，焦点约束内置） */}
       <Show when={confirmState()}>
         {(s) => (
-          <Dialog open onOpenChange={(open: boolean) => { if (!open) closeConfirm(false); }}>
+          <Dialog
+            open
+            onOpenChange={(open: boolean) => {
+              if (!open) closeConfirm(false);
+            }}
+          >
             <Dialog.Portal>
               <Dialog.Overlay class={overlayCls} />
               <div class="fixed inset-0 z-[60] flex items-center justify-center">
                 <Dialog.Content class={panelCls}>
-                  <Dialog.Title class="text-sm font-semibold text-neutral-100">{s().title}</Dialog.Title>
+                  <Dialog.Title class="text-sm font-semibold text-neutral-100">
+                    {s().title}
+                  </Dialog.Title>
                   <Show when={s().body}>
-                    <Dialog.Description class="mt-2 text-xs leading-5 text-neutral-400">{s().body}</Dialog.Description>
+                    <Dialog.Description class="mt-2 text-xs leading-5 text-neutral-400">
+                      {s().body}
+                    </Dialog.Description>
                   </Show>
                   <div class="mt-4 flex justify-end gap-2">
-                    <button class={ghostBtn} onClick={() => closeConfirm(false)}>取消</button>
                     <button
-                      class={s().danger ? button({ variant: "danger", size: "md" }) : button({ variant: "primary", size: "md" })}
+                      class={ghostBtn}
+                      onClick={() => closeConfirm(false)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      class={
+                        s().danger
+                          ? button({ variant: "danger", size: "md" })
+                          : button({ variant: "primary", size: "md" })
+                      }
                       onClick={() => closeConfirm(true)}
                     >
                       {s().confirmLabel ?? "确认"}
@@ -107,12 +139,19 @@ export function FeedbackHost() {
       {/* 输入框 */}
       <Show when={promptState()}>
         {(s) => (
-          <Dialog open onOpenChange={(open: boolean) => { if (!open) closePrompt(null); }}>
+          <Dialog
+            open
+            onOpenChange={(open: boolean) => {
+              if (!open) closePrompt(null);
+            }}
+          >
             <Dialog.Portal>
               <Dialog.Overlay class={overlayCls} />
               <div class="fixed inset-0 z-[60] flex items-center justify-center">
                 <Dialog.Content class={panelCls}>
-                  <Dialog.Title class="text-sm font-semibold text-neutral-100">{s().title}</Dialog.Title>
+                  <Dialog.Title class="text-sm font-semibold text-neutral-100">
+                    {s().title}
+                  </Dialog.Title>
                   <form
                     class="mt-3"
                     onSubmit={(e) => {
@@ -123,14 +162,28 @@ export function FeedbackHost() {
                   >
                     <input
                       name="value"
-                      ref={(el) => queueMicrotask(() => { el.focus(); el.select(); })}
+                      ref={(el) =>
+                        queueMicrotask(() => {
+                          el.focus();
+                          el.select();
+                        })
+                      }
                       class={field()}
                       value={s().initial ?? ""}
                       placeholder={s().placeholder ?? ""}
                     />
                     <div class="mt-4 flex justify-end gap-2">
-                      <button type="button" class={ghostBtn} onClick={() => closePrompt(null)}>取消</button>
-                      <button type="submit" class={button({ variant: "primary", size: "md" })}>
+                      <button
+                        type="button"
+                        class={ghostBtn}
+                        onClick={() => closePrompt(null)}
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        class={button({ variant: "primary", size: "md" })}
+                      >
                         确认
                       </button>
                     </div>

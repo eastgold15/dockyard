@@ -3,13 +3,33 @@
  * 兜底匹配（compose project 名 / 容器名前缀）、端口摘要。
  */
 import { expect, test } from "bun:test";
-import { discoverContainers, discoverySignature, matchProjectId, portsSummary } from "./discovery";
+import {
+  discoverContainers,
+  discoverySignature,
+  matchProjectId,
+  portsSummary,
+} from "./discovery";
 import type { RawContainer } from "./discovery";
 
 const projects = [
-  { id: 6, name: "tradeflow", slug: "tradeflow", localPath: "/home/pori/Documents/GitHub/tradeflow" },
-  { id: 7, name: "elysiax", slug: "elysiax", localPath: "/home/pori/Documents/GitHub/elysiax" },
-  { id: 8, name: "tradeflow-nested", slug: "tradeflow-nested", localPath: "/home/pori/Documents/GitHub/tradeflow/sub" },
+  {
+    id: 6,
+    name: "tradeflow",
+    slug: "tradeflow",
+    localPath: "/home/pori/Documents/GitHub/tradeflow",
+  },
+  {
+    id: 7,
+    name: "elysiax",
+    slug: "elysiax",
+    localPath: "/home/pori/Documents/GitHub/elysiax",
+  },
+  {
+    id: 8,
+    name: "tradeflow-nested",
+    slug: "tradeflow-nested",
+    localPath: "/home/pori/Documents/GitHub/tradeflow/sub",
+  },
 ];
 
 const pg: RawContainer = {
@@ -20,7 +40,8 @@ const pg: RawContainer = {
   Labels: {
     "com.docker.compose.project": "deploy",
     "com.docker.compose.service": "postgres",
-    "com.docker.compose.project.working_dir": "/home/pori/Documents/GitHub/tradeflow/deploy",
+    "com.docker.compose.project.working_dir":
+      "/home/pori/Documents/GitHub/tradeflow/deploy",
     "com.docker.compose.oneoff": "False",
   },
   Ports: [
@@ -37,7 +58,10 @@ test("最长前缀胜出（嵌套仓库不误配）", () => {
   const nested: RawContainer = {
     Id: "x",
     Names: ["/sub_container"],
-    Labels: { "com.docker.compose.project.working_dir": "/home/pori/Documents/GitHub/tradeflow/sub/deploy" },
+    Labels: {
+      "com.docker.compose.project.working_dir":
+        "/home/pori/Documents/GitHub/tradeflow/sub/deploy",
+    },
   };
   expect(matchProjectId(nested, projects)).toBe(8);
 });
@@ -61,7 +85,11 @@ test("兜底：compose project 名 / 容器名前缀匹配", () => {
 });
 
 test("匹配不到 → null（只在世界视图显示）", () => {
-  const other: RawContainer = { Id: "w", Names: ["/random-worker"], Labels: { "com.docker.compose.project": "deploy" } };
+  const other: RawContainer = {
+    Id: "w",
+    Names: ["/random-worker"],
+    Labels: { "com.docker.compose.project": "deploy" },
+  };
   expect(matchProjectId(other, projects)).toBeNull();
 });
 
@@ -69,12 +97,18 @@ test("discoverContainers：过滤 dockyard 纳管与一次性容器，端口去�
   const managed: RawContainer = {
     Id: "m",
     Names: ["/dockyard-x"],
-    Labels: { "dockyard.managed": "true", "com.docker.compose.project": "dockyard-1" },
+    Labels: {
+      "dockyard.managed": "true",
+      "com.docker.compose.project": "dockyard-1",
+    },
   };
   const oneoff: RawContainer = {
     Id: "o",
     Names: ["/tradeflow_postgres_run_1"],
-    Labels: { "com.docker.compose.oneoff": "True", "com.docker.compose.project": "deploy" },
+    Labels: {
+      "com.docker.compose.oneoff": "True",
+      "com.docker.compose.project": "deploy",
+    },
   };
   const out = discoverContainers([pg, managed, oneoff], projects);
   expect(out.map((d) => d.name)).toEqual(["tradeflow_postgres"]);
@@ -91,11 +125,18 @@ test("discoverContainers：过滤 dockyard 纳管与一次性容器，端口去�
 });
 
 test("discoverySignature：未纳管容器指纹，与顺序无关（poller 变更检测用）", () => {
-  const managed: RawContainer = { Id: "managed00001", Labels: { "dockyard.managed": "true" } };
+  const managed: RawContainer = {
+    Id: "managed00001",
+    Labels: { "dockyard.managed": "true" },
+  };
   const other: RawContainer = { Id: "zzz", Labels: {} }; // state 缺省记 unknown
   expect(discoverySignature([pg, managed])).toBe("abcdef123456:running");
-  expect(discoverySignature([pg, other])).toBe("abcdef123456:running,zzz:unknown");
-  expect(discoverySignature([other, pg])).toBe("abcdef123456:running,zzz:unknown");
+  expect(discoverySignature([pg, other])).toBe(
+    "abcdef123456:running,zzz:unknown",
+  );
+  expect(discoverySignature([other, pg])).toBe(
+    "abcdef123456:running,zzz:unknown",
+  );
   expect(discoverySignature([managed])).toBe("");
 });
 

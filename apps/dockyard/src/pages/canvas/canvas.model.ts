@@ -21,30 +21,34 @@ export interface ServiceRow {
   port?: number;
   image?: string;
   domains: DomainBadge[]; // 绑到该服务的域名（按 serviceName 下沉）
-  x?: number; y?: number; // 服务卡在 app 卡内的位置（serviceLayout；空 → 岛端自动摆）
+  x?: number;
+  y?: number; // 服务卡在 app 卡内的位置（serviceLayout；空 → 岛端自动摆）
 }
 
 /** 服务级依赖边：service=null 表示 app 整体依赖（连到 app 卡而非服务卡） */
 export interface DepEdgeModel {
   service: string | null;
-  db: number;     // db target id
+  db: number; // 依赖端 target id：托管 db 卡，或用户 compose 自带的单服务数据库 app 卡
   dbName: string;
+  origin: "manual" | "env"; // env = app/服务变量里引用该库自动派生
 }
 
 export interface TargetModel {
   id: number;
   kind: "app" | "db";
   name: string;
-  projectId: number;   // 项目归属（deploy_targets.projectId；0 = 未关联）
+  projectId: number; // 项目归属（deploy_targets.projectId；0 = 未关联）
   projectName: string; // 关联 projects 表的名字（未关联为空串）
   logical: boolean;
   url?: string; // 逻辑库连接串（复制按钮）
   domains: DomainBadge[]; // 无 serviceName 归属的域名（有归属的下沉到 services 行）
   services: ServiceRow[]; // kind=app 有效；空数组 → 前端按行式渲染降级
-  edges: DepEdgeModel[];  // 服务级依赖边（岛端派生 React Flow 边）
+  edges: DepEdgeModel[]; // 服务级依赖边（岛端派生 React Flow 边）
   groupId: number | null; // 所属服务分组（null = 直接挂服务器卡）
-  x: number | null; y: number | null; // 卡在父容器（服务器卡/分组）内的位置（null → 岛端自动摆）
-  w: number | null; h: number | null; // 手动拉伸的卡尺寸（null → 按子卡 bounds 收敛；有值作下限）
+  x: number | null;
+  y: number | null; // 卡在父容器（服务器卡/分组）内的位置（null → 岛端自动摆）
+  w: number | null;
+  h: number | null; // 手动拉伸的卡尺寸（null → 按子卡 bounds 收敛；有值作下限）
   updateAvailable: boolean;
   artifactShipped: boolean; // 构建产物已传输到云端（跨区移动的门票；本地构建部署成功即置位）
 }
@@ -53,7 +57,10 @@ export interface TargetModel {
 export interface GroupModel {
   id: number;
   name: string;
-  x: number; y: number; w: number; h: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /**
@@ -61,22 +68,34 @@ export interface GroupModel {
  * 发现 ≠ 纳管——不参与部署/回滚/备份，只做世界地图的诚实呈现。
  */
 export interface DiscoveredContainer {
-  id: string;              // docker 容器 id 前 12 位
-  name: string;            // tradeflow_postgres
-  service: string;         // compose service 名（postgres）
-  composeProject: string;  // compose 项目名（deploy）
+  id: string; // docker 容器 id 前 12 位
+  name: string; // tradeflow_postgres
+  service: string; // compose service 名（postgres）
+  composeProject: string; // compose 项目名（deploy）
   image: string;
-  state: "running" | "exited" | "created" | "restarting" | "paused" | "dead" | "unknown";
-  ports: string;           // 端口摘要（5444→5432/tcp）
+  state:
+    | "running"
+    | "exited"
+    | "created"
+    | "restarting"
+    | "paused"
+    | "dead"
+    | "unknown";
+  ports: string; // 端口摘要（5444→5432/tcp）
   projectId: number | null; // 归属的 dockyard 项目（working_dir 反查；null = 只在世界视图）
-  projectName: string;     // 世界视图的归属徽章（无归属为空串）
+  projectName: string; // 世界视图的归属徽章（无归属为空串）
 }
 
 export interface CardModel {
   node: { id: number; x: number; y: number; w: number; h: number };
   server: {
-    id: number; name: string; user: string; host: string; port: number;
-    dockerStatus: "unknown" | "ok" | "missing"; dockerVersion: string | null;
+    id: number;
+    name: string;
+    user: string;
+    host: string;
+    port: number;
+    dockerStatus: "unknown" | "ok" | "missing";
+    dockerVersion: string | null;
     local: boolean; // 内置本机（servers.builtin 派生；回环地址上的用户 SSH 隧道不算）
   };
   targets: TargetModel[];

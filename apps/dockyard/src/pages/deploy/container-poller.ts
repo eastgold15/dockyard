@@ -34,7 +34,12 @@ export class ContainerPoller {
     const out: CanvasEvent[] = [];
     for (const [key, state] of this.snapshot) {
       const sep = key.indexOf(":");
-      out.push({ type: "state", targetId: Number(key.slice(0, sep)), service: key.slice(sep + 1), state });
+      out.push({
+        type: "state",
+        targetId: Number(key.slice(0, sep)),
+        service: key.slice(sep + 1),
+        state,
+      });
     }
     return out;
   }
@@ -79,8 +84,10 @@ export class ContainerPoller {
     // 以 DB 行（而非本轮可达的服务器）为准，跳过/离线的服务器不会误清
     const known = new Set<string>();
     for (const r of rows)
-      for (const s of r.servicesJson?.services ?? []) known.add(`${r.targetId}:${s.name}`);
-    for (const key of this.snapshot.keys()) if (!known.has(key)) this.snapshot.delete(key);
+      for (const s of r.servicesJson?.services ?? [])
+        known.add(`${r.targetId}:${s.name}`);
+    for (const key of this.snapshot.keys())
+      if (!known.has(key)) this.snapshot.delete(key);
 
     // 全局频道无观众 → 整轮不 SSH（仍保留上面的快照清理）
     if (!events.hasSubs(CANVAS_CHANNEL)) return;
@@ -90,16 +97,28 @@ export class ContainerPoller {
     const nodeServers = await this.db
       .selectDistinct({ serverId: canvasNodes.serverId })
       .from(canvasNodes);
-    const serverIds = new Set<number>([...byServer.keys(), ...nodeServers.map((r) => r.serverId)]);
+    const serverIds = new Set<number>([
+      ...byServer.keys(),
+      ...nodeServers.map((r) => r.serverId),
+    ]);
     // 卡片被删的服务器不再轮询，清掉指纹防泄漏（下次见面当作首轮，不误推）
-    for (const id of this.discovery.keys()) if (!serverIds.has(id)) this.discovery.delete(id);
+    for (const id of this.discovery.keys())
+      if (!serverIds.has(id)) this.discovery.delete(id);
 
     for (const serverId of serverIds) {
-      const apps = (byServer.get(serverId) ?? []).filter((t) => t.servicesJson?.services?.length);
-      let containers: { Id: string; Labels?: Record<string, string>; State?: string }[];
+      const apps = (byServer.get(serverId) ?? []).filter(
+        (t) => t.servicesJson?.services?.length,
+      );
+      let containers: {
+        Id: string;
+        Labels?: Record<string, string>;
+        State?: string;
+      }[];
       try {
         const docker = await this.serverService.docker(serverId);
-        containers = await docker.listContainers({ all: true }) as typeof containers;
+        containers = (await docker.listContainers({
+          all: true,
+        })) as typeof containers;
       } catch {
         continue; // 服务器离线/SSH 失败 → 保持上轮快照，不推
       }
@@ -109,7 +128,8 @@ export class ContainerPoller {
       if (sig !== prevSig) {
         this.discovery.set(serverId, sig);
         // 首轮指纹只做基线：前端挂载时刚拉过 /board，不必再推一轮
-        if (prevSig !== undefined) events.publish(CANVAS_CHANNEL, { type: "discovery" });
+        if (prevSig !== undefined)
+          events.publish(CANVAS_CHANNEL, { type: "discovery" });
       }
       for (const t of apps) {
         const doc = t.servicesJson as TargetServicesDoc;
@@ -118,12 +138,23 @@ export class ContainerPoller {
           const match = (c: { Labels?: Record<string, string> }) =>
             c.Labels?.["com.docker.compose.project"] === project &&
             c.Labels?.["com.docker.compose.service"] === s.name;
-          const hit = containers.find((c) => match(c) && c.State === "running") ?? containers.find(match);
-          const state: SvcState = hit ? (hit.State === "running" ? "running" : "exited") : "unknown";
+          const hit =
+            containers.find((c) => match(c) && c.State === "running") ??
+            containers.find(match);
+          const state: SvcState = hit
+            ? hit.State === "running"
+              ? "running"
+              : "exited"
+            : "unknown";
           const key = `${t.targetId}:${s.name}`;
           if (this.snapshot.get(key) === state) continue;
           this.snapshot.set(key, state);
-          events.publish(CANVAS_CHANNEL, { type: "state", targetId: t.targetId, service: s.name, state });
+          events.publish(CANVAS_CHANNEL, {
+            type: "state",
+            targetId: t.targetId,
+            service: s.name,
+            state,
+          });
         }
       }
     }

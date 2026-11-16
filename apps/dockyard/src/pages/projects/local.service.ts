@@ -44,9 +44,13 @@ const TERMINALS = ["ghostty", "alacritty", "kitty", "foot", "wezterm"];
 
 export class LocalService {
   /** 浅扫一级子目录：含 .git 或 package.json 即识别为项目 */
-  async scan(registered: { localPath: string | null; id: number }[]): Promise<LocalProject[]> {
+  async scan(
+    registered: { localPath: string | null; id: number }[],
+  ): Promise<LocalProject[]> {
     const { scanDirs } = await loadConfig();
-    const byPath = new Map(registered.filter((r) => r.localPath).map((r) => [r.localPath!, r.id]));
+    const byPath = new Map(
+      registered.filter((r) => r.localPath).map((r) => [r.localPath!, r.id]),
+    );
     const found = new Map<string, LocalProject>();
     for (const dir of scanDirs.map(expandHome)) {
       let entries;
@@ -74,8 +78,14 @@ export class LocalService {
   /** 本机可用的编辑器 / 终端 / lazygit */
   async toolchain() {
     const [editors, terminals, lazygit] = await Promise.all([
-      Promise.all([...GUI_EDITORS, ...TUI_EDITORS].map(async (e) => ((await Bun.which(e)) ? e : null))),
-      Promise.all(TERMINALS.map(async (t) => ((await Bun.which(t)) ? t : null))),
+      Promise.all(
+        [...GUI_EDITORS, ...TUI_EDITORS].map(async (e) =>
+          (await Bun.which(e)) ? e : null,
+        ),
+      ),
+      Promise.all(
+        TERMINALS.map(async (t) => ((await Bun.which(t)) ? t : null)),
+      ),
       Bun.which("lazygit"),
     ]);
     const { defaultEditor } = await loadConfig();
@@ -95,22 +105,31 @@ export class LocalService {
         ? [terminal, "-e", editor, path]
         : null
       : [editor, path];
-    if (!cmd) throw new ServiceError(`「${editor}」是终端编辑器，但未找到可用终端（${TERMINALS.join("/")}）`);
+    if (!cmd)
+      throw new ServiceError(
+        `「${editor}」是终端编辑器，但未找到可用终端（${TERMINALS.join("/")}）`,
+      );
     this.spawnDetached(cmd);
     const cfg = await loadConfig();
-    if (cfg.defaultEditor !== editor) await saveConfig({ ...cfg, defaultEditor: editor });
+    if (cfg.defaultEditor !== editor)
+      await saveConfig({ ...cfg, defaultEditor: editor });
   }
 
   async openLazygit(path: string) {
     const { terminal, lazygit } = await this.toolchain();
     if (!lazygit) throw new ServiceError("未安装 lazygit");
-    if (!terminal) throw new ServiceError(`未找到可用终端（${TERMINALS.join("/")}）`);
+    if (!terminal)
+      throw new ServiceError(`未找到可用终端（${TERMINALS.join("/")}）`);
     this.spawnDetached([terminal, "-e", "lazygit", "-p", path]);
   }
 
   /** 拉起外部进程后立即脱离，不阻塞请求、不随服务退出被杀 */
   private spawnDetached(cmd: string[]) {
-    const proc = Bun.spawn(cmd, { stdout: "ignore", stderr: "ignore", stdin: "ignore" });
+    const proc = Bun.spawn(cmd, {
+      stdout: "ignore",
+      stderr: "ignore",
+      stdin: "ignore",
+    });
     proc.unref();
   }
 }

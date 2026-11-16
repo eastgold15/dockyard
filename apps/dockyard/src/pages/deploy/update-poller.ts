@@ -18,7 +18,8 @@ export function updateDecision(opts: {
   const available = opts.lastKnownSha !== null && sha8 !== opts.lastKnownSha;
   return {
     available,
-    autoTrigger: opts.deployPolicy === "auto" && available && opts.lastAutoSha !== sha8,
+    autoTrigger:
+      opts.deployPolicy === "auto" && available && opts.lastAutoSha !== sha8,
     sha8,
   };
 }
@@ -26,7 +27,11 @@ export function updateDecision(opts: {
 /** 本地仓库 HEAD 短 sha（非 git 目录/命令失败 → null，轮询静默跳过） */
 export async function gitHeadSha(cwd: string): Promise<string | null> {
   try {
-    const proc = Bun.spawn(["git", "rev-parse", "--short=8", "HEAD"], { cwd, stdout: "pipe", stderr: "ignore" });
+    const proc = Bun.spawn(["git", "rev-parse", "--short=8", "HEAD"], {
+      cwd,
+      stdout: "pipe",
+      stderr: "ignore",
+    });
     const sha = (await new Response(proc.stdout).text()).trim();
     return (await proc.exited) === 0 && sha ? sha : null;
   } catch {
@@ -65,7 +70,9 @@ export class UpdatePoller {
   }
 
   /** 目标的最新源码版本；304（GitHub 未变）/ 不可读 → null（本轮跳过） */
-  private async headOf(target: DeployTarget): Promise<{ sha: string; etag?: string } | null> {
+  private async headOf(
+    target: DeployTarget,
+  ): Promise<{ sha: string; etag?: string } | null> {
     const localDir = await this.deploy.localDirOf(target);
     if (localDir) {
       const sha = await gitHeadSha(localDir);
@@ -78,11 +85,18 @@ export class UpdatePoller {
     } catch {
       return null;
     }
-    return this.github.latestSha(ownerRepo, target.branch ?? "main", target.etag ?? undefined);
+    return this.github.latestSha(
+      ownerRepo,
+      target.branch ?? "main",
+      target.etag ?? undefined,
+    );
   }
 
   private async tick() {
-    const apps = await this.db.select().from(deployTargets).where(eq(deployTargets.kind, "app"));
+    const apps = await this.db
+      .select()
+      .from(deployTargets)
+      .where(eq(deployTargets.kind, "app"));
     for (const target of apps) {
       if (target.deployPolicy === "manual") continue; // 手动策略完全不碰远端/本地仓库
       try {
@@ -94,17 +108,22 @@ export class UpdatePoller {
           deployPolicy: target.deployPolicy,
           lastAutoSha: this.lastAutoSha.get(target.id),
         });
-        await this.db.update(deployTargets).set({
-          ...(head.etag !== undefined ? { etag: head.etag } : {}),
-          updateAvailable: decision.available,
-        }).where(eq(deployTargets.id, target.id));
+        await this.db
+          .update(deployTargets)
+          .set({
+            ...(head.etag !== undefined ? { etag: head.etag } : {}),
+            updateAvailable: decision.available,
+          })
+          .where(eq(deployTargets.id, target.id));
 
         if (decision.autoTrigger) {
           this.lastAutoSha.set(target.id, decision.sha8);
           void this.deploy.deploy(target.id, { trigger: "auto" });
         }
       } catch (error) {
-        console.warn(`[poller] target ${target.id}: ${(error as Error).message}`);
+        console.warn(
+          `[poller] target ${target.id}: ${(error as Error).message}`,
+        );
       }
     }
   }

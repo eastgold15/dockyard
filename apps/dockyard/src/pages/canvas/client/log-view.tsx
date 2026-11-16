@@ -1,19 +1,19 @@
 /** @jsxImportSource solid-js */
 /**
- * 只读日志视图（LogView）：xterm.js 渲染 ANSI 日志流，替代 <pre> 纯文本展示。
- * 复用现有 @xterm/xterm + @xterm/addon-fit（console.tsx 同款），不新增运行时依赖。
+ * 只读日志视图（LogView）：用原生 DOM + ansi-to-html 渲染 ANSI 日志。
+ * 不再用 xterm 画布——拖动选区、右键复制、Ctrl+C 全部走浏览器原生行为，
+ * 不受字体度量 / fit / 画布坐标影响。交互式终端（ConsoleView）仍用 xterm。
  *
- * 数据流约定：props.text 是「完整日志字符串」（不是增量）。组件内部自己算增量：
- * - 后续文本以旧文本为前缀 → 只 term.write 增量，避免每轮全量重写；
- * - 切换 run / 终态对齐 / 截断导致非前缀 → 清屏序列与正文放同一次 write 完整替换，
- *   保证顺序，避开异步 reset/write 竞态。
+ * 数据流约定：props.text 是「完整日志字符串」（不是增量）。
+ * - 新文本以已渲染文本为前缀 → 只往 DOM 追加增量；
+ * - 切换 run / 终态对齐 / 截断导致非前缀 → 整段替换。
  *
- * 跟随策略：用户停在底部时自动跟随；向上翻阅后不强制拉回；全文替换后回到底部。
+ * 跟随策略：用户停在底部时自动跟随；向上翻阅后不强制拉回。
  */
-import { createEffect, onCleanup, onMount } from "solid-js";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import "@xterm/xterm/css/xterm.css";
+import { createEffect, createSignal } from "solid-js";
+import AnsiToHtml from "ansi-to-html";
+import copy from "copy-to-clipboard";
+import { button } from "../../../../styled-system/recipes";
 
 // Harbor 色板的 ANSI 24 位前景色（与 system.md 原语对齐）：
 // Signal 500 #d95d4e（错误）、Brass 500 #d9a441（警告）、Tide 400 #5ec4b6（成功）
@@ -23,9 +23,11 @@ const ANSI_TIDE = "38;2;94;196;182";
 
 // 行级关键词分类（刻意很小：不写 parser，只给纯文本行套整行颜色）。
 // 命中顺序错误 > 警告 > 成功；已有 ANSI 的行原样保留，不二次套色。
-const RE_ERROR = /\b(?:error|fatal|failed to solve|failed|failure|exception|cannot|denied)\b|失败/i;
+const RE_ERROR =
+  /\b(?:error|fatal|failed to solve|failed|failure|exception|cannot|denied)\b|失败/i;
 const RE_WARN = /\b(?:warn(?:ing)?|level=warning|canceled|cancelled)\b|警告/i;
-const RE_DONE = /\b(?:done|success(?:ful|fully)?|succeed(?:ed|s)?|complet(?:e|ed|ion)?)\b|成功|完成/i;
+const RE_DONE =
+  /\b(?:done|success(?:ful|fully)?|succeed(?:ed|s)?|complet(?:e|ed|ion)?)\b|成功|完成/i;
 
 const hasAnsi = (line: string) => line.includes("\x1b[");
 
@@ -44,104 +46,102 @@ function colorizeLog(text: string): string {
   return text.split("\n").map(colorizeLine).join("\n");
 }
 
+/** stream: true 让 ANSI 颜色状态跨多次 toHtml 连续，增量追加不会丢色 */
+const CONVERT_OPTIONS = {
+  fg: "#d4d4d8", // neutral-300
+  bg: "#0b0f14", // Harbor 950
+  newline: false, // <pre> 自己保留换行，不转 <br/>
+  escapeXML: true, // 日志文本不可信，转义 HTML
+  stream: true,
+};
+
 /**
  * @param text 完整日志字符串（每次替换为当前权威全文）
- * @param height 容器 CSS 高度（如 "24rem" / "40vh"），xterm 依赖固定高度做 fit
+ * @param height 固定容器高度（如 "24rem"）；与 fill 二选一
+ * @param fill 撑满父容器剩余空间（父级需是带确定高度的 flex 布局），抽屉内嵌日志用
  */
-export function LogView(props: { text: string; height: string }) {
-  let el!: HTMLDivElement;
-  let term: Terminal | undefined;
-  let fit: FitAddon | undefined;
-  let ro: ResizeObserver | undefined;
-  let disposed = false;
+export function LogView(props: {
+  text: string;
+  height?: string;
+  fill?: boolean;
+}) {
+  /** 外层滚动容器（复制行在它外面） */
+  let box!: HTMLDivElement;
+  /** 真正承载日志 HTML 的 <pre> */
+  let pre!: HTMLPreElement;
 
-  /** 上次已按 props.text 写入终端的完整文本（增量判断的锚点，纯文本不含 ANSI） */
-  let written = "";
+  const [copied, setCopied] = createSignal(false);
 
-  /** 是否停在底部（baseY == viewportY 即视口在缓冲最末） */
-  const isAtBottom = () => {
-    const b = term!.buffer.active;
-    return b.baseY - b.viewportY === 0;
+  /** 已渲染的纯文本（增量判断的锚点） */
+  let rendered = "";
+  let converter = new AnsiToHtml(CONVERT_OPTIONS);
+
+  const atBottom = () =>
+    box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+
+  /** 复制全部日志：直接复制 props.text（完整纯文本，不含 ANSI 颜色码）。
+   *  copy-to-clipboard 自带 execCommand 降级，webview / 非安全上下文也能用。 */
+  const copyAll = async () => {
+    if (!(await copy(props.text))) return;
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
-
-  /** 全量替换：清屏（含滚动区）序列与正文同一笔 write，保证顺序、避开异步 reset/write 竞态；
-   *  用 write 回调在数据解析完成后回到底部（大日志异步解析时也能落到最末） */
-  const replaceAll = (text: string) => {
-    term!.write(`\x1b[2J\x1b[3J\x1b[H${colorizeLog(text)}`, () => {
-      if (!disposed) term!.scrollToBottom();
-    });
-    written = text;
-  };
-
-  /** 增量：旧文本是前缀，只写增量部分；用户在底部则自动跟随，翻阅后不拉回 */
-  const append = (delta: string) => {
-    const wasAtBottom = isAtBottom();
-    term!.write(colorizeLog(delta), () => {
-      if (!disposed && wasAtBottom) term!.scrollToBottom();
-    });
-  };
-
-  onMount(() => {
-    term = new Terminal({
-      fontSize: 12,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      theme: {
-        background: "#0b0f14", // Harbor 950
-        foreground: "#d4d4d8", // neutral-300
-        cursor: "#0b0f14", // 只读视图隐藏光标
-        selectionBackground: "#243040", // Harbor 700
-        scrollbarSliderBackground: "#1a222c", // Harbor 800
-        scrollbarSliderHoverBackground: "#243040", // Harbor 700
-        scrollbarSliderActiveBackground: "#33445a", // Harbor 600
-      },
-      disableStdin: true,
-      convertEol: true,
-      scrollback: 5000, // 与 live.logs 的行数上限 LOG_TAIL_LIMIT 对齐
-    });
-    fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(el);
-    const safeFit = () => {
-      try {
-        fit!.fit();
-      } catch {
-        /* 容器暂不可见（0 尺寸），等 ResizeObserver 再来一次 */
-      }
-    };
-    safeFit();
-
-    ro = new ResizeObserver(() => {
-      if (!disposed) safeFit();
-    });
-    ro.observe(el);
-
-    // 首帧：全量写入
-    replaceAll(props.text);
-
-    onCleanup(() => {
-      disposed = true;
-      ro!.disconnect();
-      term!.dispose();
-    });
-  });
 
   createEffect(() => {
-    // 必须先读 props.text：effect 首次执行建立对它的响应式依赖，
-    // 若在守卫里提前 return 就不追踪，文本后续变化永远不会触发重跑
+    // 必须先读 props.text：effect 首次执行建立响应式依赖
     const text = props.text;
-    if (!term || disposed) return;
-    if (text === written) return;
-    if (text.startsWith(written)) {
-      append(text.slice(written.length));
-      written = text;
+    const wasAtBottom = atBottom();
+    const prevTop = box.scrollTop;
+
+    if (text.startsWith(rendered)) {
+      const delta = text.slice(rendered.length);
+      if (delta)
+        pre.insertAdjacentHTML(
+          "beforeend",
+          converter.toHtml(colorizeLog(delta)),
+        );
     } else {
-      replaceAll(text);
+      // 全量替换：换新的 converter，避免上一段未闭合的 ANSI 状态串色
+      converter = new AnsiToHtml(CONVERT_OPTIONS);
+      pre.innerHTML = converter.toHtml(colorizeLog(text));
     }
+    rendered = text;
+
+    // 追加时保持用户当前滚动位置；贴底时跟随到底
+    box.scrollTop = wasAtBottom ? box.scrollHeight : prevTop;
   });
 
   return (
-    <div class="overflow-hidden rounded bg-harbor-950 p-2" style={{ height: props.height }}>
-      <div ref={el} class="h-full w-full" />
+    <div
+      class={
+        props.fill
+          ? "flex min-h-0 flex-1 flex-col gap-1.5"
+          : "flex flex-col gap-1.5"
+      }
+    >
+      <div class="flex items-center justify-end">
+        <button
+          type="button"
+          class={button({ variant: "ghost", size: "sm" })}
+          onClick={() => void copyAll()}
+        >
+          {copied() ? "已复制" : "复制全部日志"}
+        </button>
+      </div>
+      <div
+        ref={box}
+        class={
+          props.fill
+            ? "min-h-40 flex-1 overflow-x-hidden overflow-y-auto rounded bg-harbor-950 px-2 pt-2 pb-3"
+            : "overflow-x-hidden overflow-y-auto rounded bg-harbor-950 px-2 pt-2 pb-3"
+        }
+        style={props.fill ? undefined : { height: props.height }}
+      >
+        <pre
+          ref={pre}
+          class="m-0 whitespace-pre-wrap break-all text-xs leading-[1.4] text-neutral-300 selection:bg-brass-500/30"
+        />
+      </div>
     </div>
   );
 }

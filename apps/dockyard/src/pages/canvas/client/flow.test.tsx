@@ -9,7 +9,10 @@ import { HandleView } from "@elysiax/flow";
 
 test("HandleView 渲染连接点行为钩子", () => {
   const el = document.createElement("div");
-  const dispose = render(() => <HandleView type="source" id="src-1" title="拖线起点" />, el);
+  const dispose = render(
+    () => <HandleView type="source" id="src-1" title="拖线起点" />,
+    el,
+  );
   const handle = el.querySelector("[data-handle-id='src-1']");
   expect(handle).not.toBeNull();
   expect(handle!.getAttribute("data-handle-type")).toBe("source");

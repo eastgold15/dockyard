@@ -36,41 +36,44 @@ Separate app definition from startup. Re-export the app from the build entrypoin
 
 ```ts
 // src/app.ts
-import { Elysia, t } from 'elysia'
+import { Elysia, t } from "elysia";
 
-export const app = new Elysia()
-	.get('/hello/:name', {
-		params: t.Object({ name: t.String({ minLength: 2 }) })
-	}, ({ params }) => `Hello, ${params.name}!`)
+export const app = new Elysia().get(
+  "/hello/:name",
+  {
+    params: t.Object({ name: t.String({ minLength: 2 }) }),
+  },
+  ({ params }) => `Hello, ${params.name}!`,
+);
 
-export type App = typeof app
+export type App = typeof app;
 ```
 
 ```ts
 // src/index.ts
-import { app } from './app'
+import { app } from "./app";
 
-export { app }
-app.listen(3000)
+export { app };
+app.listen(3000);
 ```
 
 ```ts
 // build.ts
-import { aot } from 'elysia/plugin/aot/bun'
+import { aot } from "elysia/plugin/aot/bun";
 
 const result = await Bun.build({
-	entrypoints: ['src/index.ts'],
-	outdir: 'dist',
-	target: 'bun',
-	plugins: [aot('src/index.ts', { target: 'bun' })]
-})
+  entrypoints: ["src/index.ts"],
+  outdir: "dist",
+  target: "bun",
+  plugins: [aot("src/index.ts", { target: "bun" })],
+});
 
 if (!result.success) {
-	console.error(result.logs)
-	process.exit(1)
+  console.error(result.logs);
+  process.exit(1);
 }
 
-process.exit(0)
+process.exit(0);
 ```
 
 ```bash
@@ -80,13 +83,13 @@ NODE_ENV=production bun dist/index.js
 
 Use the same entry path for the bundler and `aot()`. Set the AOT target to the deployment runtime, even if the build runs on Bun.
 
-| Bundler | Import | Registration |
-| --- | --- | --- |
-| Bun | `elysia/plugin/aot/bun` | `plugins: [aot(entry, { target })]` |
-| esbuild | `elysia/plugin/aot/esbuild` | `plugins: [aot(entry, { target })]` |
-| Vite | `elysia/plugin/aot/vite` | Same plugin, with `build.ssr: entry` and `ssr.noExternal: ['elysia']` |
-| Rspack | `elysia/plugin/aot/rspack` | Same plugin, with `entry` and the bundler's runtime target |
-| Rollup through unplugin | `elysia/plugin/aot/unplugin` | `createUnplugin(aotFactory).rollup({ entry, target })` |
+| Bundler                 | Import                       | Registration                                                          |
+| ----------------------- | ---------------------------- | --------------------------------------------------------------------- |
+| Bun                     | `elysia/plugin/aot/bun`      | `plugins: [aot(entry, { target })]`                                   |
+| esbuild                 | `elysia/plugin/aot/esbuild`  | `plugins: [aot(entry, { target })]`                                   |
+| Vite                    | `elysia/plugin/aot/vite`     | Same plugin, with `build.ssr: entry` and `ssr.noExternal: ['elysia']` |
+| Rspack                  | `elysia/plugin/aot/rspack`   | Same plugin, with `entry` and the bundler's runtime target            |
+| Rollup through unplugin | `elysia/plugin/aot/unplugin` | `createUnplugin(aotFactory).rollup({ entry, target })`                |
 
 Supported AOT targets are `bun`, `node`, and `workerd`. The [Workers recipe](runtimes.md#cloudflare-workers) includes the complete esbuild configuration. For Node, also configure the [Node adapter](runtimes.md#nodejs). AOT changes code generation, not how the host listens for requests.
 
@@ -100,21 +103,19 @@ This applies when an instance uses `.handle()`, `.listen()`, `.compile()`, or `.
 
 ```ts
 // src/app.ts
-import { Elysia } from 'elysia'
+import { Elysia } from "elysia";
 
-export const sub = new Elysia({ name: 'sub' })
-	.get('/', () => 'Sub-app')
+export const sub = new Elysia({ name: "sub" }).get("/", () => "Sub-app");
 
-export const app = new Elysia({ name: 'main' })
-	.mount('/sub', sub.handle)
+export const app = new Elysia({ name: "main" }).mount("/sub", sub.handle);
 ```
 
 ```ts
 // src/index.ts
-import { app } from './app'
+import { app } from "./app";
 
-export { app, sub } from './app'
-app.listen(3000)
+export { app, sub } from "./app";
+app.listen(3000);
 ```
 
 An unexported router can build successfully and then fail at runtime with `App "<name>" has no AOT manifest`. Plugins used only through `.use()` need no extra export or name for AOT. Plain fetch handlers, such as Better Auth's `auth.handler`, need no Elysia manifest.
@@ -122,10 +123,10 @@ An unexported router can build successfully and then fail at runtime with `App "
 Skip external service initialization during capture without changing route registration:
 
 ```ts
-import { inAotBuild } from 'elysia'
+import { inAotBuild } from "elysia";
 
 if (!inAotBuild()) {
-	// Connect to external services here.
+  // Connect to external services here.
 }
 ```
 
@@ -178,22 +179,22 @@ Put external packages in `dependencies`. Install them into a clean runtime stage
 For a platform that supplies `PORT`, bind to all interfaces:
 
 ```ts
-import { app } from './app'
+import { app } from "./app";
 
-app.listen({ port: process.env.PORT ?? 3000, hostname: '0.0.0.0' })
+app.listen({ port: process.env.PORT ?? 3000, hostname: "0.0.0.0" });
 ```
 
 On Bun and Linux, workers can share a port with `reusePort`. Size the worker count to the deployment's CPU and memory limits, then measure.
 
 ```ts
-import cluster from 'node:cluster'
-import { availableParallelism } from 'node:os'
-import { app } from './app'
+import cluster from "node:cluster";
+import { availableParallelism } from "node:os";
+import { app } from "./app";
 
 if (cluster.isPrimary) {
-	for (let i = 0; i < availableParallelism(); i++) cluster.fork()
+  for (let i = 0; i < availableParallelism(); i++) cluster.fork();
 } else {
-	app.listen({ port: 3000, reusePort: true })
+  app.listen({ port: 3000, reusePort: true });
 }
 ```
 

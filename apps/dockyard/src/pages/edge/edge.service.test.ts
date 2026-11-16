@@ -12,13 +12,29 @@ test("normalizeHostname：去空白、小写、去尾点", () => {
 });
 
 test("assertSafeHostname：合法域名通过", () => {
-  for (const ok of ["example.com", "api.example.com", "a-b.example.co.uk", "x.y"]) {
+  for (const ok of [
+    "example.com",
+    "api.example.com",
+    "a-b.example.co.uk",
+    "x.y",
+  ]) {
     expect(() => assertSafeHostname(ok)).not.toThrow();
   }
 });
 
 test("assertSafeHostname：拒绝空标签/单标签/空格/引号/下划线/路径", () => {
-  for (const bad of ["", "localhost", "a..b", "-a.com", "a-.com", "exa mple.com", "a'b.com", "a_b.com", "example.com/x", "example.com;id"]) {
+  for (const bad of [
+    "",
+    "localhost",
+    "a..b",
+    "-a.com",
+    "a-.com",
+    "exa mple.com",
+    "a'b.com",
+    "a_b.com",
+    "example.com/x",
+    "example.com;id",
+  ]) {
     expect(() => assertSafeHostname(bad)).toThrow(ServiceError);
   }
 });

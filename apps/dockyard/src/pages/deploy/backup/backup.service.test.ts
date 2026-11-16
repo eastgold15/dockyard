@@ -49,20 +49,26 @@ test("restoreHostCommand：先 gzip -t 校验，再灌容器；postgres 容忍�
     container: "dockyard-7-db",
   });
   expect(cmd).toContain("gzip -t '/home/me/dockyard/restore/7/2026.sql.gz'");
-  expect(cmd).toContain("gunzip -c '/home/me/dockyard/restore/7/2026.sql.gz' | docker exec -i 'dockyard-7-db'");
+  expect(cmd).toContain(
+    "gunzip -c '/home/me/dockyard/restore/7/2026.sql.gz' | docker exec -i 'dockyard-7-db'",
+  );
   expect(cmd).toContain("ON_ERROR_STOP=0");
-  const mongo = restoreHostCommand({ dbType: "mongo", file: "/x.dump.gz", container: "c" });
+  const mongo = restoreHostCommand({
+    dbType: "mongo",
+    file: "/x.dump.gz",
+    container: "c",
+  });
   expect(mongo).toContain("mongorestore --archive --drop");
   expect(mongo).toContain("$MONGO_INITDB_ROOT_PASSWORD");
 });
 
 test("restoreHostCommand：不支持的引擎抛 ServiceError", () => {
-  expect(() => restoreHostCommand({ dbType: "mysql", file: "/x.sql.gz", container: "c" })).toThrow(
-    /暂不支持自动恢复/,
-  );
-  expect(() => restoreHostCommand({ dbType: "redis", file: "/x.dump.gz", container: "c" })).toThrow(
-    /暂不支持自动恢复/,
-  );
+  expect(() =>
+    restoreHostCommand({ dbType: "mysql", file: "/x.sql.gz", container: "c" }),
+  ).toThrow(/暂不支持自动恢复/);
+  expect(() =>
+    restoreHostCommand({ dbType: "redis", file: "/x.dump.gz", container: "c" }),
+  ).toThrow(/暂不支持自动恢复/);
 });
 
 test("shq：单引号转义（容器名注入防护）", () => {
@@ -74,10 +80,10 @@ test("shq：单引号转义（容器名注入防护）", () => {
 test("countRestoreWarnings：只数非预期的语句级 ERROR/FATAL", () => {
   const out = [
     "SET",
-    "ERROR:  role \"postgres\" already exists",
+    'ERROR:  role "postgres" already exists',
     "ERROR:  current user cannot be dropped",
     "FATAL:  password authentication failed",
-    "ERROR:  relation \"t\" already exists",
+    'ERROR:  relation "t" already exists',
     "CREATE DATABASE",
   ].join("\n");
   // 前两条是重放整库 dump 的幂等噪声（当前连接用户自身的角色），不能算进告警

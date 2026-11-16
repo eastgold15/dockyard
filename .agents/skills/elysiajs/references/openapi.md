@@ -7,15 +7,17 @@ Contents: [setup](#setup), [type inference](#include-inferred-types), [route met
 ## Setup
 
 ```ts
-import { Elysia, t } from 'elysia'
-import { openapi } from '@elysia/openapi'
+import { Elysia, t } from "elysia";
+import { openapi } from "@elysia/openapi";
 
-export const app = new Elysia()
-	.use(openapi())
-	.post('/messages', {
-		body: t.Object({ text: t.String() }),
-		response: t.Object({ text: t.String() })
-	}, ({ body }) => body)
+export const app = new Elysia().use(openapi()).post(
+  "/messages",
+  {
+    body: t.Object({ text: t.String() }),
+    response: t.Object({ text: t.String() }),
+  },
+  ({ body }) => body,
+);
 ```
 
 Runtime schemas generate the document by default. Check `/openapi/json` for the expected paths and responses.
@@ -27,22 +29,22 @@ Runtime schemas generate the document by default. Check `/openapi/json` for the 
 Export the root Elysia instance from the target file:
 
 ```ts
-import { Elysia } from 'elysia'
-import { openapi, fromTypes } from '@elysia/openapi'
+import { Elysia } from "elysia";
+import { openapi, fromTypes } from "@elysia/openapi";
 
 export const app = new Elysia()
-	.use(openapi({ references: fromTypes('src/index.ts') }))
-	.get('/message', () => ({ text: 'Hello' }))
+  .use(openapi({ references: fromTypes("src/index.ts") }))
+  .get("/message", () => ({ text: "Hello" }));
 ```
 
 `fromTypes` resolves paths from `projectRoot`, which defaults to the working directory. Set `projectRoot` and `tsconfigPath` explicitly in monorepos. Set `instanceName` when the target exports multiple Elysia instances.
 
 ```ts
-fromTypes('src/index.ts', {
-	projectRoot: '/absolute/path/to/app',
-	tsconfigPath: 'tsconfig.json',
-	instanceName: 'app'
-})
+fromTypes("src/index.ts", {
+  projectRoot: "/absolute/path/to/app",
+  tsconfigPath: "tsconfig.json",
+  instanceName: "app",
+});
 ```
 
 File-based generation needs filesystem access on supported Node or Bun versions. For bundles, emit declarations during the build and ship the referenced `.d.ts` files with their dependencies. Paths such as `dist/index.d.ts` must exist at runtime. Workers need build-time generation or runtime schemas; they cannot read source files with `fromTypes()`.
@@ -56,16 +58,20 @@ It's recommended to add `fromTypes` when setting up OpenAPI. It ensures the docu
 `detail` accepts OpenAPI operation metadata. Schemas accept metadata such as `description` and `examples`.
 
 ```ts
-import { Elysia, t } from 'elysia'
+import { Elysia, t } from "elysia";
 
-new Elysia().post('/messages', {
-	body: t.Object({ text: t.String({ description: 'Message text' }) }),
-	detail: {
-		summary: 'Create a message',
-		tags: ['Messages'],
-		deprecated: false
-	}
-}, ({ body }) => body)
+new Elysia().post(
+  "/messages",
+  {
+    body: t.Object({ text: t.String({ description: "Message text" }) }),
+    detail: {
+      summary: "Create a message",
+      tags: ["Messages"],
+      deprecated: false,
+    },
+  },
+  ({ body }) => body,
+);
 ```
 
 Use `detail: { hide: true }` to omit a route. Instance, guard, and macro `detail` supply shared metadata. Avoid colliding route and macro keys; the baseline source gives macro values precedence, contrary to older documentation. `new Elysia({ tags: ['Messages'] })` applies tags to an instance.
@@ -74,15 +80,15 @@ Security metadata documents authentication but does not enforce it:
 
 ```ts
 openapi({
-	documentation: {
-		info: { title: 'Messages API', version: '1.0.0' },
-		components: {
-			securitySchemes: {
-				bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
-			}
-		}
-	}
-})
+  documentation: {
+    info: { title: "Messages API", version: "1.0.0" },
+    components: {
+      securitySchemes: {
+        bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      },
+    },
+  },
+});
 ```
 
 Apply `detail: { security: [{ bearerAuth: [] }] }` to protected routes and enforce authentication with a hook or macro.
@@ -90,15 +96,19 @@ Apply `detail: { security: [{ bearerAuth: [] }] }` to protected routes and enfor
 `withHeaders` documents response headers; the handler still sets them:
 
 ```ts
-import { Elysia, t } from 'elysia'
-import { withHeaders } from '@elysia/openapi'
+import { Elysia, t } from "elysia";
+import { withHeaders } from "@elysia/openapi";
 
-new Elysia().get('/message', {
-	response: withHeaders(t.String(), { 'x-source': t.String() })
-}, ({ set }) => {
-	set.headers['x-source'] = 'example'
-	return 'Hello'
-})
+new Elysia().get(
+  "/message",
+  {
+    response: withHeaders(t.String(), { "x-source": t.String() }),
+  },
+  ({ set }) => {
+    set.headers["x-source"] = "example";
+    return "Hello";
+  },
+);
 ```
 
 ## Models and schema converters
@@ -109,18 +119,18 @@ For Standard Schema libraries without a native JSON Schema method, configure `ma
 
 ## Configuration
 
-| Option | Default or purpose |
-| --- | --- |
-| `enabled` | `true` |
-| `openapiVersion` | `3.1.2`; accepts supported `3.0.x` and `3.1.x` versions |
-| `path` | `/openapi` |
-| `specPath` | `${path}/json` |
-| `provider` | `scalar`, `swagger-ui`, or `null` for the document only |
-| `documentation` | Root `info`, `servers`, `tags`, `components`, and external paths |
-| `references` | Additional schemas, including `fromTypes(...)` |
-| `mapJsonSchema` | Vendor-to-JSON-Schema converters |
-| `exclude.paths`, `exclude.methods`, `exclude.tags` | Omit matching routes |
-| `exclude.staticFile` | `true` |
-| `scalar`, `swagger` | Provider options; Scalar `cdn` overrides its bundle and `withDefaultFonts: false` disables its font CDN |
+| Option                                             | Default or purpose                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `enabled`                                          | `true`                                                                                                  |
+| `openapiVersion`                                   | `3.1.2`; accepts supported `3.0.x` and `3.1.x` versions                                                 |
+| `path`                                             | `/openapi`                                                                                              |
+| `specPath`                                         | `${path}/json`                                                                                          |
+| `provider`                                         | `scalar`, `swagger-ui`, or `null` for the document only                                                 |
+| `documentation`                                    | Root `info`, `servers`, `tags`, `components`, and external paths                                        |
+| `references`                                       | Additional schemas, including `fromTypes(...)`                                                          |
+| `mapJsonSchema`                                    | Vendor-to-JSON-Schema converters                                                                        |
+| `exclude.paths`, `exclude.methods`, `exclude.tags` | Omit matching routes                                                                                    |
+| `exclude.staticFile`                               | `true`                                                                                                  |
+| `scalar`, `swagger`                                | Provider options; Scalar `cdn` overrides its bundle and `withDefaultFonts: false` disables its font CDN |
 
 For mounted Better Auth handlers, merge generated paths through the [Better Auth recipe](better-auth.md#merge-openapi-paths).

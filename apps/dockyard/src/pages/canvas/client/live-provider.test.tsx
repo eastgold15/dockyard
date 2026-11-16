@@ -10,7 +10,10 @@ import { useDeployLog, useServiceState, useTargetLive } from "./live";
 class FakeES {
   static instances: FakeES[] = [];
   static push(msg: Record<string, unknown>) {
-    for (const es of FakeES.instances) es.onmessage?.(new MessageEvent("message", { data: JSON.stringify(msg) }));
+    for (const es of FakeES.instances)
+      es.onmessage?.(
+        new MessageEvent("message", { data: JSON.stringify(msg) }),
+      );
   }
   onmessage: ((e: MessageEvent) => void) | null = null;
   closed = false;
@@ -66,8 +69,18 @@ test("只有一条 SSE 连接，状态按 target 键写入", () => {
   expect(FakeES.instances.length).toBe(1);
   expect(FakeES.instances[0]!.url).toBe("/api/canvas/events");
 
-  FakeES.push({ type: "status", targetId: 1, runId: 7, status: "building", stage: "building" });
-  expect(h.live()).toMatchObject({ status: "building", stage: "building", runId: 7 });
+  FakeES.push({
+    type: "status",
+    targetId: 1,
+    runId: 7,
+    status: "building",
+    stage: "building",
+  });
+  expect(h.live()).toMatchObject({
+    status: "building",
+    stage: "building",
+    runId: 7,
+  });
   expect(h.el.textContent).toContain("building");
 
   // 别的 target 的帧不污染 1
@@ -80,7 +93,12 @@ test("state 坏帧：未知容器状态不写 store（否则运行中容器显�
   const h = mount();
   FakeES.push({ type: "state", targetId: 1, service: "web", state: "running" });
   expect(h.svc()).toBe("running");
-  FakeES.push({ type: "state", targetId: 1, service: "web", state: "removing" });
+  FakeES.push({
+    type: "state",
+    targetId: 1,
+    service: "web",
+    state: "removing",
+  });
   expect(h.svc()).toBe("running");
   FakeES.push({ type: "state", targetId: 1, service: "web", state: 42 });
   expect(h.svc()).toBe("running");
@@ -129,7 +147,9 @@ test("discovery 帧转成 body 的 refresh 事件（结构变更走重拉）", (
 test("坏帧不抛（JSON 解析失败/未知类型/缺 targetId 都静默跳过）", () => {
   const h = mount();
   expect(() => {
-    FakeES.instances[0]!.onmessage?.(new MessageEvent("message", { data: "{" }));
+    FakeES.instances[0]!.onmessage?.(
+      new MessageEvent("message", { data: "{" }),
+    );
     FakeES.push({ type: "unknown" });
     // 缺 targetId：不能写进 logs["undefined"] 之类的幽灵桶，也不能污染 target 1
     FakeES.push({ type: "log", runId: 7, lines: ["x"] });

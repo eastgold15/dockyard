@@ -1,6 +1,10 @@
 import { status, t } from "elysia";
-import { defineRoutes } from "../../../.elysiax";
-import { LOGICAL_DB_SUPPORT, type DbType, type ResourceService, type SharedEnv } from "../resources/resources.socket";
+import { defineRoutes, type ServiceMap } from "../../../.elysiax";
+import {
+  LOGICAL_DB_SUPPORT,
+  type DbType,
+  type SharedEnv,
+} from "../resources/resources.socket";
 import { type GithubService, type RepoBrief } from "../github/github.socket";
 import { type CanvasService } from "../canvas/canvas.socket";
 import { type ProjectService } from "../projects/projects.socket";
@@ -20,25 +24,44 @@ import { sourceTypeOf, type DeployService } from "./deploy.service";
 /** 共享资源匹配（部署前置检查）：识别出的中间件服务 vs 目标服务器的共享资源清单 */
 export type SharedMatch = { service: string; displayUrl: string } & SharedEnv;
 
+/** DI 容器视图：键与返回类型全部来自 codegen 的 ServiceMap，不重抄 */
+type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] };
+
 async function sharedMatchesOf(
-  di: { get(name: string): any },
+  di: Di,
   nodeId: number,
   services: DetectedService[],
 ): Promise<SharedMatch[]> {
-  const node = await (di.get("canvasService") as CanvasService).byId(nodeId);
+  const node = await di.get("canvasService").byId(nodeId);
   if (!node) return [];
-  const shared: SharedEnv[] = await (di.get("resourceService") as ResourceService).sharedEnvOf(node.serverId);
+  const shared = await di.get("resourceService").sharedEnvOf(node.serverId);
   return services.flatMap((s) => {
     const dbType = guessDbType(s);
     const hit = dbType ? shared.find((sh) => sh.dbType === dbType) : undefined;
     return hit
-      ? [{ service: s.name, ...hit, displayUrl: hit.url.replace(/(\/\/[^:/@]+:)[^@]+(@)/, "$1•••$2") }]
+      ? [
+          {
+            service: s.name,
+            ...hit,
+            displayUrl: hit.url.replace(/(\/\/[^:/@]+:)[^@]+(@)/, "$1•••$2"),
+          },
+        ]
       : [];
   });
 }
 
 /** Console 会话：ws 连接 → docker exec TTY 流（close 时必须 end，否则远端 sh 残留） */
-const consoleSessions = new Map<unknown, { exec: { resize(dims: { h: number; w: number }): Promise<unknown> }; stream: { write(d: string): unknown; end(): unknown; on(ev: string, fn: (c: Buffer) => void): unknown } }>();
+const consoleSessions = new Map<
+  unknown,
+  {
+    exec: { resize(dims: { h: number; w: number }): Promise<unknown> };
+    stream: {
+      write(d: string): unknown;
+      end(): unknown;
+      on(ev: string, fn: (c: Buffer) => void): unknown;
+    };
+  }
+>();
 
 interface Ctx {
   deploy: DeployService;
@@ -50,15 +73,7 @@ interface Ctx {
   project: ProjectService;
 }
 
-const ctxOf = (di: {
-  get(k: "deployService"): DeployService;
-  get(k: "runtimeService"): RuntimeService;
-  get(k: "backupService"): BackupService;
-  get(k: "edgeService"): EdgeService;
-  get(k: "githubService"): GithubService;
-  get(k: "canvasService"): CanvasService;
-  get(k: "projectService"): ProjectService;
-}): Ctx => ({
+const ctxOf = (di: Di): Ctx => ({
   deploy: di.get("deployService"),
   runtime: di.get("runtimeService"),
   backup: di.get("backupService"),
@@ -68,7 +83,16 @@ const ctxOf = (di: {
   project: di.get("projectService"),
 });
 
-const TABS = ["deployments", "source", "hardware", "network", "env", "monitor", "console", "backups"] as const;
+const TABS = [
+  "deployments",
+  "source",
+  "hardware",
+  "network",
+  "env",
+  "monitor",
+  "console",
+  "backups",
+] as const;
 
 const svcEditSchema = t.Object({
   name: t.String(),
@@ -78,7 +102,10 @@ const svcEditSchema = t.Object({
   cpuCores: t.Optional(t.Number()),
   memoryMb: t.Optional(t.Number()),
   // env 值是 { value, secret } 结构（EnvValue/OpenshipEnvValue），不是裸字符串
-  env: t.Record(t.String(), t.Object({ value: t.String(), secret: t.Boolean() })),
+  env: t.Record(
+    t.String(),
+    t.Object({ value: t.String(), secret: t.Boolean() }),
+  ),
 });
 
 export default defineRoutes()
@@ -92,42 +119,56 @@ export default defineRoutes()
       query: t.Object({ projectId: t.Optional(t.Numeric()) }),
     },
     async ({ di, params, query }) => {
-    const ctx = ctxOf(di);
-    const nodeTargets = await ctx.deploy.targetsOfNode(params.nodeId);
-    const nodeProjectId = query.projectId ?? nodeTargets.find((t) => t.projectId)?.projectId;
-    const project = nodeProjectId ? await ctx.project.byId(nodeProjectId) : undefined;
-    const isLocal = project?.sourceType === "local" || (!!project?.localPath && !project?.repoUrl);
-    if (isLocal && project?.localPath) {
-      const detect = await detectLocal({ localPath: project.localPath, rootDir: project.rootDir ?? undefined });
-      const dbRefs = await ctx.deploy.dbRefsOfNode(params.nodeId);
-      const sharedMatches = await sharedMatchesOf(di, params.nodeId, detect.services);
+      const ctx = ctxOf(di);
+      const nodeTargets = await ctx.deploy.targetsOfNode(params.nodeId);
+      const nodeProjectId =
+        query.projectId ?? nodeTargets.find((t) => t.projectId)?.projectId;
+      const project = nodeProjectId
+        ? await ctx.project.byId(nodeProjectId)
+        : undefined;
+      const isLocal =
+        project?.sourceType === "local" ||
+        (!!project?.localPath && !project?.repoUrl);
+      if (isLocal && project?.localPath) {
+        const detect = await detectLocal({
+          localPath: project.localPath,
+          rootDir: project.rootDir ?? undefined,
+        });
+        const dbRefs = await ctx.deploy.dbRefsOfNode(params.nodeId);
+        const sharedMatches = await sharedMatchesOf(
+          di,
+          params.nodeId,
+          detect.services,
+        );
+        return {
+          mode: "local" as const,
+          carry: {
+            nodeId: params.nodeId,
+            projectId: project.id,
+            name: project.slug,
+            repoUrl: project.repoUrl ?? "",
+            branch: project.branch ?? "main",
+            remoteDir: `~/dockyard/${project.slug}`,
+          },
+          detect,
+          envText: detectToEnvText(detect),
+          dbRefs,
+          sharedMatches,
+        };
+      }
+      // 仓库列表走持久缓存（不阻塞抽屉）：cachedRepos 只读内存/磁盘，绝不调 gh API。
+      // 无缓存 → reposStale=true，客户端后台触发一次 refreshRepos 拉取并落盘。
+      const cached: RepoBrief[] | null = await ctx.github.cachedRepos();
+      // 项目 = 仓库：预填项目绑定的 repoUrl（仍可改——同一仓库可以多方式部署）
       return {
-        mode: "local" as const,
-        carry: {
-          nodeId: params.nodeId,
-          projectId: project.id,
-          name: project.slug,
-          repoUrl: project.repoUrl ?? "",
-          branch: project.branch ?? "main",
-          remoteDir: `~/dockyard/${project.slug}`,
-        },
-        detect,
-        envText: detectToEnvText(detect),
-        dbRefs,
-        sharedMatches,
+        mode: "github" as const,
+        repos: cached ?? [],
+        reposStale: cached == null,
+        prefillRepo: project?.repoUrl ?? undefined,
       };
-    }
-    let repos: RepoBrief[] = [];
-    let ghError: string | undefined;
-    try {
-      repos = await ctx.github.listRepos();
-    } catch (e) {
-      ghError = `仓库列表拉取失败（${(e as Error).message}），可手动输入 owner/repo`;
-    }
-    // 项目 = 仓库：预填项目绑定的 repoUrl（仍可改——同一仓库可以多方式部署）
-    return { mode: "github" as const, repos, error: ghError, prefillRepo: project?.repoUrl ?? undefined };
-  })
-  // 向导 step1 → step2：克隆仓库，读 openship.json / compose 自动识别
+    },
+  )
+  // 向导 step1 → step2：克隆仓库，读 dockyard.json / compose 自动识别
   .post(
     "/detect",
     {
@@ -145,13 +186,34 @@ export default defineRoutes()
       // 识别失败：parseOwnerRepo 抛 ServiceError，框架统一映射（actions 不写 try/catch 回显）
       const detect = await detectRepo(ctxOf(di).github, body);
       const dbRefs = await ctxOf(di).deploy.dbRefsOfNode(body.nodeId);
-      const sharedMatches = await sharedMatchesOf(di, body.nodeId, detect.services);
-      return { carry: body, detect, envText: detectToEnvText(detect), dbRefs, sharedMatches };
+      const sharedMatches = await sharedMatchesOf(
+        di,
+        body.nodeId,
+        detect.services,
+      );
+      return {
+        carry: body,
+        detect,
+        envText: detectToEnvText(detect),
+        dbRefs,
+        sharedMatches,
+      };
     },
   )
-  .get("/new-db/:nodeId", { params: t.Object({ nodeId: t.Number() }) }, async ({ di, params }) => ({
-    instances: await ctxOf(di).deploy.instancesOfNode(params.nodeId, "postgres"),
+  // 手动刷新账号仓库列表（持久缓存）：向导「刷新仓库列表」按钮 / 首次无缓存时后台拉取
+  .post("/repos/refresh", {}, async ({ di }) => ({
+    repos: await ctxOf(di).github.refreshRepos(),
   }))
+  .get(
+    "/new-db/:nodeId",
+    { params: t.Object({ nodeId: t.Number() }) },
+    async ({ di, params }) => ({
+      instances: await ctxOf(di).deploy.instancesOfNode(
+        params.nodeId,
+        "postgres",
+      ),
+    }),
+  )
   // dbType 切换时拉取该服务器上可托管的同类型实例（redis 不支持逻辑库）
   // query 显式声明（Eden 客户端类型需要）
   .get(
@@ -167,7 +229,11 @@ export default defineRoutes()
     async ({ di, query }) => {
       const dbType = (query.dbType ?? "postgres") as DbType;
       const instances = LOGICAL_DB_SUPPORT[dbType]
-        ? await ctxOf(di).deploy.instancesOfNode(query.nodeId, dbType, query.projectId ?? null)
+        ? await ctxOf(di).deploy.instancesOfNode(
+            query.nodeId,
+            dbType,
+            query.projectId ?? null,
+          )
         : [];
       return { instances };
     },
@@ -183,6 +249,10 @@ export default defineRoutes()
         repoUrl: t.Optional(t.String()),
         branch: t.String({ default: "main" }),
         composePath: t.String({ default: "docker-compose.yml" }),
+        // 指定后创建 Railway 式单服务 target：独立构建、启动、日志和产物，不连带其他 compose 服务
+        serviceName: t.Optional(t.String()),
+        // 批量创建独立服务时可以先只建档，再由用户按基础设施 → 应用的顺序逐个部署
+        autoDeploy: t.Optional(t.Boolean({ default: true })),
         remoteDir: t.String({ minLength: 1 }),
         envText: t.Optional(t.String()),
         services: t.Array(svcEditSchema),
@@ -204,11 +274,22 @@ export default defineRoutes()
       // 共享资源复用：reuse 里的中间件不部署，只注入共享变量
       const reused = new Set(body.reuse);
       if (reused.size > 0 && reused.size === services.length) {
-        return status(422, { error: "所有服务都选择了复用共享资源——至少保留一个业务服务需要部署" });
+        return status(422, {
+          error: "所有服务都选择了复用共享资源——至少保留一个业务服务需要部署",
+        });
       }
-      const upServices = reused.size > 0
-        ? services.map((s) => s.name).filter((n) => !reused.has(n))
-        : undefined;
+      const selectedServices = body.serviceName
+        ? services.filter((s) => s.name === body.serviceName)
+        : services;
+      if (body.serviceName && selectedServices.length !== 1)
+        return status(422, {
+          error: `compose 服务清单中不存在「${body.serviceName}」`,
+        });
+      const upServices = body.serviceName
+        ? [body.serviceName]
+        : reused.size > 0
+          ? services.map((s) => s.name).filter((n) => !reused.has(n))
+          : undefined;
       const target = await svc.createAppTarget({
         nodeId: body.nodeId,
         projectId: body.projectId,
@@ -216,18 +297,25 @@ export default defineRoutes()
         repoUrl: body.repoUrl?.trim() || undefined,
         branch: body.branch,
         composePath: body.composePath,
+        serviceName: body.serviceName,
         remoteDir: body.remoteDir,
         envText: body.envText,
-        overrideCompose: detectToOverrideCompose({ services }),
+        overrideCompose: detectToOverrideCompose({
+          services: selectedServices,
+        }),
         dependsOn: body.depIds,
-        domains: services
+        domains: selectedServices
           .filter((s) => s.domain && s.port)
-          .map((s) => ({ hostname: s.domain!, targetPort: s.port!, serviceName: s.name })),
-        services,
+          .map((s) => ({
+            hostname: s.domain!,
+            targetPort: s.port!,
+            serviceName: s.name,
+          })),
+        services: selectedServices,
         upServices,
       });
-      // Railway 式：创建即部署，client 直接换日志面板盯进度
-      void svc.deploy(target.id);
+      // Railway 式：创建即部署；显式 autoDeploy=false 时只建档，等待用户逐个启动
+      if (body.autoDeploy !== false) void svc.deploy(target.id);
       return { targetId: target.id };
     },
   )
@@ -239,7 +327,12 @@ export default defineRoutes()
         // 透镜项目：新建实例的归属（缺省 = 未关联）。逻辑库跟随宿主实例，忽略此字段
         projectId: t.Optional(t.Number()),
         name: t.String({ minLength: 1 }),
-        dbType: t.Union([t.Literal("postgres"), t.Literal("mysql"), t.Literal("redis"), t.Literal("mongo")]),
+        dbType: t.Union([
+          t.Literal("postgres"),
+          t.Literal("mysql"),
+          t.Literal("redis"),
+          t.Literal("mongo"),
+        ]),
         instanceId: t.Optional(t.String()),
         remoteDir: t.Optional(t.String()),
       }),
@@ -248,31 +341,46 @@ export default defineRoutes()
       const svc = ctxOf(di).deploy;
       const instanceId = body.instanceId ? Number(body.instanceId) : 0;
       const target = instanceId
-        ? await svc.createLogicalDbTarget({ nodeId: body.nodeId, name: body.name, instanceId })
+        ? await svc.createLogicalDbTarget({
+            nodeId: body.nodeId,
+            name: body.name,
+            instanceId,
+          })
         : await svc.createDbTarget({
-          nodeId: body.nodeId,
-          projectId: body.projectId,
-          name: body.name,
-          dbType: body.dbType,
-          remoteDir: body.remoteDir ?? "",
-        });
+            nodeId: body.nodeId,
+            projectId: body.projectId,
+            name: body.name,
+            dbType: body.dbType,
+            remoteDir: body.remoteDir ?? "",
+          });
       void svc.deploy(target.id); // 创建即部署
       return { ok: true as const };
     },
   )
-  .post("/targets/:id/deploy", { params: t.Object({ id: t.Number() }) }, ({ di, params, set }) => {
-    void ctxOf(di).deploy.deploy(params.id); // 后台跑，状态迁移走 SSE 推到画布
-    set.status = 204;
-  })
+  .post(
+    "/targets/:id/deploy",
+    { params: t.Object({ id: t.Number() }) },
+    ({ di, params, set }) => {
+      void ctxOf(di).deploy.deploy(params.id); // 后台跑，状态迁移走 SSE 推到画布
+      set.status = 204;
+    },
+  )
   // 区域硬隔离的显式通道：本地构建产物推到远端（不起容器），成功置 artifactShipped
-  .post("/targets/:id/ship", { params: t.Object({ id: t.Number() }) }, async ({ di, params, set }) => {
-    await ctxOf(di).deploy.shipArtifact(params.id); // 校验同步抛；构建走后台+SSE
-    set.status = 204;
-  })
+  .post(
+    "/targets/:id/ship",
+    { params: t.Object({ id: t.Number() }) },
+    async ({ di, params, set }) => {
+      await ctxOf(di).deploy.shipArtifact(params.id); // 校验同步抛；构建走后台+SSE
+      set.status = 204;
+    },
+  )
   // 卡迁移到另一台服务器：跨界（local↔remote）要 artifactShipped 门票（service 内校验）
   .patch(
     "/targets/:id/move",
-    { params: t.Object({ id: t.Number() }), body: t.Object({ nodeId: t.Number() }) },
+    {
+      params: t.Object({ id: t.Number() }),
+      body: t.Object({ nodeId: t.Number() }),
+    },
     async ({ di, params, body, set }) => {
       await ctxOf(di).deploy.moveTargetToNode(params.id, body.nodeId);
       set.status = 204;
@@ -281,7 +389,16 @@ export default defineRoutes()
   // 部署策略三态（manual/notify/auto）：轮询器按此列决定动作
   .post(
     "/targets/:id/policy",
-    { params: t.Object({ id: t.Number() }), body: t.Object({ policy: t.Union([t.Literal("manual"), t.Literal("notify"), t.Literal("auto")]) }) },
+    {
+      params: t.Object({ id: t.Number() }),
+      body: t.Object({
+        policy: t.Union([
+          t.Literal("manual"),
+          t.Literal("notify"),
+          t.Literal("auto"),
+        ]),
+      }),
+    },
     async ({ di, params, body, set }) => {
       await ctxOf(di).deploy.setDeployPolicy(params.id, body.policy);
       set.status = 204;
@@ -290,7 +407,10 @@ export default defineRoutes()
   // 回滚到某次成功部署：快照校验同步抛（无快照→ServiceError 映射），执行走后台+SSE
   .post(
     "/targets/:id/rollback",
-    { params: t.Object({ id: t.Number() }), body: t.Object({ runId: t.Number() }) },
+    {
+      params: t.Object({ id: t.Number() }),
+      body: t.Object({ runId: t.Number() }),
+    },
     async ({ di, params, body, set }) => {
       await ctxOf(di).deploy.rollback(params.id, body.runId);
       set.status = 204;
@@ -298,23 +418,33 @@ export default defineRoutes()
   )
   .get(
     "/targets/:id/log",
-    { params: t.Object({ id: t.Number() }), query: t.Object({ dep: t.Optional(t.Numeric()) }) },
+    {
+      params: t.Object({ id: t.Number() }),
+      query: t.Object({ dep: t.Optional(t.Numeric()) }),
+    },
     async ({ di, params, query, set }) => {
       const svc = ctxOf(di).deploy;
       const target = await svc.targetById(params.id);
       if (!target) {
         return status(404, { error: "部署目标不存在" });
       }
-      const dep = query.dep ? await svc.deploymentById(query.dep) : await svc.latestDeployment(target.id);
+      const dep = query.dep
+        ? await svc.deploymentById(query.dep)
+        : await svc.latestDeployment(target.id);
       return { target, dep };
     },
   )
   .get(
     "/targets/:id/log-body",
-    { params: t.Object({ id: t.Number() }), query: t.Object({ dep: t.Optional(t.Numeric()) }) },
+    {
+      params: t.Object({ id: t.Number() }),
+      query: t.Object({ dep: t.Optional(t.Numeric()) }),
+    },
     async ({ di, params, query }) => {
       const svc = ctxOf(di).deploy;
-      const dep = query.dep ? await svc.deploymentById(query.dep) : await svc.latestDeployment(params.id);
+      const dep = query.dep
+        ? await svc.deploymentById(query.dep)
+        : await svc.latestDeployment(params.id);
       return dep ? await svc.logTextOf(dep.id) : "";
     },
   )
@@ -323,7 +453,10 @@ export default defineRoutes()
     "/targets/:id/service",
     {
       params: t.Object({ id: t.Number() }),
-      query: t.Object({ svc: t.Optional(t.String()), tab: t.Optional(t.String()) }),
+      query: t.Object({
+        svc: t.Optional(t.String()),
+        tab: t.Optional(t.String()),
+      }),
     },
     async ({ di, params, query, set }) => {
       const ctx = ctxOf(di);
@@ -331,40 +464,74 @@ export default defineRoutes()
       if (!target) {
         return status(404, { error: "部署目标不存在" });
       }
-      const tab = (TABS.includes(query.tab as (typeof TABS)[number]) ? query.tab : "deployments") as (typeof TABS)[number];
+      const tab = (
+        TABS.includes(query.tab as (typeof TABS)[number])
+          ? query.tab
+          : "deployments"
+      ) as (typeof TABS)[number];
       // 来源形态（与部署分派同口径）：抽屉据此决定「传输产物」按钮，不能从 repoUrl 猜
       const project = target.projectId
         ? await ctx.project.byId(target.projectId)
-        : (await ctx.project.list()).find((p) => p.repoUrl && p.repoUrl === target.repoUrl);
+        : (await ctx.project.list()).find(
+            (p) => p.repoUrl && p.repoUrl === target.repoUrl,
+          );
+      // Railway 式：一次全量返回服务详情，前端自由组织 tab 而无需按 tab 重拉。
+      // 数据量小（部署历史≤几十行、域名/变量若干），全量代价可忽略；tab 保留兼容旧调用。
       return {
         target,
         sourceType: sourceTypeOf(target, project),
         svc: query.svc || undefined,
         tab,
-        deployments: tab === "deployments" ? await ctx.deploy.deploymentsOfTarget(params.id) : undefined,
-        envText: tab === "env" && query.svc ? await ctx.runtime.serviceEnvText(params.id, query.svc) : undefined,
-        dbRefs: tab === "env" && query.svc ? await ctx.deploy.dbRefsOfNode(target.nodeId) : undefined,
-        sharedEnv: tab === "env" ? await ctx.deploy.sharedEnvOfTarget(params.id) : undefined,
-        selectedDeps: tab === "env" && query.svc
-          ? ctx.deploy.edgesOfTarget(target).filter((e) => e.service === query.svc).map((e) => e.db)
+        deployments: await ctx.deploy.deploymentsOfTarget(params.id),
+        envText: query.svc
+          ? await ctx.runtime.serviceEnvText(params.id, query.svc)
           : undefined,
-        domains: tab === "network" ? await ctx.edge.domainsOfTarget(params.id) : undefined,
-        resources: tab === "hardware" && query.svc ? await ctx.runtime.serviceResources(params.id, query.svc) : undefined,
-        backups: tab === "backups" ? await ctx.backup.backupsOf(params.id) : undefined,
+        dbRefs: query.svc
+          ? await ctx.deploy.dbRefsForTarget(target)
+          : undefined,
+        // 服务级变量页也展示该服务的连接信息（用户 compose 自带的 postgres/redis 等）
+        connections:
+          query.svc && target.kind === "app"
+            ? (await ctx.deploy.connectionsOfApp(target)).filter(
+                (c) => c.service === query.svc,
+              )
+            : undefined,
+        sharedEnv: await ctx.deploy.sharedEnvOfTarget(params.id),
+        selectedDeps: query.svc
+          ? ctx.deploy
+              .edgesOfTarget(target)
+              .filter((e) => e.service === query.svc)
+              .map((e) => e.db)
+          : undefined,
+        domains: await ctx.edge.domainsOfTarget(params.id),
+        resources: query.svc
+          ? await ctx.runtime.serviceResources(params.id, query.svc)
+          : undefined,
+        backups: await ctx.backup.backupsOf(params.id),
         // 能否自动恢复由服务端判定（引擎能力单点：RESTORE_SUPPORT），client 不重复维护引擎清单
-        backupRestorable: tab === "backups" ? Boolean(RESTORE_SUPPORT[target.dbType ?? ""]) : undefined,
-        metrics: tab === "monitor" ? await ctx.runtime.serviceStats(params.id, query.svc || undefined) : undefined,
+        backupRestorable: Boolean(RESTORE_SUPPORT[target.dbType ?? ""]),
+        metrics: await ctx.runtime.serviceStats(
+          params.id,
+          query.svc || undefined,
+        ),
       };
     },
   )
   .get(
     "/targets/:id/service/metrics",
-    { params: t.Object({ id: t.Number() }), query: t.Object({ svc: t.Optional(t.String()) }) },
-    async ({ di, params, query }) => ctxOf(di).runtime.serviceStats(params.id, query.svc),
+    {
+      params: t.Object({ id: t.Number() }),
+      query: t.Object({ svc: t.Optional(t.String()) }),
+    },
+    async ({ di, params, query }) =>
+      ctxOf(di).runtime.serviceStats(params.id, query.svc),
   )
   .post(
     "/targets/:id/service/restart",
-    { params: t.Object({ id: t.Number() }), body: t.Object({ svc: t.Optional(t.String()) }) },
+    {
+      params: t.Object({ id: t.Number() }),
+      body: t.Object({ svc: t.Optional(t.String()) }),
+    },
     async ({ di, params, body }) => {
       await ctxOf(di).runtime.restartService(params.id, body.svc || undefined);
       // 结构不变（容器状态走 SSE），不刷新画布
@@ -373,25 +540,34 @@ export default defineRoutes()
   )
   .get(
     "/targets/:id/service/logs",
-    { params: t.Object({ id: t.Number() }), query: t.Object({ svc: t.Optional(t.String()) }) },
-    async ({ di, params, query }) => ctxOf(di).runtime.serviceLogs(params.id, query.svc),
+    {
+      params: t.Object({ id: t.Number() }),
+      query: t.Object({ svc: t.Optional(t.String()) }),
+    },
+    async ({ di, params, query }) =>
+      ctxOf(di).runtime.serviceLogs(params.id, query.svc),
   )
   .post(
     "/targets/:id/service/env",
     {
       params: t.Object({ id: t.Number() }),
-      body: t.Object({ svc: t.String({ minLength: 1 }), envText: t.Optional(t.String()), depIds: t.Array(t.Number()) }),
+      body: t.Object({
+        svc: t.String({ minLength: 1 }),
+        envText: t.Optional(t.String()),
+        depIds: t.Array(t.Number()),
+      }),
     },
     async ({ di, params, body }) => {
       const ctx = ctxOf(di);
       await ctx.runtime.setServiceEnv(params.id, body.svc, body.envText ?? "");
-      // 依赖勾选同步服务级连线：整组替换该服务的边，app 级/其他服务的边不动
-      const target = await ctx.deploy.targetById(params.id);
-      if (target) {
-        const kept = ctx.deploy.edgesOfTarget(target).filter((e) => e.service !== body.svc);
-        const added = body.depIds.map((db) => ({ service: body.svc, db }));
-        await ctx.deploy.setDependsOn(params.id, [...kept, ...added]);
-      }
+      // 依赖勾选同步服务级连线：该服务的边整组替换，app 级/其他服务的边不动；
+      // 服务变量里出现 dockyard 库连接串时同样派生 origin=env 的边
+      await ctx.deploy.setServiceDeps(
+        params.id,
+        body.svc,
+        body.depIds,
+        body.envText ?? "",
+      );
       return { notice: "已保存，重新部署后生效" };
     },
   )
@@ -399,10 +575,19 @@ export default defineRoutes()
     "/targets/:id/service/resources",
     {
       params: t.Object({ id: t.Number() }),
-      body: t.Object({ svc: t.String({ minLength: 1 }), cpuCores: t.Optional(t.Number()), memoryMb: t.Optional(t.Number()) }),
+      body: t.Object({
+        svc: t.String({ minLength: 1 }),
+        cpuCores: t.Optional(t.Number()),
+        memoryMb: t.Optional(t.Number()),
+      }),
     },
     async ({ di, params, body }) => {
-      await ctxOf(di).runtime.setServiceResources(params.id, body.svc, body.cpuCores, body.memoryMb);
+      await ctxOf(di).runtime.setServiceResources(
+        params.id,
+        body.svc,
+        body.cpuCores,
+        body.memoryMb,
+      );
       // 资源限制只写 override compose，画布结构不变
       return { notice: "已保存，重新部署后生效" };
     },
@@ -411,18 +596,29 @@ export default defineRoutes()
     "/targets/:id/service/domains",
     {
       params: t.Object({ id: t.Number() }),
-      body: t.Object({ svc: t.Optional(t.String()), hostname: t.String({ minLength: 1 }), targetPort: t.Number() }),
+      body: t.Object({
+        svc: t.Optional(t.String()),
+        hostname: t.String({ minLength: 1 }),
+        targetPort: t.Number(),
+      }),
     },
     async ({ di, params, body }) => {
       const ctx = ctxOf(di);
-      await ctx.edge.addDomain(params.id, { hostname: body.hostname, targetPort: body.targetPort, serviceName: body.svc || undefined });
+      await ctx.edge.addDomain(params.id, {
+        hostname: body.hostname,
+        targetPort: body.targetPort,
+        serviceName: body.svc || undefined,
+      });
       await ctx.deploy.syncEdge(params.id);
       return { notice: "已绑定" };
     },
   )
   .delete(
     "/targets/:id/service/domains/:domainId",
-    { params: t.Object({ id: t.Number(), domainId: t.Number() }), query: t.Object({ svc: t.Optional(t.String()) }) },
+    {
+      params: t.Object({ id: t.Number(), domainId: t.Number() }),
+      query: t.Object({ svc: t.Optional(t.String()) }),
+    },
     async ({ di, params }) => {
       await ctxOf(di).edge.removeDomain(params.domainId);
       return { notice: "已解绑" };
@@ -452,16 +648,20 @@ export default defineRoutes()
     async open(ws) {
       // Elysia 2.0：ws handler 收到的是上下文与 socket 方法的合并对象（无 .data 层）
       const ctx = ws as unknown as {
-        di: { get(name: string): any };
+        di: Di;
         params: { id: string };
         query: { svc?: string };
         send(d: string): unknown;
         close(): unknown;
       };
       try {
-        const session = await (ctx.di.get("runtimeService") as RuntimeService).openConsole(Number(ctx.params.id), ctx.query.svc || undefined);
+        const session = await ctx.di
+          .get("runtimeService")
+          .openConsole(Number(ctx.params.id), ctx.query.svc || undefined);
         consoleSessions.set(ws, session);
-        session.stream.on("data", (chunk: Buffer) => ctx.send(chunk.toString("utf8")));
+        session.stream.on("data", (chunk: Buffer) =>
+          ctx.send(chunk.toString("utf8")),
+        );
         session.stream.on("end", () => ctx.close());
         session.stream.on("error", () => ctx.close());
       } catch (e) {
@@ -479,7 +679,9 @@ export default defineRoutes()
         if (msg.type === "input") session.stream.write(msg.data);
         else if (msg.type === "resize" && msg.cols > 0 && msg.rows > 0)
           session.exec.resize({ h: msg.rows, w: msg.cols }).catch(() => {});
-      } catch { /* 坏帧忽略 */ }
+      } catch {
+        /* 坏帧忽略 */
+      }
     },
     close(ws) {
       const session = consoleSessions.get(ws);
@@ -487,18 +689,31 @@ export default defineRoutes()
       session?.stream.end();
     },
   })
-  .post("/targets/:id/backup", { params: t.Object({ id: t.Number() }) }, async ({ di, params }) => {
-    const file = await ctxOf(di).backup.backupNow(params.id);
-    return { notice: `已备份：${file}` };
-  })
+  .post(
+    "/targets/:id/backup",
+    { params: t.Object({ id: t.Number() }) },
+    async ({ di, params }) => {
+      const file = await ctxOf(di).backup.backupNow(params.id);
+      return { notice: `已备份：${file}` };
+    },
+  )
   // 恢复是破坏性操作：confirm 必须是字面量 true（UI 走二次确认）；服务端先自动安全备份再灌数据
   .post(
     "/targets/:id/restore",
-    { params: t.Object({ id: t.Number() }), body: t.Object({ file: t.String(), confirm: t.Literal(true) }) },
+    {
+      params: t.Object({ id: t.Number() }),
+      body: t.Object({ file: t.String(), confirm: t.Literal(true) }),
+    },
     async ({ di, params, body }) => {
-      const { safety, warnings } = await ctxOf(di).backup.restore(params.id, body.file);
+      const { safety, warnings } = await ctxOf(di).backup.restore(
+        params.id,
+        body.file,
+      );
       // 预期的重放噪声（当前用户自身的角色）已在服务端过滤；剩下的都是非预期错误，要提示人工核对
-      const warn = warnings > 0 ? `；但有 ${warnings} 条语句级错误（详情未回显，请核对数据完整性）` : "";
+      const warn =
+        warnings > 0
+          ? `；但有 ${warnings} 条语句级错误（详情未回显，请核对数据完整性）`
+          : "";
       return { notice: `已恢复；恢复前安全备份：${safety}${warn}` };
     },
   )
@@ -508,38 +723,66 @@ export default defineRoutes()
     async ({ di, params, set }) => {
       const path = ctxOf(di).backup.backupFilePath(params.id, params.file);
       if (!path) return status(404, "备份不存在");
-      set.headers["content-disposition"] = `attachment; filename="${params.file}"`;
+      set.headers["content-disposition"] =
+        `attachment; filename="${params.file}"`;
       set.headers["content-type"] = "application/gzip";
       return Bun.file(path);
     },
   )
-  // ── 变量抽屉数据：已有 app 改 .env + 数据库依赖 ──
-  .get("/targets/:id/env", { params: t.Object({ id: t.Number() }) }, async ({ di, params, set }) => {
-    const svc = ctxOf(di).deploy;
-    const target = await svc.targetById(params.id);
-    if (!target || target.kind !== "app") {
-      return status(404, { error: "部署目标不存在" });
-    }
-    return {
-      target,
-      envText: svc.envTextOf(target),
-      dbRefs: await svc.dbRefsOfNode(target.nodeId),
-      selectedDeps: target.dependsOn ?? [],
-    };
-  })
+  // ── 变量抽屉数据：app 改 .env / db 展示连接信息 + 模板变量 ──
+  .get(
+    "/targets/:id/env",
+    { params: t.Object({ id: t.Number() }) },
+    async ({ di, params }) => {
+      const svc = ctxOf(di).deploy;
+      const target = await svc.targetById(params.id);
+      if (!target) return status(404, { error: "部署目标不存在" });
+      const isApp = target.kind === "app";
+      const connections = await svc.connectionsOfTarget(target);
+      return {
+        target,
+        kind: target.kind,
+        envText: isApp
+          ? svc.envTextOf(target)
+          : svc.dbEnvTextOf(target),
+        entries: svc.envEntriesOf(target),
+        dbRefs: isApp ? await svc.dbRefsForTarget(target) : [],
+        selectedDeps: isApp ? target.dependsOn ?? [] : [],
+        // connection 兼容旧调用；connections 同时覆盖 app 里自带的数据库服务
+        connection: connections[0] ?? null,
+        connections,
+      };
+    },
+  )
   .post(
     "/targets/:id/env",
     {
       params: t.Object({ id: t.Number() }),
-      body: t.Object({ envText: t.Optional(t.String()), depIds: t.Array(t.Number()) }),
+      body: t.Object({
+        envText: t.Optional(t.String()),
+        entries: t.Optional(
+          t.Array(t.Object({ key: t.String(), value: t.String() })),
+        ),
+        depIds: t.Optional(t.Array(t.Number())),
+      }),
     },
-    async ({ di, params, body, set }) => {
+    async ({ di, params, body }) => {
       const svc = ctxOf(di).deploy;
       const target = await svc.targetById(params.id);
-      if (!target || target.kind !== "app") {
-        return status(404, { error: "部署目标不存在" });
+      if (!target) return status(404, { error: "部署目标不存在" });
+      if (body.entries) {
+        const text = svc.envTextFromEntries(body.entries);
+        if (target.kind === "app") {
+          await svc.updateAppEnv(params.id, text, body.depIds ?? []);
+        } else {
+          await svc.updateDbEnv(params.id, body.entries);
+        }
+      } else {
+        if (target.kind !== "app") {
+          return status(422, { error: "数据库变量需要以条目列表提交" });
+        }
+        await svc.updateAppEnv(params.id, body.envText ?? "", body.depIds ?? []);
       }
-      await svc.updateAppEnv(params.id, body.envText ?? "", body.depIds);
       return { ok: true as const };
     },
   )
@@ -549,7 +792,12 @@ export default defineRoutes()
     {
       params: t.Object({ id: t.Number() }),
       body: t.Object({
-        edges: t.Array(t.Object({ service: t.Union([t.String(), t.Null()]), db: t.Number() })),
+        edges: t.Array(
+          t.Object({
+            service: t.Union([t.String(), t.Null()]),
+            db: t.Number(),
+          }),
+        ),
       }),
     },
     async ({ di, params, body, set }) => {
@@ -568,7 +816,9 @@ export default defineRoutes()
         w: t.Optional(t.Number()),
         h: t.Optional(t.Number()),
         groupId: t.Optional(t.Union([t.Number(), t.Null()])),
-        serviceLayout: t.Optional(t.Record(t.String(), t.Object({ x: t.Number(), y: t.Number() }))),
+        serviceLayout: t.Optional(
+          t.Record(t.String(), t.Object({ x: t.Number(), y: t.Number() })),
+        ),
       }),
     },
     async ({ di, params, body, set }) => {
@@ -577,19 +827,26 @@ export default defineRoutes()
     },
   )
   // ── 域名绑定 ──
-  .get("/targets/:id/domains", { params: t.Object({ id: t.Number() }) }, async ({ di, params, set }) => {
-    const ctx = ctxOf(di);
-    const target = await ctx.deploy.targetById(params.id);
-    if (!target) {
-      return status(404, { error: "部署目标不存在" });
-    }
-    return { target, domains: await ctx.edge.domainsOfTarget(target.id) };
-  })
+  .get(
+    "/targets/:id/domains",
+    { params: t.Object({ id: t.Number() }) },
+    async ({ di, params, set }) => {
+      const ctx = ctxOf(di);
+      const target = await ctx.deploy.targetById(params.id);
+      if (!target) {
+        return status(404, { error: "部署目标不存在" });
+      }
+      return { target, domains: await ctx.edge.domainsOfTarget(target.id) };
+    },
+  )
   .post(
     "/targets/:id/domains",
     {
       params: t.Object({ id: t.Number() }),
-      body: t.Object({ hostname: t.String({ minLength: 1 }), targetPort: t.Number() }),
+      body: t.Object({
+        hostname: t.String({ minLength: 1 }),
+        targetPort: t.Number(),
+      }),
     },
     async ({ di, params, body, set }) => {
       const ctx = ctxOf(di);
@@ -602,18 +859,26 @@ export default defineRoutes()
       return { ok: true as const };
     },
   )
-  .delete("/domains/:id", { params: t.Object({ id: t.Number() }) }, async ({ di, params, set }) => {
-    const ctx = ctxOf(di);
-    const domain = await ctx.edge.domainById(params.id);
-    if (!domain) {
-      return status(404, { error: "域名不存在" });
-    }
-    await ctx.edge.removeDomain(params.id);
-    await ctx.deploy.syncEdge(domain.targetId);
-    return { ok: true as const };
-  })
-  .delete("/targets/:id", { params: t.Object({ id: t.Number() }) }, async ({ di, params, set }) => {
-    // 例如「实例下还有逻辑库」时 removeTarget 抛 ServiceError（409 语义由 ServiceError 子类化再细化）
-    await ctxOf(di).deploy.removeTarget(params.id);
-    set.status = 204;
-  });
+  .delete(
+    "/domains/:id",
+    { params: t.Object({ id: t.Number() }) },
+    async ({ di, params, set }) => {
+      const ctx = ctxOf(di);
+      const domain = await ctx.edge.domainById(params.id);
+      if (!domain) {
+        return status(404, { error: "域名不存在" });
+      }
+      await ctx.edge.removeDomain(params.id);
+      await ctx.deploy.syncEdge(domain.targetId);
+      return { ok: true as const };
+    },
+  )
+  .delete(
+    "/targets/:id",
+    { params: t.Object({ id: t.Number() }) },
+    async ({ di, params, set }) => {
+      // 例如「实例下还有逻辑库」时 removeTarget 抛 ServiceError（409 语义由 ServiceError 子类化再细化）
+      await ctxOf(di).deploy.removeTarget(params.id);
+      set.status = 204;
+    },
+  );

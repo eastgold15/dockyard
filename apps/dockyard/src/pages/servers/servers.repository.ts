@@ -2,18 +2,19 @@ import { eq } from "drizzle-orm";
 import type { Db } from "../../shared/db";
 import { servers, type Server } from "./schema";
 
-export type NewServer = {
-  name: string;
-  host: string;
-  port: number;
-  user: string;
-  authType: "key" | "password" | "agent";
-  keyPath?: string;
-  password?: string;
-  builtin?: boolean;
-  /** 镜像源（JSON 数组字符串），建服务器时可选填 */
-  registryMirrors?: string;
-};
+/** 建服务器入参：字段与形状从 drizzle insert 类型派生，不手抄 */
+export type NewServer = Pick<
+  typeof servers.$inferInsert,
+  | "name"
+  | "host"
+  | "port"
+  | "user"
+  | "authType"
+  | "keyPath"
+  | "password"
+  | "builtin"
+  | "registryMirrors"
+>;
 
 export class ServerRepository {
   constructor(private readonly db: Db) {}
@@ -23,7 +24,12 @@ export class ServerRepository {
   }
 
   byId(id: number): Promise<Server | undefined> {
-    return this.db.select().from(servers).where(eq(servers.id, id)).limit(1).then((r) => r[0]);
+    return this.db
+      .select()
+      .from(servers)
+      .where(eq(servers.id, id))
+      .limit(1)
+      .then((r) => r[0]);
   }
 
   async create(input: NewServer): Promise<Server> {

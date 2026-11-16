@@ -14,11 +14,19 @@ export const clampCardX = (local: boolean, x: number, w: number): number =>
 export const violatesLane = (local: boolean, x: number, w: number): boolean =>
   local ? x + w > -ZONE_GAP : x < ZONE_GAP;
 
-export interface Rect { x: number; y: number; w: number; h: number }
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
-const PAD_X = 48, PAD_TOP = 64, PAD_BOTTOM = 48;
+const PAD_X = 48,
+  PAD_TOP = 64,
+  PAD_BOTTOM = 48;
 /** 空车道占位尺寸（无卡时也要看得到车道，发现"该把谁放进来"） */
-const EMPTY_W = 420, EMPTY_H = 300;
+const EMPTY_W = 420,
+  EMPTY_H = 300;
 
 /**
  * 车道矩形 = 车道内卡片 bounds + 内边距，内缘钉在中立带：

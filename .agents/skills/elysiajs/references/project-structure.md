@@ -26,18 +26,18 @@ These files form a minimal app. Tests and in-process Eden clients import `app.ts
 
 ```ts
 // src/app.ts
-import { Elysia } from 'elysia'
+import { Elysia } from "elysia";
 
-export const app = new Elysia().get('/health', () => 'ok')
-export type App = typeof app
+export const app = new Elysia().get("/health", () => "ok");
+export type App = typeof app;
 ```
 
 ```ts
 // src/index.ts
-import { app } from './app'
+import { app } from "./app";
 
-export { app }
-app.listen(3000)
+export { app };
+app.listen(3000);
 ```
 
 For a larger app, import feature instances into `app.ts` and chain `.use(feature)`. Deployment and AOT setup are in [deploy.md](deploy.md).
@@ -50,35 +50,38 @@ These three files form a complete feature. Mount `user` with `.use(user)` in `ap
 
 ```ts
 // src/routes/user/model.ts
-import { t, type UnwrapModels } from 'elysia'
+import { t, type UnwrapModels } from "elysia";
 
 export const ByIdGet = {
-	Params: t.Object({ id: t.String() }),
-	Response: t.Object({ id: t.String(), name: t.String() })
-}
-export type ByIdGet = UnwrapModels<typeof ByIdGet>
+  Params: t.Object({ id: t.String() }),
+  Response: t.Object({ id: t.String(), name: t.String() }),
+};
+export type ByIdGet = UnwrapModels<typeof ByIdGet>;
 ```
 
 ```ts
 // src/routes/user/service.ts
-import type * as UserModel from './model'
+import type * as UserModel from "./model";
 
-export function getUser(id: UserModel.ByIdGet['Params']['id']) {
-	return { id, name: 'Ada' } satisfies UserModel.ByIdGet['Response']
+export function getUser(id: UserModel.ByIdGet["Params"]["id"]) {
+  return { id, name: "Ada" } satisfies UserModel.ByIdGet["Response"];
 }
 ```
 
 ```ts
 // src/routes/user/index.ts
-import { Elysia } from 'elysia'
-import * as UserModel from './model'
-import { getUser } from './service'
+import { Elysia } from "elysia";
+import * as UserModel from "./model";
+import { getUser } from "./service";
 
-export const user = new Elysia({ prefix: '/user' })
-	.get('/:id', {
-		params: UserModel.ByIdGet.Params,
-		response: UserModel.ByIdGet.Response
-	}, ({ params }) => getUser(params.id))
+export const user = new Elysia({ prefix: "/user" }).get(
+  "/:id",
+  {
+    params: UserModel.ByIdGet.Params,
+    response: UserModel.ByIdGet.Response,
+  },
+  ({ params }) => getUser(params.id),
+);
 ```
 
 ## Model conventions

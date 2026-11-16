@@ -10,6 +10,10 @@ export default defineModule({
     sshPool: provide(SshPool),
     dockerRelay: provide(DockerRelay),
     serverRepository: provide(ServerRepository, ["db"]),
-    serverService: provide(ServerService, [ServerRepository, SshPool, DockerRelay]),
+    serverService: provide(ServerService, [
+      ServerRepository,
+      SshPool,
+      DockerRelay,
+    ]),
   },
 });

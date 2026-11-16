@@ -8,11 +8,14 @@ declare module "webview-bun" {
     FIXED = 3,
   }
   export class Webview {
-    constructor(debug?: boolean, size?: {
-      width: number;
-      height: number;
-      hint: SizeHint;
-    });
+    constructor(
+      debug?: boolean,
+      size?: {
+        width: number;
+        height: number;
+        hint: SizeHint;
+      },
+    );
     title: string;
     navigate(url: string): void;
     run(): void;

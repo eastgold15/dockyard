@@ -7,7 +7,15 @@
 import { createSignal, Match, onMount, Show, Switch } from "solid-js";
 import { canvasApi, unwrap } from "./api";
 import { Board } from "./board";
-import { DeployLogModal, DiscoveredModal, DomainsModal, EnvDrawer, NewAppWizard, NewDbModal, ServiceDrawer } from "./drawers";
+import {
+  DeployLogModal,
+  DiscoveredModal,
+  DomainsModal,
+  EnvDrawer,
+  NewAppWizard,
+  NewDbModal,
+  ServiceDrawer,
+} from "./drawers";
 import { FeedbackHost } from "./feedback";
 import { lens, setLens } from "./lens";
 import { LiveProvider } from "./live-provider";
@@ -16,7 +24,10 @@ import { emitRefresh, UiContext, type UiBus, type View } from "./ui";
 import { field } from "../../../../styled-system/recipes";
 import { cx } from "../../../../styled-system/css";
 
-interface ProjectBrief { id: number; name: string }
+interface ProjectBrief {
+  id: number;
+  name: string;
+}
 
 /** URL → 初始透镜：?path 幂等落库后聚焦；?project 直接用；缺省世界视图（null） */
 async function resolveInitialLens(): Promise<number | null> {
@@ -31,20 +42,43 @@ async function resolveInitialLens(): Promise<number | null> {
 }
 
 /** 按 kind 收窄 view（给 Match 的 when 用，顺带带出该分支的字段类型） */
-const viewAs = <K extends View["kind"]>(k: K, v: View) => (v.kind === k ? (v as Extract<View, { kind: K }>) : null);
+const viewAs = <K extends View["kind"]>(k: K, v: View) =>
+  v.kind === k ? (v as Extract<View, { kind: K }>) : null;
 
 function DrawerHost(props: { view: View }) {
   return (
     <Switch>
-      <Match when={viewAs("new-app", props.view)}>{(v) => <NewAppWizard nodeId={v().nodeId} projectId={v().projectId ?? null} />}</Match>
-      <Match when={viewAs("new-db", props.view)}>{(v) => <NewDbModal nodeId={v().nodeId} projectId={v().projectId ?? null} />}</Match>
-      <Match when={viewAs("service", props.view)}>
-        {(v) => <ServiceDrawer targetId={v().targetId} svc={v().svc} initialTab={v().tab} />}
+      <Match when={viewAs("new-app", props.view)}>
+        {(v) => (
+          <NewAppWizard nodeId={v().nodeId} projectId={v().projectId ?? null} />
+        )}
       </Match>
-      <Match when={viewAs("env", props.view)}>{(v) => <EnvDrawer targetId={v().targetId} />}</Match>
-      <Match when={viewAs("domains", props.view)}>{(v) => <DomainsModal targetId={v().targetId} />}</Match>
-      <Match when={viewAs("log", props.view)}>{(v) => <DeployLogModal targetId={v().targetId} dep={v().dep} />}</Match>
-      <Match when={viewAs("discovered", props.view)}>{(v) => <DiscoveredModal d={v().d} />}</Match>
+      <Match when={viewAs("new-db", props.view)}>
+        {(v) => (
+          <NewDbModal nodeId={v().nodeId} projectId={v().projectId ?? null} />
+        )}
+      </Match>
+      <Match when={viewAs("service", props.view)}>
+        {(v) => (
+          <ServiceDrawer
+            targetId={v().targetId}
+            svc={v().svc}
+            initialTab={v().tab}
+          />
+        )}
+      </Match>
+      <Match when={viewAs("env", props.view)}>
+        {(v) => <EnvDrawer targetId={v().targetId} />}
+      </Match>
+      <Match when={viewAs("domains", props.view)}>
+        {(v) => <DomainsModal targetId={v().targetId} />}
+      </Match>
+      <Match when={viewAs("log", props.view)}>
+        {(v) => <DeployLogModal targetId={v().targetId} dep={v().dep} />}
+      </Match>
+      <Match when={viewAs("discovered", props.view)}>
+        {(v) => <DiscoveredModal d={v().d} />}
+      </Match>
     </Switch>
   );
 }
@@ -90,53 +124,55 @@ export function App() {
       {/* LiveProvider 必须同时罩住 Board 与 DrawerHost：抽屉是 Board 的兄弟，
           只包 Board 会让抽屉拿到 emptyLive——节点实时、抽屉沉默 */}
       <LiveProvider>
-      {/* 整页 client 壳没有 AppLayout：视口高度从这里开始，h-full 链条才有根 */}
-      <div class="h-screen">
-      <Show when={missing()}>
-        <div class="flex h-full items-center justify-center text-sm text-neutral-400">
-          先创建一个项目空间（左侧「项目」）
-        </div>
-      </Show>
-      <Show when={!missing()}>
-        <div class="flex h-full flex-col">
-          <div class="flex h-14 shrink-0 items-center justify-between border-b border-harbor-800 px-6">
-            <div class="flex flex-col">
-              <h1 class="text-sm font-semibold text-neutral-100">
-                {lensProject()?.name ?? "世界地图"}
-              </h1>
-              <p class="text-xs text-neutral-400">画布 · 空白处右键添加服务器，拖动行尾圆点连线建依赖</p>
+        {/* 整页 client 壳没有 AppLayout：视口高度从这里开始，h-full 链条才有根 */}
+        <div class="h-screen">
+          <Show when={missing()}>
+            <div class="flex h-full items-center justify-center text-sm text-neutral-400">
+              先创建一个项目空间（左侧「项目」）
             </div>
-            {/* 透镜选择器：全部项目（世界视图）+ 各项目 */}
-            <Show when={projects().length > 0}>
-              {/* 透镜选择器走共享 field recipe；w-auto 是布局例外（工具条右侧不占满行宽） */}
-              <select
-                class={cx(field(), "w-auto")}
-                value={lens() ?? ""}
-                onChange={(e) => {
-                  const v = e.currentTarget.value;
-                  setView(null);
-                  applyLens(v ? Number(v) : null);
-                }}
-              >
-                <option value="">全部项目</option>
-                {projects().map((p) => (
-                  <option value={p.id}>{p.name}</option>
-                ))}
-              </select>
+          </Show>
+          <Show when={!missing()}>
+            <div class="flex h-full flex-col">
+              <div class="flex h-14 shrink-0 items-center justify-between border-b border-harbor-800 px-6">
+                <div class="flex flex-col">
+                  <h1 class="text-sm font-semibold text-neutral-100">
+                    {lensProject()?.name ?? "世界地图"}
+                  </h1>
+                  <p class="text-xs text-neutral-400">
+                    画布 · 空白处右键添加服务器，拖动行尾圆点连线建依赖
+                  </p>
+                </div>
+                {/* 透镜选择器：全部项目（世界视图）+ 各项目 */}
+                <Show when={projects().length > 0}>
+                  {/* 透镜选择器走共享 field recipe；w-auto 是布局例外（工具条右侧不占满行宽） */}
+                  <select
+                    class={cx(field(), "w-auto")}
+                    value={lens() ?? ""}
+                    onChange={(e) => {
+                      const v = e.currentTarget.value;
+                      setView(null);
+                      applyLens(v ? Number(v) : null);
+                    }}
+                  >
+                    <option value="">全部项目</option>
+                    {projects().map((p) => (
+                      <option value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </Show>
+              </div>
+              <div class="relative flex-1">
+                <Board lens={lens} />
+              </div>
+            </div>
+            {/* keyed：view 换对象即整体重建抽屉，等价 React 版的 key 状态重置 */}
+            <Show when={view()} keyed>
+              {(v) => <DrawerHost view={v} />}
             </Show>
-          </div>
-          <div class="relative flex-1">
-            <Board lens={lens} />
-          </div>
+            {/* toast/确认框/输入框宿主（应用内反馈件，替代原生弹窗） */}
+            <FeedbackHost />
+          </Show>
         </div>
-        {/* keyed：view 换对象即整体重建抽屉，等价 React 版的 key 状态重置 */}
-        <Show when={view()} keyed>
-          {(v) => <DrawerHost view={v} />}
-        </Show>
-        {/* toast/确认框/输入框宿主（应用内反馈件，替代原生弹窗） */}
-        <FeedbackHost />
-      </Show>
-      </div>
       </LiveProvider>
     </UiContext.Provider>
   );

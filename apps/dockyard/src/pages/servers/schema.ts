@@ -8,14 +8,18 @@ export const servers = sqliteTable("servers", {
   port: integer().notNull().default(22),
   user: text().notNull(),
   // key = 私钥文件 | password | agent
-  authType: text({ enum: ["key", "password", "agent"] }).notNull().default("key"),
+  authType: text({ enum: ["key", "password", "agent"] })
+    .notNull()
+    .default("key"),
   keyPath: text(), // authType=key 时的私钥路径
   password: text(), // authType=password 时（enc1: 加密）
   // unknown | ok | missing
   // 内置本机（1）：程序启动时自动认领，固定 127.0.0.1 + 当前系统用户，
   // 传输走本地进程（无 SSH）；用户不可添加回环服务器、不可删除本机
   builtin: integer({ mode: "boolean" }).notNull().default(false),
-  dockerStatus: text({ enum: ["unknown", "ok", "missing"] }).notNull().default("unknown"),
+  dockerStatus: text({ enum: ["unknown", "ok", "missing"] })
+    .notNull()
+    .default("unknown"),
   dockerVersion: text(),
   // TOFU：首次连接确认后存储的主机密钥指纹
   hostKeyFingerprint: text(),
@@ -25,7 +29,9 @@ export const servers = sqliteTable("servers", {
   // Docker 镜像源（JSON 数组字符串，每行一个 URL）；applyRegistryMirrors 时写进远端 /etc/docker/daemon.json
   registryMirrors: text(),
   lastCheckedAt: integer({ mode: "timestamp" }),
-  createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  createdAt: integer({ mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
 });
 
 export type Server = typeof servers.$inferSelect;

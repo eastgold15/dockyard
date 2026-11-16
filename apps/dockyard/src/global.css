@@ -27,15 +27,22 @@
     scrollbar-color: var(--color-harbor-700) transparent;
   }
 
-  code, pre, .mono {
-    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  code,
+  pre,
+  .mono {
+    font-family:
+      ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   }
 }
 
 @layer utilities {
   /* 船台蓝图点阵：画布背景 */
   .dock-grid {
-    background-image: radial-gradient(circle, var(--color-harbor-700) 1px, transparent 1px);
+    background-image: radial-gradient(
+      circle,
+      var(--color-harbor-700) 1px,
+      transparent 1px
+    );
     background-size: 24px 24px;
   }
 }

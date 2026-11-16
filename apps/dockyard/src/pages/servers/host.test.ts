@@ -30,7 +30,12 @@ test("isLocalHost：回环的各种写法", () => {
 });
 
 test("isLocalHost：名字里带 localhost 但不是回环域的不算", () => {
-  for (const host of ["localhost.example.com", "127.acme.com", "10.0.0.5", "192.168.1.2"]) {
+  for (const host of [
+    "localhost.example.com",
+    "127.acme.com",
+    "10.0.0.5",
+    "192.168.1.2",
+  ]) {
     expect(isLocalHost(host)).toBe(false);
   }
 });

@@ -40,13 +40,34 @@ function mountShell(kind: "modal" | "drawer") {
 }
 
 const down = (el: Element, pointerId = 1) =>
-  el.dispatchEvent(new PointerEvent("pointerdown", { pointerId, bubbles: true, cancelable: true }));
+  el.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      pointerId,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
 const up = (el: Element, pointerId = 1) =>
-  el.dispatchEvent(new PointerEvent("pointerup", { pointerId, bubbles: true, cancelable: true }));
+  el.dispatchEvent(
+    new PointerEvent("pointerup", {
+      pointerId,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
 const cancel = (el: Element, pointerId = 1) =>
-  el.dispatchEvent(new PointerEvent("pointercancel", { pointerId, bubbles: true, cancelable: true }));
+  el.dispatchEvent(
+    new PointerEvent("pointercancel", {
+      pointerId,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
 // click 的 target 永远是遮罩（公共祖先），模拟浏览器把 click 派发到公共祖先
-const click = (el: Element) => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+const click = (el: Element) =>
+  el.dispatchEvent(
+    new MouseEvent("click", { bubbles: true, cancelable: true }),
+  );
 
 for (const kind of ["modal", "drawer"] as const) {
   test(`${kind}：按下与松开都在遮罩上才关闭`, () => {

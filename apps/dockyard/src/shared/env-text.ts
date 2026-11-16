@@ -17,7 +17,9 @@ function quoteEnv(value: string): string {
 
 /** env map → .env 文本 */
 export function envMapToText(env: Record<string, EnvValue>): string {
-  return Object.entries(env).map(([k, v]) => `${k}=${quoteEnv(v.value)}`).join("\n");
+  return Object.entries(env)
+    .map(([k, v]) => `${k}=${quoteEnv(v.value)}`)
+    .join("\n");
 }
 
 /** 服务 env map → .env 文本（step2 服务卡片编辑框初值；envMapToText 别名） */
@@ -44,7 +46,9 @@ export function textToEnvMap(text: string): Record<string, EnvValue> {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
-    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$/.exec(line);
+    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$/.exec(
+      line,
+    );
     if (!m) continue;
     const key = m[1]!;
     let value = m[2]!;

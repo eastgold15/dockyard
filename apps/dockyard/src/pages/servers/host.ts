@@ -10,11 +10,16 @@
  * `*.localhost` 都算回环，避免 `LOCALHOST` / `127.0.0.2` / `[::1]` 绕过门禁。
  */
 export const normalizeHost = (host: string): string =>
-  host.trim().toLowerCase().replace(/\.$/, "").replace(/^\[|\]$/g, "");
+  host
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .replace(/^\[|\]$/g, "");
 
 export const isLocalHost = (host: string): boolean => {
   const h = normalizeHost(host);
   if (h === "localhost" || h.endsWith(".localhost")) return true;
-  if (h === "::1" || h === "0:0:0:0:0:0:0:1" || h === "::ffff:127.0.0.1") return true;
+  if (h === "::1" || h === "0:0:0:0:0:0:0:1" || h === "::ffff:127.0.0.1")
+    return true;
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
 };

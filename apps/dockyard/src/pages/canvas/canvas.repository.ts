@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../../shared/db";
-import { canvasNodes, serviceGroups, type CanvasNode, type ServiceGroup } from "./schema";
+import {
+  canvasNodes,
+  serviceGroups,
+  type CanvasNode,
+  type ServiceGroup,
+} from "./schema";
 
 export class CanvasRepository {
   constructor(private readonly db: Db) {}
@@ -11,18 +16,31 @@ export class CanvasRepository {
   }
 
   byId(id: number): Promise<CanvasNode | undefined> {
-    return this.db.select().from(canvasNodes).where(eq(canvasNodes.id, id)).limit(1).then((r) => r[0]);
+    return this.db
+      .select()
+      .from(canvasNodes)
+      .where(eq(canvasNodes.id, id))
+      .limit(1)
+      .then((r) => r[0]);
   }
 
   byServerId(serverId: number): Promise<CanvasNode | undefined> {
-    return this.db.select().from(canvasNodes).where(eq(canvasNodes.serverId, serverId)).limit(1).then((r) => r[0]);
+    return this.db
+      .select()
+      .from(canvasNodes)
+      .where(eq(canvasNodes.serverId, serverId))
+      .limit(1)
+      .then((r) => r[0]);
   }
 
   /** 幂等：serverId 全局唯一，已存在则返回已有行（忽略新坐标） */
   async add(serverId: number, x: number, y: number): Promise<CanvasNode> {
     const existing = await this.byServerId(serverId);
     if (existing) return existing;
-    const [row] = await this.db.insert(canvasNodes).values({ serverId, x, y }).returning();
+    const [row] = await this.db
+      .insert(canvasNodes)
+      .values({ serverId, x, y })
+      .returning();
     return row!;
   }
 
@@ -37,16 +55,29 @@ export class CanvasRepository {
 
   // ── 服务分组（服务器卡内的命名容器）──
   groupsOf(nodeId: number): Promise<ServiceGroup[]> {
-    return this.db.select().from(serviceGroups).where(eq(serviceGroups.nodeId, nodeId)).orderBy(serviceGroups.id);
+    return this.db
+      .select()
+      .from(serviceGroups)
+      .where(eq(serviceGroups.nodeId, nodeId))
+      .orderBy(serviceGroups.id);
   }
 
   async addGroup(nodeId: number, name: string): Promise<ServiceGroup> {
-    const [row] = await this.db.insert(serviceGroups).values({ nodeId, name }).returning();
+    const [row] = await this.db
+      .insert(serviceGroups)
+      .values({ nodeId, name })
+      .returning();
     return row!;
   }
 
-  updateGroup(id: number, patch: Partial<Pick<ServiceGroup, "name" | "x" | "y" | "w" | "h">>) {
-    return this.db.update(serviceGroups).set(patch).where(eq(serviceGroups.id, id));
+  updateGroup(
+    id: number,
+    patch: Partial<Pick<ServiceGroup, "name" | "x" | "y" | "w" | "h">>,
+  ) {
+    return this.db
+      .update(serviceGroups)
+      .set(patch)
+      .where(eq(serviceGroups.id, id));
   }
 
   removeGroup(id: number) {

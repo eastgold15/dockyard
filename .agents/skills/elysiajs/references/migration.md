@@ -4,30 +4,30 @@ Migrate only when requested. Otherwise, keep the project's version and conventio
 
 ## v1 patterns and current v2 forms
 
-| Older pattern | Current v2 form |
-| --- | --- |
-| `.get(path, handler, options)` | `.get(path, options, handler)`. |
-| `.onBeforeHandle({ as: 'global' }, fn)` | `.onBeforeHandle('global', fn)`. The object form warns. |
-| Scope `'scoped'` | `'plugin'`. The old string throws. Other scopes are `'local'` and `'global'`. |
-| `.resolve(fn)` | `.derive(fn)`, in the before-handle queue after validation. |
-| Macro `resolve` | Macro `derive`. |
-| `.macro(name, definition)` | `.macro({ name: definition })`. |
-| `response` in response hooks | `responseValue`. |
-| Guard schemas implicitly merge with route schemas | Route schemas override the corresponding guard schema. Add `schema: 'merge'` to the guard to require both. |
-| `app.store` | Read `store` from request context. |
-| Constructor `websocket` | `.use(websocket(options))` from `elysia/websocket`. |
-| `ws.data.query` | `ws.query`, with context on the socket. |
-| WebSocket `transformMessage` | WebSocket `parse`. |
-| Cookie `.add(options)` | `.update(options)`. |
-| `delete cookie.name` | `cookie.name.remove()`. |
-| `.route(method, path, handler)` | `.method(method, path, options?, handler)`. |
-| Constructor `aot` | `precompile: true` for startup compilation. Build-time AOT uses `elysia/plugin/aot/*`. |
-| Constructor `systemRouter` | `nativeStaticResponse`, default `true`, controls eligible native static responses. |
-| `elysia/adapter/cloudflare-worker` | AOT esbuild plugin with `target: 'workerd'`, then `app.handle`. See [runtimes.md](runtimes.md). |
-| `@sinclair/typebox` schemas | `typebox` 1.x through Elysia's `t` or a supported Standard Schema validator. Do not mix incompatible TypeBox generations. |
-| `t.Transform` | `t.Codec`. `t.Recursive`, `t.Not`, and `t.RegExp` are no longer exported. |
-| Schema `.static` assumptions | `UnwrapSchema<typeof Schema>` and `UnwrapModels<typeof Models>`. |
-| Swagger plugin | `@elysia/openapi`. |
+| Older pattern                                     | Current v2 form                                                                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `.get(path, handler, options)`                    | `.get(path, options, handler)`.                                                                                           |
+| `.onBeforeHandle({ as: 'global' }, fn)`           | `.onBeforeHandle('global', fn)`. The object form warns.                                                                   |
+| Scope `'scoped'`                                  | `'plugin'`. The old string throws. Other scopes are `'local'` and `'global'`.                                             |
+| `.resolve(fn)`                                    | `.derive(fn)`, in the before-handle queue after validation.                                                               |
+| Macro `resolve`                                   | Macro `derive`.                                                                                                           |
+| `.macro(name, definition)`                        | `.macro({ name: definition })`.                                                                                           |
+| `response` in response hooks                      | `responseValue`.                                                                                                          |
+| Guard schemas implicitly merge with route schemas | Route schemas override the corresponding guard schema. Add `schema: 'merge'` to the guard to require both.                |
+| `app.store`                                       | Read `store` from request context.                                                                                        |
+| Constructor `websocket`                           | `.use(websocket(options))` from `elysia/websocket`.                                                                       |
+| `ws.data.query`                                   | `ws.query`, with context on the socket.                                                                                   |
+| WebSocket `transformMessage`                      | WebSocket `parse`.                                                                                                        |
+| Cookie `.add(options)`                            | `.update(options)`.                                                                                                       |
+| `delete cookie.name`                              | `cookie.name.remove()`.                                                                                                   |
+| `.route(method, path, handler)`                   | `.method(method, path, options?, handler)`.                                                                               |
+| Constructor `aot`                                 | `precompile: true` for startup compilation. Build-time AOT uses `elysia/plugin/aot/*`.                                    |
+| Constructor `systemRouter`                        | `nativeStaticResponse`, default `true`, controls eligible native static responses.                                        |
+| `elysia/adapter/cloudflare-worker`                | AOT esbuild plugin with `target: 'workerd'`, then `app.handle`. See [runtimes.md](runtimes.md).                           |
+| `@sinclair/typebox` schemas                       | `typebox` 1.x through Elysia's `t` or a supported Standard Schema validator. Do not mix incompatible TypeBox generations. |
+| `t.Transform`                                     | `t.Codec`. `t.Recursive`, `t.Not`, and `t.RegExp` are no longer exported.                                                 |
+| Schema `.static` assumptions                      | `UnwrapSchema<typeof Schema>` and `UnwrapModels<typeof Models>`.                                                          |
+| Swagger plugin                                    | `@elysia/openapi`.                                                                                                        |
 
 ## Beta documentation differences
 

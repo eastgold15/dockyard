@@ -1,43 +1,78 @@
 /** @jsxImportSource solid-js */
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import type { BoardModel, CardModel, DiscoveredContainer, TargetModel } from "../canvas.model";
 import {
-  AppNodeView, ContainerNodeView, DbNodeView, GroupNodeView, ServerNodeView, ServiceNodeView,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
+import type {
+  BoardModel,
+  CardModel,
+  DiscoveredContainer,
+  TargetModel,
+} from "../canvas.model";
+import {
+  AppNodeView,
+  ContainerNodeView,
+  DbNodeView,
+  GroupNodeView,
+  ServerNodeView,
+  ServiceNodeView,
   type CanvasFlowNode,
 } from "./nodes";
 import { api, canvasApi, unwrap } from "./api";
 import { useUi } from "./ui";
 import { confirmAction, promptAction, toast } from "./feedback";
 import { clampCardX, laneRect } from "../zones";
-import { FlowView, type ConnectResult, type FlowEdge, type NodeViewProps } from "@elysiax/flow";
+import {
+  FlowView,
+  type ConnectResult,
+  type FlowEdge,
+  type NodeViewProps,
+} from "@elysiax/flow";
 import { ContextMenu, useContextMenuContext } from "@kobalte/core/context-menu";
 import { useMenuContext } from "@kobalte/core/menu";
 import { menu } from "../../../../styled-system/recipes";
 import { cx } from "../../../../styled-system/css";
 
 const nodeViews = {
-  server: ServerNodeView, app: AppNodeView, service: ServiceNodeView,
-  db: DbNodeView, group: GroupNodeView, container: ContainerNodeView,
+  server: ServerNodeView,
+  app: AppNodeView,
+  service: ServiceNodeView,
+  db: DbNodeView,
+  group: GroupNodeView,
+  container: ContainerNodeView,
 } as unknown as Record<string, (p: NodeViewProps<never>) => Element>;
 
 // 依赖边样式（虚线黄铜 + 箭头）
 const DEP_EDGE = {
-  stroke: "#d9a441", strokeOpacity: 0.6, strokeWidth: 1.5,
-  strokeDasharray: "5 3", arrowColor: "#d9a441",
+  stroke: "#d9a441",
+  strokeOpacity: 0.6,
+  strokeWidth: 1.5,
+  strokeDasharray: "5 3",
+  arrowColor: "#d9a441",
 } as const;
 
 // ── 布局常量（父卡显式尺寸由子卡 bounds 算，估算值与 nodes.tsx 的 Tailwind 类对应）──
-const CHILD_W = 320;      // app/db 卡宽
-const SVC_H = 34, SVC_GAP = 8, SVC_TOP = 58; // 服务卡在 app 卡内：x=14，y 从 SVC_TOP 起按实际高度累加
-const SVC_DOMAIN_H = 16;  // 服务卡里每行域名的高度
-const APP_MIN_H = 96;     // 无服务清单的 app 卡高
-const APP_TAIL_H = 46;    // 服务块之后的按钮区
-const DB_H = 84;
-const DISC_H = 66;        // 发现容器卡高（只读行：名称/镜像/端口）
-const PAD = 14, HEADER_H = 56, GAP = 12; // 服务器卡：内边距/标题/子卡间距
-const SVC_W = CHILD_W - 28;
-const GROUP_HEADER_H = 30;   // 分组卡标题高度
-const GROUP_MIN_W = 220, GROUP_MIN_H = 120;
+const CHILD_W = 320; // app/db 卡宽
+const SVC_H = 34,
+  SVC_GAP = 4,
+  SVC_TOP = 36; // 服务卡在 app 卡内：x=0，y 从 SVC_TOP 起按实际高度累加（卡面只留一行项目名）
+const SVC_DOMAIN_H = 16; // 服务卡里每行域名的高度
+const APP_MIN_H = 56; // 无服务清单的 app 卡高
+const APP_TAIL_H = 8; // 服务块之后的底部留白（按钮区已收进 Sidebar）
+const DB_H = 56;
+const DISC_H = 66; // 发现容器卡高（只读行：名称/镜像/端口）
+const PAD = 14,
+  HEADER_H = 56,
+  GAP = 12; // 服务器卡：内边距/标题/子卡间距
+const SVC_W = CHILD_W;
+const GROUP_HEADER_H = 30; // 分组卡标题高度
+const GROUP_MIN_W = 220,
+  GROUP_MIN_H = 120;
 
 const srvId = (nodeId: number) => `srv-${nodeId}`;
 const appId = (targetId: number) => `app-${targetId}`;
@@ -46,10 +81,11 @@ const dbId = (targetId: number) => `db-${targetId}`;
 const grpId = (groupId: number) => `grp-${groupId}`;
 const discId = (containerId: string) => `disc-${containerId}`;
 
-/** 服务卡高 = 名称行 + 域名行数 */
-const svcHeight = (s: TargetModel["services"][number]) => SVC_H + s.domains.length * SVC_DOMAIN_H;
+/** 服务行高 = 服务名一行 + 域名行数（服务名/域名作为普通文本行流式渲染在 app 卡盒内） */
+const svcHeight = (s: TargetModel["services"][number]) =>
+  SVC_H + s.domains.length * SVC_DOMAIN_H;
 
-/** app 卡内容高 = 服务卡实际高度累加 + 按钮区 */
+/** app 卡内容高 = header + 服务行累加 + 底部留白（服务不再嵌套子节点，卡盒内流式） */
 const appContentBottom = (t: TargetModel) =>
   t.services.reduce((y, s) => y + svcHeight(s) + SVC_GAP, SVC_TOP);
 
@@ -58,17 +94,29 @@ const appContentBottom = (t: TargetModel) =>
  * resizingIds：Resizer 拖拽中的节点必须跳过 clamp 和 grow——否则 grow-only 把用户缩小的尺寸
  * 立刻 max 回去，与 Resizer 互相覆盖抖动。
  */
-function fitParents(ns: CanvasFlowNode[], resizingIds?: ReadonlySet<string>): CanvasFlowNode[] {
+function fitParents(
+  ns: CanvasFlowNode[],
+  resizingIds?: ReadonlySet<string>,
+): CanvasFlowNode[] {
   // 钳制子卡不越出父卡内容区（左/上）——服务卡/app 卡不能拖到标题栏或负坐标
   const clamped = ns.map((n) => {
     if (resizingIds?.has(n.id)) return n;
     if (n.type === "service") {
-      const x = Math.max(PAD, n.position.x), y = Math.max(SVC_TOP, n.position.y);
-      return x === n.position.x && y === n.position.y ? n : { ...n, position: { x, y } };
+      const x = Math.max(PAD, n.position.x),
+        y = Math.max(SVC_TOP, n.position.y);
+      return x === n.position.x && y === n.position.y
+        ? n
+        : { ...n, position: { x, y } };
     }
-    if ((n.type === "app" || n.type === "db" || n.type === "container") && n.parentId) {
-      const x = Math.max(PAD, n.position.x), y = Math.max(HEADER_H, n.position.y);
-      return x === n.position.x && y === n.position.y ? n : { ...n, position: { x, y } };
+    if (
+      (n.type === "app" || n.type === "db" || n.type === "container") &&
+      n.parentId
+    ) {
+      const x = Math.max(PAD, n.position.x),
+        y = Math.max(HEADER_H, n.position.y);
+      return x === n.position.x && y === n.position.y
+        ? n
+        : { ...n, position: { x, y } };
     }
     return n;
   });
@@ -80,19 +128,36 @@ function fitParents(ns: CanvasFlowNode[], resizingIds?: ReadonlySet<string>): Ca
     arr.push(n);
     kidsOf.set(n.parentId, arr);
   }
-  const grow = (n: CanvasFlowNode, minW: number, minH: number, padX: number, padBottom: number): CanvasFlowNode => {
+  const grow = (
+    n: CanvasFlowNode,
+    minW: number,
+    minH: number,
+    padX: number,
+    padBottom: number,
+  ): CanvasFlowNode => {
     if (resizingIds?.has(n.id)) return n; // Resizer 拖拽中：尊重其精确尺寸
     const kids = kidsOf.get(n.id);
     if (!kids?.length) return n;
-    const w = Math.max(n.width ?? 0, minW, ...kids.map((k) => k.position.x + (k.width ?? 0) + padX));
-    const h = Math.max(n.height ?? 0, minH, ...kids.map((k) => k.position.y + (k.height ?? 0) + padBottom));
+    const w = Math.max(
+      n.width ?? 0,
+      minW,
+      ...kids.map((k) => k.position.x + (k.width ?? 0) + padX),
+    );
+    const h = Math.max(
+      n.height ?? 0,
+      minH,
+      ...kids.map((k) => k.position.y + (k.height ?? 0) + padBottom),
+    );
     return w === n.width && h === n.height ? n : { ...n, width: w, height: h };
   };
   return ns.map((n) =>
-    n.type === "app" ? grow(n, CHILD_W, APP_MIN_H, PAD, APP_TAIL_H)
-      : n.type === "group" ? grow(n, GROUP_MIN_W, GROUP_MIN_H, PAD, PAD)
-        : n.type === "server" ? grow(n, PAD + CHILD_W + PAD, HEADER_H + APP_MIN_H + PAD, PAD, PAD)
-          : n
+    n.type === "app"
+      ? grow(n, CHILD_W, APP_MIN_H, PAD, APP_TAIL_H)
+      : n.type === "group"
+        ? grow(n, GROUP_MIN_W, GROUP_MIN_H, PAD, PAD)
+        : n.type === "server"
+          ? grow(n, PAD + CHILD_W + PAD, HEADER_H + APP_MIN_H + PAD, PAD, PAD)
+          : n,
   );
 }
 
@@ -101,7 +166,10 @@ function fitParents(ns: CanvasFlowNode[], resizingIds?: ReadonlySet<string>): Ca
  * 无持久化位置的子卡在父内容区单列自动摆（确定性，refetch 稳定）；
  * 父卡尺寸 = 子卡 bounds + 内边距。父节点必须先于子节点入数组。
  */
-function deriveNodes(cards: CardModel[], local: Map<string, CanvasFlowNode>): CanvasFlowNode[] {
+function deriveNodes(
+  cards: CardModel[],
+  local: Map<string, CanvasFlowNode>,
+): CanvasFlowNode[] {
   const nodes: CanvasFlowNode[] = [];
   for (const card of cards) {
     const sid = srvId(card.node.id);
@@ -118,42 +186,19 @@ function deriveNodes(cards: CardModel[], local: Map<string, CanvasFlowNode>): Ca
       const id = t.kind === "app" ? appId(t.id) : dbId(t.id);
       const parentId = t.groupId ? grpId(t.groupId) : sid;
       let auto: { x: number; y: number };
-      if (t.groupId) auto = { x: PAD, y: groupAuto.get(t.groupId) ?? GROUP_HEADER_H + 6 };
+      if (t.groupId)
+        auto = { x: PAD, y: groupAuto.get(t.groupId) ?? GROUP_HEADER_H + 6 };
       else auto = { x: PAD, y: cursor };
       const pos = t.x !== null && t.y !== null ? { x: t.x, y: t.y } : auto;
       const localNode = local.get(id);
       const position = localNode?.dragging ? localNode.position : pos;
-      // app 卡尺寸 = 手动拉伸值（下限）∪ 服务卡 bounds 收敛
+      // app 卡高度 = 顶部项目名 header(36) + 每个服务一行(行高按域名数) + 底部留白；
+      // 服务不再是嵌套子节点——服务名/域名直接在卡盒内流式渲染（一个 div 盒子）。
       let w = Math.max(CHILD_W, t.w ?? 0);
-      let h = t.kind === "app"
-        ? Math.max(APP_MIN_H, appContentBottom(t) + APP_TAIL_H, t.h ?? 0)
-        : Math.max(DB_H, t.h ?? 0);
-      const svcNodes: CanvasFlowNode[] = [];
-      if (t.kind === "app") {
-        let svcCursor = SVC_TOP;
-        for (const s of t.services) {
-          const id2 = svcId(t.id, s.name);
-          const localSvc = local.get(id2);
-          const sh = svcHeight(s);
-          const auto2 = { x: 14, y: svcCursor };
-          const pos2 = s.x !== undefined && s.y !== undefined ? { x: s.x, y: s.y } : auto2;
-          const position2 = localSvc?.dragging ? localSvc.position : pos2;
-          svcNodes.push({
-            id: id2,
-            type: "service",
-            parentId: id,
-            position: position2,
-            width: SVC_W,
-            height: sh,
-            selected: localSvc?.selected ?? false,
-            dragging: localSvc?.dragging,
-            data: { t, s },
-          } as CanvasFlowNode);
-          w = Math.max(w, position2.x + SVC_W + PAD);
-          h = Math.max(h, position2.y + sh + APP_TAIL_H);
-          svcCursor += sh + SVC_GAP;
-        }
-      }
+      let h =
+        t.kind === "app"
+          ? Math.max(APP_MIN_H, appContentBottom(t) + APP_TAIL_H, t.h ?? 0)
+          : Math.max(DB_H, t.h ?? 0);
       targetNodes.push({
         id,
         type: t.kind,
@@ -165,13 +210,15 @@ function deriveNodes(cards: CardModel[], local: Map<string, CanvasFlowNode>): Ca
         dragging: localNode?.dragging,
         data: { t },
       } as CanvasFlowNode);
-      targetNodes.push(...svcNodes);
       if (t.groupId) {
         const b = groupBounds.get(t.groupId) ?? { right: 0, bottom: 0 };
         b.right = Math.max(b.right, position.x + w);
         b.bottom = Math.max(b.bottom, position.y + h);
         groupBounds.set(t.groupId, b);
-        groupAuto.set(t.groupId, (groupAuto.get(t.groupId) ?? GROUP_HEADER_H + 6) + h + GAP);
+        groupAuto.set(
+          t.groupId,
+          (groupAuto.get(t.groupId) ?? GROUP_HEADER_H + 6) + h + GAP,
+        );
       } else {
         contentRight = Math.max(contentRight, position.x + w);
         contentBottom = Math.max(contentBottom, position.y + h);
@@ -204,7 +251,9 @@ function deriveNodes(cards: CardModel[], local: Map<string, CanvasFlowNode>): Ca
     for (const d of card.discovered ?? []) {
       const id = discId(d.id);
       const discLocal = local.get(id);
-      const position = discLocal?.dragging ? discLocal.position : { x: PAD, y: discCursor };
+      const position = discLocal?.dragging
+        ? discLocal.position
+        : { x: PAD, y: discCursor };
       targetNodes.push({
         id,
         type: "container",
@@ -224,9 +273,19 @@ function deriveNodes(cards: CardModel[], local: Map<string, CanvasFlowNode>): Ca
     nodes.push({
       id: sid,
       type: "server",
-      position: serverLocal?.dragging ? serverLocal.position : { x: card.node.x, y: card.node.y },
-      width: Math.max(PAD + CHILD_W + PAD, contentRight + PAD, card.node.w ?? 0),
-      height: Math.max(HEADER_H + APP_MIN_H + PAD, contentBottom + PAD, card.node.h ?? 0),
+      position: serverLocal?.dragging
+        ? serverLocal.position
+        : { x: card.node.x, y: card.node.y },
+      width: Math.max(
+        PAD + CHILD_W + PAD,
+        contentRight + PAD,
+        card.node.w ?? 0,
+      ),
+      height: Math.max(
+        HEADER_H + APP_MIN_H + PAD,
+        contentBottom + PAD,
+        card.node.h ?? 0,
+      ),
       selected: serverLocal?.selected ?? false,
       dragging: serverLocal?.dragging,
       data: { server: card.server },
@@ -237,18 +296,25 @@ function deriveNodes(cards: CardModel[], local: Map<string, CanvasFlowNode>): Ca
 }
 
 /** 服务级依赖边：db 卡 → 服务卡（service 有值）或 app 卡（整体依赖）。边 id 编码三者供删边解析 */
-function deriveEdges(cards: CardModel[], keepSelected: Set<string>): FlowEdge[] {
-  // 透镜过滤后 db 端可能不可见：只画两端都在当前卡集里的边
-  const visibleTargets = new Set(cards.flatMap((c) => c.targets.map((t) => t.id)));
+function deriveEdges(
+  cards: CardModel[],
+  keepSelected: Set<string>,
+): FlowEdge[] {
+  // 透镜过滤后依赖端可能不可见：只画两端都在当前卡集里的边。
+  // 依赖端可能是托管 db 卡，也可能是用户 compose 里自带库的单服务 app 卡（边源按 kind 解析）
+  const kindOf = new Map(
+    cards.flatMap((c) => c.targets.map((t) => [t.id, t.kind] as const)),
+  );
   const edges: FlowEdge[] = [];
   for (const c of cards)
     for (const t of c.targets)
       for (const e of t.edges) {
-        if (!visibleTargets.has(e.db)) continue;
+        const kind = kindOf.get(e.db);
+        if (!kind) continue;
         const id = `dep-${e.db}-${t.id}-${e.service ?? "_"}`;
         edges.push({
           id,
-          source: dbId(e.db),
+          source: kind === "app" ? appId(e.db) : dbId(e.db),
           target: e.service ? svcId(t.id, e.service) : appId(t.id),
           selected: keepSelected.has(id),
           ...DEP_EDGE,
@@ -258,11 +324,13 @@ function deriveEdges(cards: CardModel[], keepSelected: Set<string>): FlowEdge[] 
 }
 
 interface Menu {
-  x: number; y: number;
+  x: number;
+  y: number;
   kind: "pane" | "server" | "group";
   nodeId?: number;
   groupId?: number;
-  flowX: number; flowY: number;
+  flowX: number;
+  flowY: number;
 }
 
 /**
@@ -277,7 +345,9 @@ function applyLens(cards: CardModel[], lens: number | null): CardModel[] {
       targets.map((t) => t.groupId).filter((g): g is number => g != null),
     );
     // 发现容器同样跟透镜走：归属匹配到选中项目的才显示（无归属只在世界视图出现）
-    const discovered = (card.discovered ?? []).filter((d) => d.projectId === lens);
+    const discovered = (card.discovered ?? []).filter(
+      (d) => d.projectId === lens,
+    );
     return {
       ...card,
       targets,
@@ -295,7 +365,9 @@ export function Board(props: { lens: () => number | null }) {
   const [edges, setEdges] = createSignal<FlowEdge[]>([]);
   const [menuState, setMenuState] = createSignal<Menu | null>(null);
   let structure: CardModel[] = [];
-  let flowApi!: { screenToFlowPosition(p: { x: number; y: number }): { x: number; y: number } };
+  let flowApi!: {
+    screenToFlowPosition(p: { x: number; y: number }): { x: number; y: number };
+  };
 
   /** 结构拉取：只在挂载和 refresh 事件（结构变更）时调用，不轮询。世界地图：全局 /board */
   const fetchBoard = async () => {
@@ -303,15 +375,30 @@ export function Board(props: { lens: () => number | null }) {
     if (!board) return;
     structure = board.cards;
     setServers(board.servers);
-    setNodes((cur) => deriveNodes(applyLens(board.cards, props.lens()), new Map(cur.map((n) => [n.id, n]))));
-    setEdges((cur) => deriveEdges(applyLens(board.cards, props.lens()), new Set(cur.filter((e) => e.selected).map((e) => e.id))));
+    setNodes((cur) =>
+      deriveNodes(
+        applyLens(board.cards, props.lens()),
+        new Map(cur.map((n) => [n.id, n])),
+      ),
+    );
+    setEdges((cur) =>
+      deriveEdges(
+        applyLens(board.cards, props.lens()),
+        new Set(cur.filter((e) => e.selected).map((e) => e.id)),
+      ),
+    );
   };
 
   // 透镜切换是纯客户端过滤：不走网络，用已拉的 structure 重推导节点/边
   createEffect(() => {
     const cards = applyLens(structure, props.lens());
     setNodes((cur) => deriveNodes(cards, new Map(cur.map((n) => [n.id, n]))));
-    setEdges((cur) => deriveEdges(cards, new Set(cur.filter((e) => e.selected).map((e) => e.id))));
+    setEdges((cur) =>
+      deriveEdges(
+        cards,
+        new Set(cur.filter((e) => e.selected).map((e) => e.id)),
+      ),
+    );
   });
 
   // 交互门闩：拖拽/连线进行中 refresh 排队，结束后补拉——用户交互期间不被自动刷新打断
@@ -352,21 +439,34 @@ export function Board(props: { lens: () => number | null }) {
     const dragged = nodes().find((n) => n.id === id);
     let p = pos;
     if (dragged?.type === "server") {
-      const local = (dragged.data as { server: { local: boolean } }).server.local;
+      const local = (dragged.data as { server: { local: boolean } }).server
+        .local;
       p = { x: clampCardX(local, pos.x, dragged.width ?? 0), y: pos.y };
     }
-    setNodes((ns) => fitParents(
-      ns.map((n) => (n.id === id ? { ...n, position: p, dragging: true } : n)),
-      resizingIds,
-    ));
+    setNodes((ns) =>
+      fitParents(
+        ns.map((n) =>
+          n.id === id ? { ...n, position: p, dragging: true } : n,
+        ),
+        resizingIds,
+      ),
+    );
   };
 
-  const onNodeResize = (id: string, w: number, h: number, resizing: boolean) => {
+  const onNodeResize = (
+    id: string,
+    w: number,
+    h: number,
+    resizing: boolean,
+  ) => {
     if (resizing) resizingIds.add(id);
     else resizingIds.delete(id);
     // 尺寸取整：亚像素尺寸与 DOM 测量 round-trip 会互相抖动
-    setNodes((ns) => ns.map((n) =>
-      n.id === id ? { ...n, width: Math.round(w), height: Math.round(h) } : n));
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === id ? { ...n, width: Math.round(w), height: Math.round(h) } : n,
+      ),
+    );
   };
 
   const onNodeResizeEnd = (_id: string, _w: number, _h: number) => {
@@ -377,7 +477,10 @@ export function Board(props: { lens: () => number | null }) {
   const findTarget = (id: number) =>
     structure.flatMap((c) => c.targets).find((t) => t.id === id);
 
-  const putEdges = async (appTargetId: number, entries: { service: string | null; db: number }[]) => {
+  const putEdges = async (
+    appTargetId: number,
+    entries: { service: string | null; db: number }[],
+  ) => {
     await unwrap(api.targets({ id: appTargetId }).deps.put({ edges: entries }));
     // 边属结构（服务端有派生逻辑），写回后重拉
     await refetch();
@@ -385,16 +488,21 @@ export function Board(props: { lens: () => number | null }) {
 
   // 删边：id 形如 dep-<db>-<appTargetId>-<service|_>，整组覆盖写回
   const onEdgesRemove = (ids: string[]) => {
-    setEdges((es) => es.map((e) => (ids.includes(e.id) ? { ...e, selected: false } : e)));
+    setEdges((es) =>
+      es.map((e) => (ids.includes(e.id) ? { ...e, selected: false } : e)),
+    );
     for (const id of ids) {
       const m = /^dep-(\d+)-(\d+)-(.+)$/.exec(id);
       if (!m) continue;
       const [, db, app, svc] = m;
       const t = findTarget(Number(app));
       if (!t) continue;
-      void putEdges(t.id, t.edges
-        .filter((e) => !(e.db === Number(db) && (e.service ?? "_") === svc))
-        .map((e) => ({ service: e.service, db: e.db })));
+      void putEdges(
+        t.id,
+        t.edges
+          .filter((e) => !(e.db === Number(db) && (e.service ?? "_") === svc))
+          .map((e) => ({ service: e.service, db: e.db })),
+      );
     }
   };
 
@@ -408,19 +516,31 @@ export function Board(props: { lens: () => number | null }) {
     const service = perSvc ? perSvc[2]! : null;
     const t = findTarget(appTargetId);
     if (!t || t.edges.some((e) => e.db === db && e.service === service)) return;
-    void putEdges(t.id, [...t.edges.map((e) => ({ service: e.service, db: e.db })), { service, db }]);
+    void putEdges(t.id, [
+      ...t.edges.map((e) => ({ service: e.service, db: e.db })),
+      { service, db },
+    ]);
   };
 
   // 布局：本地已是权威，PATCH 只持久化，不 refetch
-  const patchLayout = (targetId: number, body: {
-    x?: number; y?: number; w?: number; h?: number;
-    groupId?: number | null;
-    serviceLayout?: Record<string, { x: number; y: number }>;
-  }) => unwrap(api.targets({ id: targetId }).layout.patch(body));
+  const patchLayout = (
+    targetId: number,
+    body: {
+      x?: number;
+      y?: number;
+      w?: number;
+      h?: number;
+      groupId?: number | null;
+      serviceLayout?: Record<string, { x: number; y: number }>;
+    },
+  ) => unwrap(api.targets({ id: targetId }).layout.patch(body));
 
   // 服务器卡内绝对坐标（app/db 的 parent 可能是分组，position 是相对父的）
-  const absInServer = (node: CanvasFlowNode): { x: number; y: number; serverId: string } => {
-    let x = node.position.x, y = node.position.y;
+  const absInServer = (
+    node: CanvasFlowNode,
+  ): { x: number; y: number; serverId: string } => {
+    let x = node.position.x,
+      y = node.position.y;
     let parent = node.parentId;
     let cur = node;
     const all = nodes();
@@ -441,7 +561,10 @@ export function Board(props: { lens: () => number | null }) {
   /** 动画弹回：dragging 已置 false（NodeShell 的 left/top 过渡生效），位置补间回起点 */
   const bounce = (id: string) => {
     const o = dragOrigin.get(id);
-    if (o) setNodes((ns) => ns.map((n) => (n.id === id ? { ...n, position: { ...o } } : n)));
+    if (o)
+      setNodes((ns) =>
+        ns.map((n) => (n.id === id ? { ...n, position: { ...o } } : n)),
+      );
   };
 
   const onNodeDragStart = (node: CanvasFlowNode) => {
@@ -463,13 +586,16 @@ export function Board(props: { lens: () => number | null }) {
   };
 
   const commitNodeDrag = async (node: CanvasFlowNode, cancelled?: boolean) => {
-    setNodes((ns) => ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)));
+    setNodes((ns) =>
+      ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)),
+    );
     if (cancelled) {
       // pointercancel：手势被系统夺走，位置未表态 → 一律弹回起点，不落库
       bounce(node.id);
       return;
     }
-    const x = Math.round(node.position.x), y = Math.round(node.position.y);
+    const x = Math.round(node.position.x),
+      y = Math.round(node.position.y);
     if (node.type === "server") {
       const nodeId = Number(node.id.replace("srv-", ""));
       // onNodeMove 已把分界线钳成墙，这里只剩服务端 422 兜底（如存量脏数据卡在对侧）
@@ -484,18 +610,28 @@ export function Board(props: { lens: () => number | null }) {
       bounce(node.id); // 发现卡只读：拖了弹回原位（不落库）
       return;
     } else if (node.type === "group") {
-      void unwrap(canvasApi.groups({ id: Number(node.id.replace("grp-", "")) }).patch({ x, y }));
+      void unwrap(
+        canvasApi
+          .groups({ id: Number(node.id.replace("grp-", "")) })
+          .patch({ x, y }),
+      );
     } else if (node.type === "app" || node.type === "db") {
       const targetId = Number(node.id.replace(/^(app|db)-/, ""));
       // 分组命中测试：卡片中心落在哪个分组矩形内（无 → 直属服务器卡）
       const abs = absInServer(node);
-      const cx = abs.x + (node.width ?? 0) / 2, cy = abs.y + (node.height ?? 0) / 2;
+      const cx = abs.x + (node.width ?? 0) / 2,
+        cy = abs.y + (node.height ?? 0) / 2;
 
       // 跨服务器迁移：卡片中心落在另一台服务器卡矩形内 → 走 move 通道（区域硬隔离由服务端裁决）
-      const srvHit = nodes().find((n) =>
-        n.type === "server" && n.id !== abs.serverId &&
-        cx >= n.position.x && cx <= n.position.x + (n.width ?? 0) &&
-        cy >= n.position.y && cy <= n.position.y + (n.height ?? 0));
+      const srvHit = nodes().find(
+        (n) =>
+          n.type === "server" &&
+          n.id !== abs.serverId &&
+          cx >= n.position.x &&
+          cx <= n.position.x + (n.width ?? 0) &&
+          cy >= n.position.y &&
+          cy <= n.position.y + (n.height ?? 0),
+      );
       if (srvHit) {
         const t = findTarget(targetId);
         const from = structure.find((c) => `srv-${c.node.id}` === abs.serverId);
@@ -505,52 +641,83 @@ export function Board(props: { lens: () => number | null }) {
         if (crossing && t) {
           // 体验层预判（服务端仍兜底）：跨界要么 app 且产物已传输，要么拒绝
           if (t.kind !== "app") {
-            toast("数据库不能跨区移动——数据不随卡走，请在目标服务器新建实例。", "err");
+            toast(
+              "数据库不能跨区移动——数据不随卡走，请在目标服务器新建实例。",
+              "err",
+            );
             return revert();
           }
           if (!t.artifactShipped) {
-            toast("构建产物尚未传输到云端——先在服务抽屉执行「传输产物」。", "err");
+            toast(
+              "构建产物尚未传输到云端——先在服务抽屉执行「传输产物」。",
+              "err",
+            );
             return revert();
           }
           // 决策期间把卡钉在落点（dragging=true 让 deriveNodes 不用结构值覆盖它，
           // 否则确认框打开期间一次 refetch 会把卡瞬移回起点——原生 confirm 是同步阻塞，没这个问题）
-          setNodes((ns) => ns.map((n) => (n.id === node.id ? { ...n, dragging: true } : n)));
+          setNodes((ns) =>
+            ns.map((n) => (n.id === node.id ? { ...n, dragging: true } : n)),
+          );
           const ok = await confirmAction({
             title: `迁移「${t.name}」到「${to.server.name}」？`,
             body: "跨区迁移要求构建产物已传输；旧服务器上的容器不会自动清理。",
             confirmLabel: "迁移",
           });
           if (!ok) {
-            setNodes((ns) => ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)));
+            setNodes((ns) =>
+              ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)),
+            );
             return revert();
           }
         }
         void (async () => {
           try {
-            await unwrap(api.targets({ id: targetId }).move.patch({ nodeId: to!.node.id }));
+            await unwrap(
+              api.targets({ id: targetId }).move.patch({ nodeId: to!.node.id }),
+            );
             // 成功：归属变了，清钉住标记让 deriveNodes 用新结构（x/y 已清 null → 自动摆位）
-            setNodes((ns) => ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)));
+            setNodes((ns) =>
+              ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)),
+            );
             await refetch();
           } catch (e) {
             toast(`迁移被拒绝：${(e as Error).message}`, "err");
-            setNodes((ns) => ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)));
+            setNodes((ns) =>
+              ns.map((n) => (n.id === node.id ? { ...n, dragging: false } : n)),
+            );
             bounce(node.id);
           }
         })();
         return;
       }
 
-      const groups = nodes().filter((g) => g.type === "group" && g.parentId === abs.serverId);
+      const groups = nodes().filter(
+        (g) => g.type === "group" && g.parentId === abs.serverId,
+      );
       const hit = groups.find((g) => {
         const ga = absInServer(g);
-        return cx >= ga.x && cx <= ga.x + (g.width ?? 0) && cy >= ga.y && cy <= ga.y + (g.height ?? 0);
+        return (
+          cx >= ga.x &&
+          cx <= ga.x + (g.width ?? 0) &&
+          cy >= ga.y &&
+          cy <= ga.y + (g.height ?? 0)
+        );
       });
-      const curGroup = node.parentId?.startsWith("grp-") ? Number(node.parentId.slice(4)) : null;
+      const curGroup = node.parentId?.startsWith("grp-")
+        ? Number(node.parentId.slice(4))
+        : null;
       const newGroup = hit ? Number(hit.id.slice(4)) : null;
       if (newGroup !== curGroup) {
         // 换父：坐标换算成新父内相对值，结构变化走 refetch
         const rel = hit
-          ? (() => { const ga = absInServer(hit); return { x: Math.round(abs.x - ga.x), y: Math.round(abs.y - ga.y) }; })()
+          ? (() => {
+              const ga = absInServer(hit);
+              return {
+                x: Math.round(abs.x - ga.x),
+                y: Math.round(abs.y - ga.y),
+              };
+            })()
           : { x: Math.round(abs.x), y: Math.round(abs.y) };
         void (async () => {
           await patchLayout(targetId, { groupId: newGroup, ...rel });
@@ -563,7 +730,8 @@ export function Board(props: { lens: () => number | null }) {
       const data = node.data as { t: TargetModel; s: { name: string } };
       // serviceLayout 全量覆盖：已知服务位置合并本次移动
       const merged = Object.fromEntries(
-        data.t.services.filter((s) => s.x !== undefined && s.y !== undefined)
+        data.t.services
+          .filter((s) => s.x !== undefined && s.y !== undefined)
           .map((s) => [s.name, { x: s.x!, y: s.y! }]),
       );
       merged[data.s.name] = { x, y };
@@ -576,7 +744,7 @@ export function Board(props: { lens: () => number | null }) {
     if (node.type === "service") {
       const { t, s } = node.data as { t: TargetModel; s: { name: string } };
       ui.open({ kind: "service", targetId: t.id, svc: s.name });
-    } else if (node.type === "db") {
+    } else if (node.type === "app" || node.type === "db") {
       const { t } = node.data as { t: TargetModel };
       ui.open({ kind: "service", targetId: t.id });
     } else if (node.type === "container") {
@@ -591,12 +759,33 @@ export function Board(props: { lens: () => number | null }) {
   const lanes = createMemo(() => {
     const srvs = nodes().filter((n) => n.type === "server");
     const rectOf = (local: boolean) =>
-      laneRect(local, srvs
-        .filter((n) => (n.data as { server: { local: boolean } }).server.local === local)
-        .map((n) => ({ x: n.position.x, y: n.position.y, w: n.width ?? 0, h: n.height ?? 0 })));
+      laneRect(
+        local,
+        srvs
+          .filter(
+            (n) =>
+              (n.data as { server: { local: boolean } }).server.local === local,
+          )
+          .map((n) => ({
+            x: n.position.x,
+            y: n.position.y,
+            w: n.width ?? 0,
+            h: n.height ?? 0,
+          })),
+      );
     return [
-      { local: true, label: "本机", rect: rectOf(true), cls: "border-tide-400/20 bg-tide-400/[0.04] text-tide-400/60" },
-      { local: false, label: "远程", rect: rectOf(false), cls: "border-brass-500/20 bg-brass-500/[0.03] text-brass-500/60" },
+      {
+        local: true,
+        label: "本机",
+        rect: rectOf(true),
+        cls: "border-tide-400/20 bg-tide-400/[0.04] text-tide-400/60",
+      },
+      {
+        local: false,
+        label: "远程",
+        rect: rectOf(false),
+        cls: "border-brass-500/20 bg-brass-500/[0.03] text-brass-500/60",
+      },
     ];
   });
   const laneBackground = (
@@ -605,8 +794,10 @@ export function Board(props: { lens: () => number | null }) {
         <div
           class={`pointer-events-none absolute rounded-xl border border-dashed ${lane.cls}`}
           style={{
-            left: `${lane.rect.x}px`, top: `${lane.rect.y}px`,
-            width: `${lane.rect.w}px`, height: `${lane.rect.h}px`,
+            left: `${lane.rect.x}px`,
+            top: `${lane.rect.y}px`,
+            width: `${lane.rect.w}px`,
+            height: `${lane.rect.h}px`,
           }}
         >
           <span class="absolute top-3 left-4 text-xs font-medium tracking-widest select-none">
@@ -623,40 +814,68 @@ export function Board(props: { lens: () => number | null }) {
         {/* 打开桥：FlowView 的右键回调只确定菜单内容（kind/坐标），实际打开与视口内定位、键盘/Esc/焦点交给 Kobalte ContextMenu 管理。 */}
         <MenuGate state={menuState} />
         <ContextMenu.Trigger class="block h-full w-full">
-        <FlowView
-        nodes={nodes()}
-        edges={edges()}
-        nodeViews={nodeViews}
-        background={laneBackground}
-        onNodeMove={onNodeMove}
-        onNodeDragStart={onNodeDragStart}
-        onNodeDragStop={onNodeDragStop}
-        onNodeClick={onNodeClick}
-        onNodeResize={onNodeResize}
-        onNodeResizeEnd={onNodeResizeEnd}
-        onNodeSelect={(id) => setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })))}
-        onEdgeSelect={(id) => setEdges((es) => es.map((e) => ({ ...e, selected: e.id === id })))}
-        onEdgesRemove={onEdgesRemove}
-        onConnect={onConnect}
-        fitView
-        minZoom={0.2}
-        ref={(a) => { flowApi = a; }}
-        onPaneContextMenu={(e) => {
-          if (servers().length === 0) return;
-          const p = flowApi.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-          setMenuState({ x: e.clientX, y: e.clientY, kind: "pane", flowX: Math.round(p.x), flowY: Math.round(p.y) });
-        }}
-        onNodeContextMenu={(e, node) => {
-          e.preventDefault(); // 抑制原生菜单：Kobalte 由 MenuGate 打开，不走 Trigger 自动打开
-          if (node.type === "server")
-            setMenuState({ x: e.clientX, y: e.clientY, kind: "server", nodeId: Number(node.id.replace("srv-", "")), flowX: 0, flowY: 0 });
-          else if (node.type === "group")
-            setMenuState({ x: e.clientX, y: e.clientY, kind: "group", groupId: Number(node.id.replace("grp-", "")), flowX: 0, flowY: 0 });
-          else
-            setMenuState(null); // app/db/service/container：操作在卡片按钮上，无右键菜单
-          // app/db 卡的操作在卡片按钮上
-        }}
-        />
+          <FlowView
+            nodes={nodes()}
+            edges={edges()}
+            nodeViews={nodeViews}
+            background={laneBackground}
+            onNodeMove={onNodeMove}
+            onNodeDragStart={onNodeDragStart}
+            onNodeDragStop={onNodeDragStop}
+            onNodeClick={onNodeClick}
+            onNodeResize={onNodeResize}
+            onNodeResizeEnd={onNodeResizeEnd}
+            onNodeSelect={(id) =>
+              setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })))
+            }
+            onEdgeSelect={(id) =>
+              setEdges((es) => es.map((e) => ({ ...e, selected: e.id === id })))
+            }
+            onEdgesRemove={onEdgesRemove}
+            onConnect={onConnect}
+            fitView
+            minZoom={0.2}
+            ref={(a) => {
+              flowApi = a;
+            }}
+            onPaneContextMenu={(e) => {
+              if (servers().length === 0) return;
+              const p = flowApi.screenToFlowPosition({
+                x: e.clientX,
+                y: e.clientY,
+              });
+              setMenuState({
+                x: e.clientX,
+                y: e.clientY,
+                kind: "pane",
+                flowX: Math.round(p.x),
+                flowY: Math.round(p.y),
+              });
+            }}
+            onNodeContextMenu={(e, node) => {
+              e.preventDefault(); // 抑制原生菜单：Kobalte 由 MenuGate 打开，不走 Trigger 自动打开
+              if (node.type === "server")
+                setMenuState({
+                  x: e.clientX,
+                  y: e.clientY,
+                  kind: "server",
+                  nodeId: Number(node.id.replace("srv-", "")),
+                  flowX: 0,
+                  flowY: 0,
+                });
+              else if (node.type === "group")
+                setMenuState({
+                  x: e.clientX,
+                  y: e.clientY,
+                  kind: "group",
+                  groupId: Number(node.id.replace("grp-", "")),
+                  flowX: 0,
+                  flowY: 0,
+                });
+              else setMenuState(null); // app/db/service/container：操作在卡片按钮上，无右键菜单
+              // app/db 卡的操作在卡片按钮上
+            }}
+          />
         </ContextMenu.Trigger>
 
         <ContextMenu.Portal>
@@ -671,12 +890,20 @@ export function Board(props: { lens: () => number | null }) {
                         onSelect={async () => {
                           // onSelect 会关菜单（closeOnSelect）：await 前先捕获 ID，避免卸载后访问器失效
                           const groupId = m().groupId!;
-                          const name = await promptAction({ title: "重命名分组" });
+                          const name = await promptAction({
+                            title: "重命名分组",
+                          });
                           if (!name?.trim()) return;
-                          await unwrap(canvasApi.groups({ id: groupId }).patch({ name: name.trim() }));
+                          await unwrap(
+                            canvasApi
+                              .groups({ id: groupId })
+                              .patch({ name: name.trim() }),
+                          );
                           await refetch();
                         }}
-                      >重命名分组</ContextMenu.Item>
+                      >
+                        重命名分组
+                      </ContextMenu.Item>
                       <ContextMenu.Item
                         class={menu({ tone: "danger" }).item}
                         onSelect={async () => {
@@ -688,10 +915,14 @@ export function Board(props: { lens: () => number | null }) {
                             danger: true,
                           });
                           if (!ok) return;
-                          await unwrap(canvasApi.groups({ id: groupId }).delete());
+                          await unwrap(
+                            canvasApi.groups({ id: groupId }).delete(),
+                          );
                           await refetch();
                         }}
-                      >删除分组</ContextMenu.Item>
+                      >
+                        删除分组
+                      </ContextMenu.Item>
                     </>
                   ) : m().kind === "server" && m().nodeId != null ? (
                     <>
@@ -699,25 +930,58 @@ export function Board(props: { lens: () => number | null }) {
                       <ContextMenu.Item
                         class={menu().item}
                         disabled={props.lens() == null}
-                        title={props.lens() == null ? "先在右上角选择一个项目" : undefined}
-                        onSelect={() => ui.open({ kind: "new-app", nodeId: m().nodeId!, projectId: props.lens() })}
-                      >部署本仓库</ContextMenu.Item>
+                        title={
+                          props.lens() == null
+                            ? "先在右上角选择一个项目"
+                            : undefined
+                        }
+                        onSelect={() =>
+                          ui.open({
+                            kind: "new-app",
+                            nodeId: m().nodeId!,
+                            projectId: props.lens(),
+                          })
+                        }
+                      >
+                        新建服务
+                      </ContextMenu.Item>
                       <ContextMenu.Item
                         class={menu().item}
                         disabled={props.lens() == null}
-                        title={props.lens() == null ? "先在右上角选择一个项目" : undefined}
-                        onSelect={() => ui.open({ kind: "new-db", nodeId: m().nodeId!, projectId: props.lens() })}
-                      >添加数据库</ContextMenu.Item>
+                        title={
+                          props.lens() == null
+                            ? "先在右上角选择一个项目"
+                            : undefined
+                        }
+                        onSelect={() =>
+                          ui.open({
+                            kind: "new-db",
+                            nodeId: m().nodeId!,
+                            projectId: props.lens(),
+                          })
+                        }
+                      >
+                        新建数据库
+                      </ContextMenu.Item>
                       <ContextMenu.Item
                         class={menu().item}
                         onSelect={async () => {
                           const nodeId = m().nodeId!;
-                          const name = await promptAction({ title: "新建分组", initial: "group" });
+                          const name = await promptAction({
+                            title: "新建分组",
+                            initial: "group",
+                          });
                           if (!name?.trim()) return;
-                          await unwrap(canvasApi.nodes({ id: nodeId }).groups.post({ name: name.trim() }));
+                          await unwrap(
+                            canvasApi
+                              .nodes({ id: nodeId })
+                              .groups.post({ name: name.trim() }),
+                          );
                           await refetch();
                         }}
-                      >新建分组</ContextMenu.Item>
+                      >
+                        新建分组
+                      </ContextMenu.Item>
                       <ContextMenu.Item
                         class={menu({ tone: "danger" }).item}
                         onSelect={async () => {
@@ -729,10 +993,14 @@ export function Board(props: { lens: () => number | null }) {
                             danger: true,
                           });
                           if (!ok) return;
-                          await unwrap(canvasApi.nodes({ id: nodeId }).delete());
+                          await unwrap(
+                            canvasApi.nodes({ id: nodeId }).delete(),
+                          );
                           await refetch();
                         }}
-                      >移除卡片</ContextMenu.Item>
+                      >
+                        移除卡片
+                      </ContextMenu.Item>
                     </>
                   ) : (
                     <For each={servers()}>
@@ -743,10 +1011,18 @@ export function Board(props: { lens: () => number | null }) {
                             // 世界地图：建卡无 projectId（服务端幂等——同服务器已上画则返回已有卡）
                             const flowX = m().flowX;
                             const flowY = m().flowY;
-                            await unwrap(canvasApi.nodes.post({ serverId: s.id, x: flowX, y: flowY }));
+                            await unwrap(
+                              canvasApi.nodes.post({
+                                serverId: s.id,
+                                x: flowX,
+                                y: flowY,
+                              }),
+                            );
                             await refetch();
                           }}
-                        >＋ {s.name}</ContextMenu.Item>
+                        >
+                          ＋ {s.name}
+                        </ContextMenu.Item>
                       )}
                     </For>
                   )}

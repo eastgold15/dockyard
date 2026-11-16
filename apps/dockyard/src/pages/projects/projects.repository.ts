@@ -1,15 +1,15 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../../shared/db";
-import { projects, type Project } from "./schema";
+import { projects } from "./schema";
 
 export class ProjectRepository {
   constructor(private readonly db: Db) {}
 
-  list(): Promise<Project[]> {
+  async list() {
     return this.db.select().from(projects).orderBy(projects.id);
   }
 
-  byId(id: number): Promise<Project | undefined> {
+  async byId(id: number) {
     return this.db
       .select()
       .from(projects)
@@ -18,7 +18,7 @@ export class ProjectRepository {
       .then((r) => r[0]);
   }
 
-  byLocalPath(localPath: string): Promise<Project | undefined> {
+  async byLocalPath(localPath: string) {
     return this.db
       .select()
       .from(projects)
@@ -32,7 +32,7 @@ export class ProjectRepository {
     repoUrl?: string,
     localPath?: string,
     sourceType?: "github" | "local",
-  ): Promise<Project> {
+  ) {
     const base =
       name
         .trim()
@@ -55,7 +55,7 @@ export class ProjectRepository {
     return row!;
   }
 
-  private bySlug(slug: string): Promise<Project | undefined> {
+  private async bySlug(slug: string) {
     return this.db
       .select()
       .from(projects)
@@ -64,7 +64,7 @@ export class ProjectRepository {
       .then((r) => r[0]);
   }
 
-  remove(id: number) {
+  async remove(id: number) {
     return this.db.delete(projects).where(eq(projects.id, id));
   }
 }

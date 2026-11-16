@@ -11,7 +11,7 @@ export type NewResource = Pick<
 export class ResourceRepository {
   constructor(private readonly db: Db) {}
 
-  ofServer(serverId: number): Promise<ServerResource[]> {
+  async ofServer(serverId: number) {
     return this.db
       .select()
       .from(serverResources)
@@ -19,7 +19,7 @@ export class ResourceRepository {
       .orderBy(serverResources.id);
   }
 
-  byId(id: number): Promise<ServerResource | undefined> {
+  async byId(id: number) {
     return this.db
       .select()
       .from(serverResources)
@@ -28,7 +28,7 @@ export class ResourceRepository {
       .then((r) => r[0]);
   }
 
-  async create(input: NewResource): Promise<ServerResource> {
+  async create(input: NewResource) {
     const [row] = await this.db
       .insert(serverResources)
       .values(input)
@@ -36,14 +36,14 @@ export class ResourceRepository {
     return row!;
   }
 
-  update(id: number, patch: Partial<Omit<ServerResource, "id">>) {
+  async update(id: number, patch: Partial<Omit<ServerResource, "id">>) {
     return this.db
       .update(serverResources)
       .set(patch)
       .where(eq(serverResources.id, id));
   }
 
-  remove(id: number) {
+  async remove(id: number) {
     return this.db.delete(serverResources).where(eq(serverResources.id, id));
   }
 }

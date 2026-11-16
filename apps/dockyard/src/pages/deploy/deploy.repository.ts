@@ -5,7 +5,6 @@ import {
   deployLogChunks,
   deployments,
   deployTargets,
-  type DeployArtifact,
   type Deployment,
   type DeployTarget,
 } from "./schema";
@@ -24,14 +23,14 @@ export type DeploymentRow = Deployment & { rollbackable: boolean };
 export class DeployRepository {
   constructor(private readonly db: Db) {}
 
-  targetsOfNode(nodeId: number): Promise<DeployTarget[]> {
+  async targetsOfNode(nodeId: number) {
     return this.db
       .select()
       .from(deployTargets)
       .where(eq(deployTargets.nodeId, nodeId));
   }
 
-  targetById(id: number): Promise<DeployTarget | undefined> {
+  async targetById(id: number) {
     return this.db
       .select()
       .from(deployTargets)
@@ -41,7 +40,7 @@ export class DeployRepository {
   }
 
   /** 项目空间内所有 app 目标（找出用户 compose 里自带的数据库服务用） */
-  appTargetsOfProject(projectId: number): Promise<DeployTarget[]> {
+  async appTargetsOfProject(projectId: number) {
     return this.db
       .select()
       .from(deployTargets)
@@ -54,7 +53,7 @@ export class DeployRepository {
   }
 
   /** 项目空间内所有 db 目标（依赖连线/连接串引用的候选集；世界地图后归属直接在 target 上） */
-  dbTargetsOfProject(projectId: number): Promise<DeployTarget[]> {
+  async dbTargetsOfProject(projectId: number) {
     return this.db
       .select()
       .from(deployTargets)
@@ -66,38 +65,38 @@ export class DeployRepository {
       );
   }
 
-  appTargets(): Promise<DeployTarget[]> {
+  async appTargets() {
     return this.db
       .select()
       .from(deployTargets)
       .where(eq(deployTargets.kind, "app"));
   }
 
-  async createTarget(input: NewTarget): Promise<DeployTarget> {
+  async createTarget(input: NewTarget) {
     const [row] = await this.db.insert(deployTargets).values(input).returning();
     return row!;
   }
 
-  updateTarget(id: number, patch: Partial<DeployTarget>) {
+  async updateTarget(id: number, patch: Partial<DeployTarget>) {
     return this.db
       .update(deployTargets)
       .set(patch)
       .where(eq(deployTargets.id, id));
   }
 
-  childrenOf(instanceId: number): Promise<DeployTarget[]> {
+  async childrenOf(instanceId: number) {
     return this.db
       .select()
       .from(deployTargets)
       .where(eq(deployTargets.instanceOf, instanceId));
   }
 
-  removeTarget(id: number) {
+  async removeTarget(id: number) {
     return this.db.delete(deployTargets).where(eq(deployTargets.id, id));
   }
 
   /** 删除分组前：组内目标回落到服务器卡（不连带删部署） */
-  clearGroup(groupId: number) {
+  async clearGroup(groupId: number) {
     return this.db
       .update(deployTargets)
       .set({ groupId: null })
@@ -111,7 +110,7 @@ export class DeployRepository {
       rollbackOf?: number;
       artifactId?: number;
     },
-  ): Promise<Deployment> {
+  ) {
     const [row] = await this.db
       .insert(deployments)
       .values({ targetId, ...extra })
@@ -120,7 +119,7 @@ export class DeployRepository {
   }
 
   /** 上次成功部署（逻辑库幂等判断用；不含本次 in-flight 行） */
-  lastSuccessfulDeployment(targetId: number): Promise<Deployment | undefined> {
+  async lastSuccessfulDeployment(targetId: number) {
     return this.db
       .select()
       .from(deployments)
@@ -139,7 +138,7 @@ export class DeployRepository {
   async deploymentsOfTarget(
     targetId: number,
     limit = 10,
-  ): Promise<DeploymentRow[]> {
+  ) {
     const rows = await this.db
       .select({ run: deployments, artifact: deployArtifacts })
       .from(deployments)
@@ -153,7 +152,7 @@ export class DeployRepository {
     }));
   }
 
-  deploymentById(id: number): Promise<Deployment | undefined> {
+  async deploymentById(id: number) {
     return this.db
       .select()
       .from(deployments)
@@ -162,7 +161,7 @@ export class DeployRepository {
       .then((r) => r[0]);
   }
 
-  latestDeployment(targetId: number): Promise<Deployment | undefined> {
+  async latestDeployment(targetId: number) {
     return this.db
       .select()
       .from(deployments)
@@ -172,12 +171,12 @@ export class DeployRepository {
       .then((r) => r[0]);
   }
 
-  updateDeployment(id: number, patch: Partial<Deployment>) {
+  async updateDeployment(id: number, patch: Partial<Deployment>) {
     return this.db.update(deployments).set(patch).where(eq(deployments.id, id));
   }
 
   /** 非终态 run（启动对账用：这些是上次进程中断的残留，内存里已无人推进） */
-  unfinishedDeployments(): Promise<Deployment[]> {
+  async unfinishedDeployments() {
     return this.db
       .select()
       .from(deployments)
@@ -204,7 +203,7 @@ export class DeployRepository {
   }
 
   /** 整段日志（chunks 按 seq 拼接；chunks 为空时兜底旧 logText——存量行迁移已回填，兜底是防御） */
-  async logTextOf(runId: number): Promise<string> {
+  async logTextOf(runId: number) {
     const chunks = await this.db
       .select({ text: deployLogChunks.text })
       .from(deployLogChunks)
@@ -262,7 +261,7 @@ export class DeployRepository {
 
   // ── 部署产物（六阶段零界点；回滚 = 激活旧产物）──
 
-  async createArtifact(input: NewArtifact): Promise<DeployArtifact> {
+  async createArtifact(input: NewArtifact) {
     const [row] = await this.db
       .insert(deployArtifacts)
       .values(input)
@@ -270,7 +269,7 @@ export class DeployRepository {
     return row!;
   }
 
-  artifactById(id: number): Promise<DeployArtifact | undefined> {
+  async artifactById(id: number) {
     return this.db
       .select()
       .from(deployArtifacts)

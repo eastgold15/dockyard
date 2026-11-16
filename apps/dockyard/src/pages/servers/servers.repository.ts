@@ -19,11 +19,11 @@ export type NewServer = Pick<
 export class ServerRepository {
   constructor(private readonly db: Db) {}
 
-  list(): Promise<Server[]> {
+  async list() {
     return this.db.select().from(servers).orderBy(servers.id);
   }
 
-  byId(id: number): Promise<Server | undefined> {
+  async byId(id: number) {
     return this.db
       .select()
       .from(servers)
@@ -32,16 +32,16 @@ export class ServerRepository {
       .then((r) => r[0]);
   }
 
-  async create(input: NewServer): Promise<Server> {
+  async create(input: NewServer) {
     const [row] = await this.db.insert(servers).values(input).returning();
     return row!;
   }
 
-  update(id: number, patch: Partial<Omit<Server, "id">>) {
+  async update(id: number, patch: Partial<Omit<Server, "id">>) {
     return this.db.update(servers).set(patch).where(eq(servers.id, id));
   }
 
-  remove(id: number) {
+  async remove(id: number) {
     return this.db.delete(servers).where(eq(servers.id, id));
   }
 }

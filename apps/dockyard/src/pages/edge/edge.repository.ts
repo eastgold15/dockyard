@@ -8,11 +8,11 @@ import { domains, type Domain } from "./schema";
 export class EdgeRepository {
   constructor(private readonly db: Db) {}
 
-  domainsOfTarget(targetId: number): Promise<Domain[]> {
+  async domainsOfTarget(targetId: number) {
     return this.db.select().from(domains).where(eq(domains.targetId, targetId));
   }
 
-  domainById(id: number): Promise<Domain | undefined> {
+  async domainById(id: number) {
     return this.db
       .select()
       .from(domains)
@@ -21,7 +21,7 @@ export class EdgeRepository {
       .then((r) => r[0]);
   }
 
-  domainByHostname(hostname: string): Promise<Domain | undefined> {
+  async domainByHostname(hostname: string) {
     return this.db
       .select()
       .from(domains)
@@ -32,23 +32,23 @@ export class EdgeRepository {
 
   async addDomain(
     input: Omit<typeof domains.$inferInsert, "id" | "createdAt">,
-  ): Promise<Domain> {
+  ) {
     const [row] = await this.db.insert(domains).values(input).returning();
     return row!;
   }
 
-  updateDomain(id: number, patch: Partial<Domain>) {
+  async updateDomain(id: number, patch: Partial<Domain>) {
     return this.db.update(domains).set(patch).where(eq(domains.id, id));
   }
 
-  removeDomain(id: number) {
+  async removeDomain(id: number) {
     return this.db.delete(domains).where(eq(domains.id, id));
   }
 
   /** 只读探针：target 的 kind/name（域名抢占/绑定校验的报错信息用） */
   async targetBrief(
     id: number,
-  ): Promise<{ kind: string; name: string } | undefined> {
+  ) {
     const rows = await this.db
       .select({ kind: deployTargets.kind, name: deployTargets.name })
       .from(deployTargets)
@@ -58,7 +58,7 @@ export class EdgeRepository {
   }
 
   /** 一台服务器（target → node → server）上的全部域名——edge 路由全量对账用 */
-  async domainsOfServer(serverId: number): Promise<Domain[]> {
+  async domainsOfServer(serverId: number) {
     const rows = await this.db
       .select({ d: domains, nodeServerId: canvasNodes.serverId })
       .from(domains)

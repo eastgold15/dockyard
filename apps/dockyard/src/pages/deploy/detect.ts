@@ -371,7 +371,7 @@ export function detectFromCompose(composeText: string): DetectResult {
   };
 }
 
-import { envMapToText } from "../../shared/env-text";
+import { envMapToText, textToEnvMap } from "../../shared/env-text";
 
 // env 文本转换函数抽到了零依赖的 env-text.ts（canvas client 也要打包），此处转出口保持旧 import 不破
 export { serviceEnvToText, textToEnvMap } from "../../shared/env-text";
@@ -379,6 +379,28 @@ export { serviceEnvToText, textToEnvMap } from "../../shared/env-text";
 /** rootEnv → .env 文本（服务 compose 的 ${VAR} 插值；服务级变量走 override 的 environment，不扁平化） */
 export function detectToEnvText(detect: Pick<DetectResult, "rootEnv">): string {
   return envMapToText(detect.rootEnv);
+}
+
+/** app 级 .env 变量 → 注入容器的一层 override（本次 target 拥有的服务）。
+ *  app 级 .env 原本只给 compose 做 ${VAR} 插值；服务直接读 process.env（zod 启动校验、
+ *  框架配置等）时拿不到值，表现为「变量填了却没进容器」。
+ *  这层把同一份变量以 environment 注入。调用方按 base → env 层 → docker-compose.dockyard.yml
+ *  的顺序 -f 叠加，因此服务级同名变量优先生效。
+ *  含秘密值，写远端即明文（与 .env 同等敏感），不落库。 */
+export function appEnvCompose(
+  envText: string,
+  serviceNames: string[],
+): string | undefined {
+  const environment = Object.fromEntries(
+    Object.entries(textToEnvMap(envText)).map(([k, v]) => [k, v.value]),
+  );
+  if (Object.keys(environment).length === 0 || serviceNames.length === 0)
+    return undefined;
+  return stringifyYaml({
+    services: Object.fromEntries(
+      serviceNames.map((name) => [name, { environment }]),
+    ),
+  });
 }
 
 /** 资源限制 + 服务级 environment → compose override。

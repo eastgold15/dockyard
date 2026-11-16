@@ -78,7 +78,18 @@ export class LocalTransport implements ServerTransport {
 export function remoteTransport(client: SshClient): ServerTransport {
   return {
     exec: (cmd) => client.exec(cmd),
-    sftp: () => openSftp(client),
+    sftp: async () => {
+      const sftp = await openSftp(client);
+      return {
+        // SFTP write 不带权限位：远端按 umask 落 644（同机任何用户可读）。
+        // 这条通道专门写 .env/override/证书/临时配置，统一收口 600——与本地落盘同标准。
+        async write(path, contents) {
+          await sftp.write(path, contents);
+          await client.exec(`chmod 600 "${path}"`);
+        },
+        close: () => sftp.close(),
+      };
+    },
   };
 }
 

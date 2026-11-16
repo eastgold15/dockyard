@@ -18,7 +18,7 @@ import type { ServerService } from "../servers/servers.socket";
 import { openServerSftp } from "../servers/servers.socket";
 import type { ServerTransport } from "../servers/servers.socket";
 import type { DeployRepository } from "./deploy.repository";
-import { envFilePaths } from "./detect";
+import { appEnvCompose, envFilePaths } from "./detect";
 import type {
   DeployArtifact,
   Deployment,
@@ -65,6 +65,9 @@ export interface Provision {
   /** 归属标签 override 内容（dockyard.managed/target-id）：必须写盘并以 -f 叠加，
    *  否则 up 出来的容器不带标签，重部署 preflight 会把它当成「别人的容器」拒绝 */
   labelsCompose?: string;
+  /** app 级 .env 注入容器的 override 层内容（写盘 docker-compose.dockyard-env.yml，
+   *  -f 排在服务级 override 之前；null/undefined = 本次无变量，需清掉上次残留文件） */
+  appEnvCompose?: string;
   /** 实际 up 的服务子集（共享资源复用过滤中间件；undefined = 全量） */
   upServices?: string[];
   /** 单服务目标不连带启动 depends_on；数据库等基础设施必须先独立部署 */
@@ -74,8 +77,14 @@ export interface Provision {
   forceRecreate?: boolean;
   /** 源码版本（github 短 sha / local 短 sha）；有则回写 lastKnownSha 并进产物 */
   sha?: string;
-  /** 产物快照原料（captureArtifact 加密落 deploy_artifacts） */
-  snapshot: { compose: string; override: string; env: string };
+  /** 产物快照原料（captureArtifact 加密落 deploy_artifacts）。
+   *  appEnv 是 app 级 .env 的注入层（可选：旧产物没有这一层） */
+  snapshot: {
+    compose: string;
+    override: string;
+    env: string;
+    appEnv?: string;
+  };
 }
 
 /** 部署形态：compose 形态实现 provision 走共享骨架；custom（逻辑库）全程自控 */
@@ -393,6 +402,7 @@ export async function inspectCompose(
     | "services"
     | "composeArgs"
     | "labelsCompose"
+    | "appEnvCompose"
     | "noDeps"
   >
 > {
@@ -439,7 +449,14 @@ export async function inspectCompose(
     );
   // 归属标签必须随 up 一起创建（容器标签不可变）：单独一层 override，放在最后保证压过用户 override
   const labelsCompose = ownershipCompose(opts.target.id, selectedNames);
+  // app 级 .env 只做 compose 插值，服务直接读 process.env 时拿不到值：
+  // 同一份变量再以 environment 注入本次 up 的服务。排在服务级 override 之前 → 服务级同名优先。
+  const appEnv =
+    opts.target.kind === "app" && opts.target.envJson
+      ? appEnvCompose(decryptSecret(opts.target.envJson), selectedNames)
+      : undefined;
   const files = [`-f "${opts.composeFile}"`];
+  if (appEnv) files.push("-f docker-compose.dockyard-env.yml");
   if (opts.hasOverride) files.push("-f docker-compose.dockyard.yml");
   if (labelsCompose) files.push("-f docker-compose.dockyard-labels.yml");
   return {
@@ -450,6 +467,7 @@ export async function inspectCompose(
     // 注意：-f 一旦指定就只认列出的文件，base 必须一起带上
     composeArgs: files.join(" "),
     labelsCompose,
+    appEnvCompose: appEnv,
   };
 }
 
@@ -610,6 +628,8 @@ export async function activateArtifact(
     compose: string;
     override: string;
     env: string;
+    /** app 级 .env 注入层（旧产物没有） */
+    appEnv?: string;
   };
   const serverId = await h.nodeServerId(target);
   const client = await h.serverService.transport(serverId);
@@ -621,11 +641,16 @@ export async function activateArtifact(
   // 的产物 A、再回滚到无 .env 的产物 B」时，B 的 compose 会在该目录里自动加载 A 的 .env
   //（错误数据库地址/密钥静默生效）
   await client.exec(
-    `mkdir -p "${rollbackDir}" && cd "${rollbackDir}" && rm -f .env docker-compose.dockyard.yml docker-compose.rollback.yml docker-compose.labels.yml`,
+    `mkdir -p "${rollbackDir}" && cd "${rollbackDir}" && rm -f .env docker-compose.dockyard.yml docker-compose.dockyard-env.yml docker-compose.rollback.yml docker-compose.labels.yml`,
   );
   const sftp = await openServerSftp(client);
   await sftp.write(`${rollbackDir}/docker-compose.yml`, snapshot.compose);
   if (snapshot.env) await sftp.write(`${rollbackDir}/.env`, snapshot.env);
+  if (snapshot.appEnv)
+    await sftp.write(
+      `${rollbackDir}/docker-compose.dockyard-env.yml`,
+      snapshot.appEnv,
+    );
   if (snapshot.override)
     await sftp.write(
       `${rollbackDir}/docker-compose.dockyard.yml`,
@@ -633,6 +658,8 @@ export async function activateArtifact(
     );
 
   const files = ["-f docker-compose.yml"];
+  // 与正常部署同一顺序：app 级注入层在服务级 override 之前（同名变量服务级优先）
+  if (snapshot.appEnv) files.push("-f docker-compose.dockyard-env.yml");
   if (snapshot.override) files.push("-f docker-compose.dockyard.yml");
   // 镜像 pin：up 用旧 tag，不触发 build / 拉新
   const pinned = Object.entries(artifact.imageTags ?? {}).filter(

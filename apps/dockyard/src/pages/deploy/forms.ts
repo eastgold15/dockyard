@@ -167,13 +167,30 @@ export const githubAppForm: DeployForm = {
         `${srcDir}/docker-compose.dockyard-labels.yml`,
         inspected.labelsCompose,
       );
-    if (target.envJson)
-      await sftp.write(`${srcDir}/.env`, decryptSecret(target.envJson));
+    // .env 必须落在 compose 文件所在目录：docker compose 的 ${VAR} 插值只读
+    // 「第一个 -f 所在目录/.env」；子目录 compose（deploy/docker-compose.yml）写 remoteDir 根读不到
+    if (target.envJson) {
+      await sftp.write(
+        `${join(srcDir, dirname(composePath))}/.env`,
+        decryptSecret(target.envJson),
+      );
+      // 旧版本把 .env 写在 remoteDir 根（子目录 compose 读不到）——清掉，避免两份不同步误导排查
+      if (dirname(composePath) !== ".")
+        await fresh.exec(`rm -f "${srcDir}/.env"`);
+    }
     if (target.overrideCompose)
       await sftp.write(
         `${srcDir}/docker-compose.dockyard.yml`,
         decryptSecret(target.overrideCompose),
       );
+    // app 级 .env 的容器注入层：本次有变量就写，没有就删掉上次残留（-f 已不再引用它）
+    if (inspected.appEnvCompose)
+      await sftp.write(
+        `${srcDir}/docker-compose.dockyard-env.yml`,
+        inspected.appEnvCompose,
+      );
+    else
+      await fresh.exec(`rm -f "${srcDir}/docker-compose.dockyard-env.yml"`);
     await sftp.close();
 
     return {
@@ -190,6 +207,7 @@ export const githubAppForm: DeployForm = {
           ? decryptSecret(target.overrideCompose)
           : "",
         env: target.envJson ? decryptSecret(target.envJson) : "",
+        appEnv: inspected.appEnvCompose ?? "",
       },
     };
   },
@@ -349,6 +367,16 @@ export function localAppForm(proj: Project): DeployForm {
           `${remoteDir}/docker-compose.dockyard.yml`,
           decryptSecret(target.overrideCompose),
         );
+      // app 级 .env 的容器注入层：本次有变量就写，没有就删掉上次残留（-f 已不再引用它）
+      if (inspected.appEnvCompose)
+        await sftp.write(
+          `${remoteDir}/docker-compose.dockyard-env.yml`,
+          inspected.appEnvCompose,
+        );
+      else
+        await client.exec(
+          `rm -f "${remoteDir}/docker-compose.dockyard-env.yml"`,
+        );
       await sftp.close();
 
       return {
@@ -364,6 +392,7 @@ export function localAppForm(proj: Project): DeployForm {
             ? decryptSecret(target.overrideCompose)
             : "",
           env: target.envJson ? decryptSecret(target.envJson) : "",
+          appEnv: inspected.appEnvCompose ?? "",
         },
       };
     },

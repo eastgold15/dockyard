@@ -76,3 +76,15 @@ SQLite + drizzle。数据库文件与密钥在 `$XDG_DATA_HOME/dockyard/`，git 
 
 - `apps/dockyard/README.md` 指向 `../website/docs/`，实际文档站是 `apps/docs/`。
 - `.claude/settings.json` 的 PostToolUse hook 调用 `scripts/atoms-mcp.ts`，仓库中不存在该脚本（hook 会静默失败）。
+
+
+
+本仓库 TypeScript 规范（必须遵守）：
+
+- 泛型函数体内禁止对泛型参数做成员访问并让结果进入返回值。
+  需要精确类型时，把成员访问移到调用方，作为普通参数传入。
+- 所有导出函数的返回类型必须显式标注，不依赖函数体推断。
+- 禁止用 `as` 掩盖泛型退化；确需断言时在注释说明原因，且只允许在
+  函数边界出现一处。
+
+如果你认为需要违反以上任一条，先停下来解释原因，等我确认。

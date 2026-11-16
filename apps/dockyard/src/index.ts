@@ -6,14 +6,15 @@ import "typebox/value";
 import "typebox/schema";
 import "typebox/compile";
 
-import { start, type ServiceSpecs } from "@elysiax/core";
-import type { Container } from "@inferdi/inferdi";
+import { start } from "@elysiax/core";
 import "./app.layout";
 import * as gen from "../.elysiax";
-import type { ServiceMap } from "../.elysiax";
 
-const { root } = await start({
+// 根容器在入口实例化：类型来自生成物的链式注册，后台轮询器与请求共用这份单例
+const root = gen.buildRootContainer();
+await start({
   port: 3003,
+  root,
   gen,
   api: {
     // OpenAPI 文档：/openapi（Scalar UI）。运行时路由注册表生成 spec，
@@ -25,7 +26,7 @@ const { root } = await start({
 });
 
 // 后台轮询器与请求共用同一个根容器（DI 服务单例：SSH 连接池只有一份）
-const di = root as Container<ServiceSpecs<ServiceMap>>;
+const di = root;
 // 内置本机：程序自己认领（固定 127.0.0.1 + 当前系统用户，本地进程直连）；
 // 旧版本用户添加的回环行原地升级为内置行（保留 id，画布卡/部署目标外键不断）
 const local = await di.get("serverService").ensureLocal();

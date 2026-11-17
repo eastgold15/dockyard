@@ -51,7 +51,6 @@ export const githubAppForm: DeployForm = {
     const probe = await client.exec(
       `[ -d "${srcDir}/.git" ] && echo yes || echo no`,
     );
-    let cloned = false;
     if (probe.stdout.trim() !== "yes") {
       await rlog(`远端克隆 ${ownerRepo} …`);
       await client.exec(`mkdir -p "$(dirname "${srcDir}")"`);
@@ -65,20 +64,55 @@ export const githubAppForm: DeployForm = {
       await client.exec(
         `git -C "${srcDir}" remote set-url origin "https://github.com/${ownerRepo}.git"`,
       );
-      cloned = true;
     }
-    // 手动重试复用现有检出：构建失败后重部署不该再次访问 GitHub。
-    // 轮询发现新版本（updateAvailable）或自动部署时才 fetch + checkout。
-    if (!cloned && (ctx.run.trigger === "auto" || target.updateAvailable)) {
-      const fetch = await client.exec(
-        `git -C "${srcDir}" fetch "${authedUrl}" "${branch}" && git -C "${srcDir}" checkout FETCH_HEAD`,
+    // ── 取码：判定「有没有更新」放在控制面，远端只负责取 ──
+    // 远端服务器到 GitHub 的链路不稳（TLS 抖动会打断整轮部署），
+    // 而控制面（本地）问 GitHub 是可靠的。所以：控制面查上游最新 sha，
+    // 与远端现有检出比对——相同就复用缓存（完全不碰远端→GitHub 链路），
+    // 不同才让远端 fetch。手动重部署同样走这条路径，不再依赖 updateAvailable 徽章。
+    const currentSha = (
+      await client.exec(`git -C "${srcDir}" rev-parse --short=8 HEAD`)
+    ).stdout.trim();
+    let upstreamShort: string | null = null;
+    try {
+      const head = await h.github.latestSha(ownerRepo, branch);
+      upstreamShort = head ? head.sha.slice(0, 8) : null;
+    } catch (error) {
+      await rlog(`⚠️ 查询上游最新提交失败：${(error as Error).message}`);
+    }
+    // upstreamShort 拿不到（GitHub 不可达/限流）时按「可能有更新」处理：
+    // 宁可多 fetch 一次，也不要在有更新时拿旧代码构建。
+    const needFetch = !upstreamShort || upstreamShort !== currentSha;
+    // stale = 本轮构建用的不是上游最新提交（拉取失败降级时为 true）
+    let stale = false;
+    if (!needFetch) {
+      await rlog(`远端已是上游最新提交 ${currentSha}，复用现有检出`);
+    } else {
+      await rlog(
+        upstreamShort
+          ? `拉取上游最新提交 ${upstreamShort}（远端现有 ${currentSha}）…`
+          : "未能确认上游版本，拉取远端分支最新提交…",
       );
-      if (fetch.code !== 0)
-        throw new ServiceError(
-          redact(`远端拉取失败（exit ${fetch.code}）\n${fetch.stderr}`),
+      // 瞬时网络抖动（TLS 断连）重试；三次都失败不再打死整轮——
+      // 退回远端现有检出继续构建，并在日志与 UI 上明确标注「构建的不是最新提交」。
+      let fetched = false;
+      let fetchErr = "";
+      for (let attempt = 1; attempt <= 3 && !fetched; attempt++) {
+        const fetch = await client.exec(
+          `git -C "${srcDir}" fetch --no-tags "${authedUrl}" "${branch}" && git -C "${srcDir}" checkout --force --detach FETCH_HEAD`,
         );
-    } else if (!cloned) {
-      await rlog("复用远端现有源码，本次不访问 GitHub");
+        fetched = fetch.code === 0;
+        if (!fetched) {
+          fetchErr = fetch.stderr || fetch.stdout || "";
+          if (attempt < 3) await rlog(`拉取失败（exit ${fetch.code}），重试…`);
+        }
+      }
+      if (!fetched) {
+        stale = true;
+        await rlog(
+          `⚠️ 拉取最新提交失败（${fetchErr.slice(0, 300).trim() || "无输出"}），本轮沿用远端现有检出 ${currentSha}`,
+        );
+      }
     }
     const sha = (
       await client.exec(`git -C "${srcDir}" rev-parse --short=8 HEAD`)
@@ -200,6 +234,8 @@ export const githubAppForm: DeployForm = {
         ? [target.serviceName]
         : (target.upServices ?? undefined),
       sha,
+      // 拉取失败降级：构建的不是上游最新提交 → 徽章保持「有更新」
+      shaStale: stale || undefined,
       log: rlog, // up 段日志保持脱敏纪律
       snapshot: {
         compose: composeText,

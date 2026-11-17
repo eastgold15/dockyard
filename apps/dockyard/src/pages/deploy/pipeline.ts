@@ -77,6 +77,9 @@ export interface Provision {
   forceRecreate?: boolean;
   /** 源码版本（github 短 sha / local 短 sha）；有则回写 lastKnownSha 并进产物 */
   sha?: string;
+  /** 本轮构建的不是上游最新提交（拉取失败降级）：
+   *  成功回写时不清 updateAvailable 徽章——「已部署版本」落后于上游的事实必须留着 */
+  shaStale?: boolean;
   /** 产物快照原料（captureArtifact 加密落 deploy_artifacts）。
    *  appEnv 是 app 级 .env 的注入层（可选：旧产物没有这一层） */
   snapshot: {
@@ -560,7 +563,8 @@ export async function activate(
   if (p.sha)
     await h.repo.updateTarget(target.id, {
       lastKnownSha: p.sha,
-      updateAvailable: false,
+      // 拉取失败降级构建：已部署版本落后于上游 → 徽章必须继续亮着
+      updateAvailable: p.shaStale ? true : false,
     });
 }
 

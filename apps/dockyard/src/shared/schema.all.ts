@@ -8,3 +8,4 @@ export * from "../pages/canvas/schema";
 export * from "../pages/deploy/schema";
 export * from "../pages/resources/schema";
 export * from "../pages/edge/schema";
+export * from "../pages/github/schema";

@@ -13,6 +13,7 @@ import { migrations as canvasMigrations } from "../pages/canvas/migrations";
 import { migrations as resourcesMigrations } from "../pages/resources/migrations";
 import { migrations as deployMigrations } from "../pages/deploy/migrations";
 import { migrations as edgeMigrations } from "../pages/edge/migrations";
+import { migrations as githubMigrations } from "../pages/github/migrations";
 
 // 迁移日志以纯 TS 内嵌（bun --compile 后没有文件系统里的 migrationsFolder）。
 // 各片段的 timestamp 是全局历史序；聚合后重排为连续序号，保证同 timestamp 条目按上方 import 次序执行。
@@ -24,6 +25,7 @@ export const migrationsJournal: MigrationsJournal = [
   ...resourcesMigrations,
   ...deployMigrations,
   ...edgeMigrations,
+  ...githubMigrations,
 ]
   .sort((a, b) => a.timestamp - b.timestamp)
   .map((m, i) => ({ ...m, timestamp: i + 1 }));

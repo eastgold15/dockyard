@@ -92,12 +92,28 @@ export class UpdatePoller {
     );
   }
 
-  private async tick() {
+  /** 指定仓库的即时更新检查（push webhook 触发）：只处理该仓库的目标 */
+  async checkRepo(ownerRepo: string): Promise<void> {
+    await this.tick(ownerRepo);
+  }
+
+  /** 目标所属仓库（owner/repo）；解析不了返回 null */
+  private ownerRepoOf(target: DeployTarget): string | null {
+    if (!target.repoUrl) return null;
+    try {
+      return parseOwnerRepo(target.repoUrl);
+    } catch {
+      return null;
+    }
+  }
+
+  private async tick(onlyRepo?: string) {
     const apps = await this.db
       .select()
       .from(deployTargets)
       .where(eq(deployTargets.kind, "app"));
     for (const target of apps) {
+      if (onlyRepo && this.ownerRepoOf(target) !== onlyRepo) continue;
       if (target.deployPolicy === "manual") continue; // 手动策略完全不碰远端/本地仓库
       try {
         const head = await this.headOf(target);

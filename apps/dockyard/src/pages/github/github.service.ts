@@ -260,7 +260,25 @@ export class GithubService {
   /** 访问令牌：App installation token 优先，回落 gh CLI / hosts.yml */
   async token(): Promise<string> {
     const install = await this.appInstall();
-    if (install) return this.appToken(install);
+    if (install) {
+      try {
+        return await this.appToken(install);
+      } catch (error) {
+        // App 失效（被卸载 / 私钥轮换 / 安装实例被删）不该让整个工具罢工：
+        // 有 gh 登录态就回落 gh（App 的错误信息仍打出来，别静默降级）
+        const fallback = await this.ghToken().catch(() => null);
+        if (!fallback) throw error;
+        console.warn(
+          `[github] GitHub App 令牌不可用，已回落 gh CLI：${(error as Error).message}`,
+        );
+        return fallback;
+      }
+    }
+    return this.ghToken();
+  }
+
+  /** gh CLI 凭据（10 分钟缓存）：gh auth token → hosts.yml */
+  private async ghToken(): Promise<string> {
     if (this.tokenCache && Date.now() - this.tokenCache.at < 10 * 60_000) {
       return this.tokenCache.token;
     }

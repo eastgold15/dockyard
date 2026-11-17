@@ -7,7 +7,7 @@
  */
 import { createContext, useContext } from "solid-js";
 import type { ServiceState } from "../../canvas.model";
-import type { DeployStage } from "../../../deploy/deploy.socket";
+import type { DeployStage, LogSource } from "../../../deploy/deploy.socket";
 import { STAGES } from "../panes/pipeline-steps";
 
 export type DeployStatus =
@@ -41,9 +41,13 @@ const STATUSES: ReadonlySet<string> = new Set<DeployStatus>([
 export interface LiveState {
   targets: Record<number, TargetLive>;
   services: Record<string, ServiceState>; // key = `${targetId}:${svcName}`
-  // 部署日志增量聚合（SSE log 事件）：按 target 归并当前 run 的行，日志抽屉直接渲染。
-  // runId 切换即重置；上限 5000 行防长构建撑爆内存（完整日志永远在服务端 chunks 里）。
-  logs: Record<number, { runId: number; lines: string[] }>;
+  // 日志增量聚合（SSE log 事件）：按 (target, source) 归桶——构建/运行时/控制台三源互不串台。
+  // key = `${targetId}:${source}`；runId 切换即重置（构建源），运行时/控制台无 run 归属。
+  // 上限 5000 行防长构建撑爆内存（完整日志永远在服务端 chunks 里）。
+  logs: Record<
+    string,
+    { source: LogSource; runId: number | null; lines: string[] }
+  >;
 }
 
 export const emptyLive: LiveState = { targets: {}, services: {}, logs: {} };
@@ -72,10 +76,11 @@ export const useServiceState = (targetId: number, svcName: string) => {
     ctx.services[`${targetId}:${svcName}`] ?? "unknown";
 };
 
-/** 返回 accessor：该目标当前 run 的 SSE 日志行（无则 null——未开播或非当前 run） */
-export const useDeployLog = (targetId: number) => {
+/** 返回 accessor：该目标当前 run 的 SSE 日志行（无则 null——未开播或非当前 run）
+ *  source 区分三源：build=部署构建 / runtime=容器运行时 / console=交互控制台 */
+export const useDeployLog = (targetId: number, source: LogSource = "build") => {
   const ctx = useContext(LiveContext);
-  return () => ctx.logs[targetId] ?? null;
+  return () => ctx.logs[`${targetId}:${source}`] ?? null;
 };
 
 /**
@@ -126,21 +131,38 @@ function parseStage(
 }
 
 /**
- * log 帧 → 单 target 的下一日志块（纯函数，LiveProvider 按键写 store 时调用，有单测）。
+ * log 帧 → 单 (target, source) 桶的下一日志块（纯函数，LiveProvider 按键写 store 时调用，有单测）。
  * 同 run 追加、换 run 重置；超过 LOG_TAIL_LIMIT 丢最旧行（完整日志在服务端）。
- * runId 缺失的坏帧：沿用当前块所属 run；连当前块都没有则无从归属，返回 null 丢弃。
+ *
+ * source 缺省视为 build（兼容旧帧）；构建源必须有 run 归属，缺 runId 的坏帧直接丢弃；
+ * 运行时/控制台源没有 run 归属，runId 记 null。
+ * 块里记着 source：万一调用方喂了别的源的块，行不继承（桶由调用方按 key 分，这里是第二道防线）。
  */
 export function nextLog(
-  cur: LiveState["logs"][number] | undefined,
+  cur: LiveState["logs"][string] | undefined,
   msg: Record<string, unknown>,
-): LiveState["logs"][number] | null {
-  const runId = typeof msg.runId === "number" ? msg.runId : cur?.runId;
-  if (runId === undefined) return null;
-  const base = cur && cur.runId === runId ? cur.lines : [];
+): LiveState["logs"][string] | null {
+  const source = (
+    typeof msg.source === "string" ? msg.source : "build"
+  ) as LogSource;
+  const sameSource = cur !== undefined && cur.source === source;
+  const runId =
+    typeof msg.runId === "number"
+      ? msg.runId
+      : sameSource && cur
+        ? cur.runId
+        : null;
+  if (source === "build" && runId === null) return null;
+  const base =
+    sameSource && cur && cur.runId === runId ? cur.lines : [];
   // lines 必须是字符串数组：坏帧（字符串/数字/对象）若直接展开会逐字符拆行或抛错，
   // 整帧日志静默丢失；非数组按空帧处理（保留 base，不污染）
   const incoming = Array.isArray(msg.lines)
     ? (msg.lines as unknown[]).filter((l): l is string => typeof l === "string")
     : [];
-  return { runId, lines: [...base, ...incoming].slice(-LOG_TAIL_LIMIT) };
+  return {
+    source,
+    runId,
+    lines: [...base, ...incoming].slice(-LOG_TAIL_LIMIT),
+  };
 }

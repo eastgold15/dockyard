@@ -15,6 +15,10 @@ export { DeployService, sourceTypeOf } from "./deploy.service";
 export type { DbRef, DbConnection, EnvEntry } from "./deploy.service";
 export { events, CANVAS_CHANNEL } from "./events";
 export type { CanvasEvent } from "./events";
+// 日志三源的公共类型（client 只取类型：log-stream.ts 不 import Node-only 包）
+export type { LogSource, LogChunk } from "./log-stream";
+// 多路复用帧头剥离（嵌套原子 runtime 也用得到——跨原子必须走插座）
+export { decodeDockerFrames } from "./log-stream";
 export { ContainerPoller } from "./container-poller";
 export { UpdatePoller } from "./update-poller";
 export {

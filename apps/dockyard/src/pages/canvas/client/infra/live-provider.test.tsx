@@ -118,9 +118,9 @@ test("日志帧按 run 增量合并，换 run 重置", () => {
   const h = mount();
   FakeES.push({ type: "log", targetId: 1, runId: 7, lines: ["a"] });
   FakeES.push({ type: "log", targetId: 1, runId: 7, lines: ["b"] });
-  expect(h.log()).toEqual({ runId: 7, lines: ["a", "b"] });
+  expect(h.log()).toEqual({ source: "build", runId: 7, lines: ["a", "b"] });
   FakeES.push({ type: "log", targetId: 1, runId: 8, lines: ["c"] });
-  expect(h.log()).toEqual({ runId: 8, lines: ["c"] });
+  expect(h.log()).toEqual({ source: "build", runId: 8, lines: ["c"] });
   h.dispose();
 });
 
@@ -129,7 +129,7 @@ test("日志按 target 分桶：别的 target 的帧不串行", () => {
   FakeES.push({ type: "log", targetId: 1, runId: 7, lines: ["a"] });
   FakeES.push({ type: "log", targetId: 2, runId: 9, lines: ["x"] });
   FakeES.push({ type: "log", targetId: 1, runId: 7, lines: ["b"] });
-  expect(h.log()).toEqual({ runId: 7, lines: ["a", "b"] });
+  expect(h.log()).toEqual({ source: "build", runId: 7, lines: ["a", "b"] });
   h.dispose();
 });
 

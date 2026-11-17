@@ -35,16 +35,35 @@ beforeEach(async () => {
 
 test("appendLogChunk：seq 递增、logTextOf 按序拼接", async () => {
   const run = await repo.createDeployment(targetId);
-  await repo.appendLogChunk(run.id, "第一行");
-  await repo.appendLogChunk(run.id, "第二行");
-  await repo.appendLogChunk(run.id, "第三行");
-  expect(await repo.logTextOf(run.id)).toBe("第一行\n第二行\n第三行");
+  await repo.appendLogChunk({
+    targetId,
+    source: "build",
+    runId: run.id,
+    text: "第一行",
+  });
+  await repo.appendLogChunk({
+    targetId,
+    source: "build",
+    runId: run.id,
+    text: "第二行",
+  });
+  await repo.appendLogChunk({
+    targetId,
+    source: "build",
+    runId: run.id,
+    text: "第三行",
+  });
+  expect(
+    await repo.logTextOf({ targetId, source: "build", runId: run.id }),
+  ).toBe("第一行\n第二行\n第三行");
 });
 
 test("logTextOf：chunks 为空时兜底旧 logText（存量防御）", async () => {
   const run = await repo.createDeployment(targetId);
   await repo.updateDeployment(run.id, { logText: "旧格式日志" });
-  expect(await repo.logTextOf(run.id)).toBe("旧格式日志");
+  expect(
+    await repo.logTextOf({ targetId, source: "build", runId: run.id }),
+  ).toBe("旧格式日志");
 });
 
 test("createDeployment：trigger/rollbackOf 血缘落库", async () => {
@@ -71,8 +90,18 @@ test("pruneRuns：只留最近 keep 条，chunks 级联清", async () => {
   const ids: number[] = [];
   for (let i = 0; i < 5; i++) {
     const run = await repo.createDeployment(targetId);
-    await repo.appendLogChunk(run.id, `run${run.id}-a`);
-    await repo.appendLogChunk(run.id, `run${run.id}-b`);
+    await repo.appendLogChunk({
+      targetId,
+      source: "build",
+      runId: run.id,
+      text: `run${run.id}-a`,
+    });
+    await repo.appendLogChunk({
+      targetId,
+      source: "build",
+      runId: run.id,
+      text: `run${run.id}-b`,
+    });
     ids.push(run.id);
   }
   await repo.pruneRuns(targetId, 2);
@@ -86,7 +115,9 @@ test("pruneRuns：只留最近 keep 条，chunks 级联清", async () => {
     .where(eq(deployLogChunks.runId, ids[0]!));
   expect(orphanChunks.length).toBe(0);
   // 保留的 run 日志完好
-  expect(await repo.logTextOf(ids[4]!)).toBe(`run${ids[4]}-a\nrun${ids[4]}-b`);
+  expect(
+    await repo.logTextOf({ targetId, source: "build", runId: ids[4]! }),
+  ).toBe(`run${ids[4]}-a\nrun${ids[4]}-b`);
 });
 
 test("artifacts：创建后历史联查透出 rollbackable（仅成功且有产物的 run）", async () => {

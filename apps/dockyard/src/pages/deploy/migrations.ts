@@ -102,4 +102,34 @@ export const migrations: MigrationsJournal = [
     timestamp: 20,
     sql: "ALTER TABLE `deploy_runs` ADD `stage` text;",
   },
+  // 日志三源统一：deploy_log_chunks 同时承载 构建 / 运行时 / 控制台。
+  // - 新增 source（默认 build）与 targetId（not null，外键到部署目标）
+  // - runId 改为可空（运行时/控制台日志不挂在某次部署上）
+  // - seq 语义改为「同一 (targetId, source) 桶内单调递增」，存量行按 targetId 重排
+  {
+    name: "0021_log_unified_sources",
+    timestamp: 23,
+    sql:
+      "PRAGMA foreign_keys=OFF;--> statement-breakpoint\n" +
+      "CREATE TABLE `__new_deploy_log_chunks` (\n" +
+      "\t`id` integer PRIMARY KEY AUTOINCREMENT,\n" +
+      "\t`targetId` integer NOT NULL,\n" +
+      "\t`source` text DEFAULT 'build' NOT NULL,\n" +
+      "\t`runId` integer,\n" +
+      "\t`seq` integer NOT NULL,\n" +
+      "\t`text` text NOT NULL,\n" +
+      "\t`ts` integer NOT NULL,\n" +
+      "\tCONSTRAINT `fk_deploy_log_chunks_targetId_deploy_targets_id_fk` FOREIGN KEY (`targetId`) REFERENCES `deploy_targets`(`id`) ON DELETE CASCADE,\n" +
+      "\tCONSTRAINT `fk_deploy_log_chunks_runId_deploy_runs_id_fk` FOREIGN KEY (`runId`) REFERENCES `deploy_runs`(`id`) ON DELETE CASCADE\n" +
+      ");--> statement-breakpoint\n" +
+      "INSERT INTO `__new_deploy_log_chunks` (`id`,`targetId`,`source`,`runId`,`seq`,`text`,`ts`)\n" +
+      "SELECT c.`id`, r.`targetId`, 'build', c.`runId`,\n" +
+      "\tROW_NUMBER() OVER (PARTITION BY r.`targetId` ORDER BY c.`runId`, c.`seq`) - 1,\n" +
+      "\tc.`text`, c.`ts`\n" +
+      "FROM `deploy_log_chunks` c JOIN `deploy_runs` r ON r.`id` = c.`runId`;--> statement-breakpoint\n" +
+      "DROP TABLE `deploy_log_chunks`;--> statement-breakpoint\n" +
+      "ALTER TABLE `__new_deploy_log_chunks` RENAME TO `deploy_log_chunks`;--> statement-breakpoint\n" +
+      "CREATE INDEX `idx_deploy_log_chunks_target` ON `deploy_log_chunks` (`targetId`,`source`,`seq`);--> statement-breakpoint\n" +
+      "PRAGMA foreign_keys=ON;",
+  },
 ];

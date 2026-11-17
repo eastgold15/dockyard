@@ -46,9 +46,12 @@ export function LiveProvider(props: { children: JSX.Element }) {
         if (typeof msg.targetId !== "number") return;
         const id = msg.targetId;
         if (msg.type === "log") {
-          // 高频帧走按键写入：按 target 增量合并，不整树替换；合并语义在 nextLog（有单测）
-          const next = nextLog(live.logs[id], msg);
-          if (next) setLive("logs", id, next);
+          // 高频帧走按键写入：按 (target, source) 增量合并，不整树替换；
+          // 合并语义在 nextLog（有单测）。三源分桶：构建/运行时/控制台互不串台
+          const source = typeof msg.source === "string" ? msg.source : "build";
+          const key = `${id}:${source}`;
+          const next = nextLog(live.logs[key], msg);
+          if (next) setLive("logs", key, next);
           return;
         }
         if (msg.type === "state") {

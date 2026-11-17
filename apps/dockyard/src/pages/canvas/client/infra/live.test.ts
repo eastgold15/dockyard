@@ -17,10 +17,14 @@ const step = (
 test("log 帧：同 run 追加、换 run 重置", () => {
   let cur = nextLog(undefined, { type: "log", runId: 10, lines: ["a", "b"] })!;
   cur = nextLog(cur, { type: "log", runId: 10, lines: ["c"] })!;
-  expect(cur).toEqual({ runId: 10, lines: ["a", "b", "c"] });
+  expect(cur).toEqual({
+    source: "build",
+    runId: 10,
+    lines: ["a", "b", "c"],
+  });
   // 新 run 开播，旧行全部丢弃
   cur = nextLog(cur, { type: "log", runId: 11, lines: ["x"] })!;
-  expect(cur).toEqual({ runId: 11, lines: ["x"] });
+  expect(cur).toEqual({ source: "build", runId: 11, lines: ["x"] });
 });
 
 test("log 坏帧：runId 缺失时沿用当前块所属 run，连当前块都没有则丢弃", () => {
@@ -29,30 +33,33 @@ test("log 坏帧：runId 缺失时沿用当前块所属 run，连当前块都没
   // 已有 run 10 的块：坏帧的行仍归 10，不丢日志
   const cur = nextLog(undefined, { type: "log", runId: 10, lines: ["a"] })!;
   expect(nextLog(cur, { type: "log", lines: ["b"] })).toEqual({
+    source: "build",
     runId: 10,
     lines: ["a", "b"],
   });
   // lines 不是数组（字符串/数字/对象）：不逐字符展开、不抛错，按空帧保留已有行
   expect(nextLog(cur, { type: "log", runId: 10, lines: "x\ny" })).toEqual({
+    source: "build",
     runId: 10,
     lines: ["a"],
   });
   expect(nextLog(cur, { type: "log", runId: 10, lines: 42 })).toEqual({
+    source: "build",
     runId: 10,
     lines: ["a"],
   });
   expect(nextLog(cur, { type: "log", runId: 10, lines: { a: 1 } })).toEqual({
+    source: "build",
     runId: 10,
     lines: ["a"],
   });
   // 数组里混入非字符串：只保留字符串元素
   expect(
     nextLog(cur, { type: "log", runId: 10, lines: ["b", 7, null] }),
-  ).toEqual({ runId: 10, lines: ["a", "b"] });
+  ).toEqual({ source: "build", runId: 10, lines: ["a", "b"] });
 });
 
-test("log 帧：行数超上限丢弃最旧行", () => {
-  const cur = nextLog(undefined, {
+test("log 帧：行数超上限丢弃最旧行", () => {  const cur = nextLog(undefined, {
     type: "log",
     runId: 10,
     lines: Array.from({ length: LOG_TAIL_LIMIT + 100 }, (_, i) => `L${i}`),
@@ -164,4 +171,28 @@ test("runId 携带即换主，缺省保留：日志抽屉按 runId 判断实时�
   // 新 run 开播带上新 runId → 换主
   t = step(t, { type: "running", runId: 8, running: true });
   expect(t.runId).toBe(8);
+});
+
+test("log 帧：三源分桶语义（source 决定 run 归属要求）", () => {
+  // 构建源（缺省 source）没有 runId → 无从归属，丢弃
+  expect(nextLog(undefined, { type: "log", lines: ["a"] })).toBeNull();
+  // 运行时/控制台源没有 run 归属：runId 记 null，行照样收
+  const rt = nextLog(undefined, {
+    type: "log",
+    source: "runtime",
+    lines: ["r1"],
+  })!;
+  expect(rt).toEqual({ source: "runtime", runId: null, lines: ["r1"] });
+  // 同源续行：追加
+  const rt2 = nextLog(rt, {
+    type: "log",
+    source: "runtime",
+    lines: ["r2"],
+  })!;
+  expect(rt2.lines).toEqual(["r1", "r2"]);
+  // 换源不串台：构建源的行不会被运行时源继承（调用方按 (target, source) 分桶）
+  const build = nextLog(undefined, { type: "log", runId: 10, lines: ["b1"] })!;
+  expect(
+    nextLog(build, { type: "log", source: "console", lines: ["c1"] }),
+  ).toEqual({ source: "console", runId: null, lines: ["c1"] });
 });

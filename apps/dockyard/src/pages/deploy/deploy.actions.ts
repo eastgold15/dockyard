@@ -438,10 +438,19 @@ export default defineRoutes()
     "/targets/:id/log-body",
     {
       params: t.Object({ id: t.Number() }),
-      query: t.Object({ dep: t.Optional(t.Numeric()) }),
+      query: t.Object({
+        dep: t.Optional(t.Numeric()),
+        // 日志源：build（部署构建，按 run 取）/ runtime（容器运行时）/ console（交互控制台）
+        source: t.Optional(
+          t.Union([t.Literal("build"), t.Literal("runtime"), t.Literal("console")]),
+        ),
+      }),
     },
     async ({ di, params, query }) => {
       const svc = ctxOf(di).deploy;
+      // 运行时/控制台日志没有 run 归属：按 (target, source) 读统一表
+      if (query.source && query.source !== "build")
+        return svc.logTextOfSource(params.id, query.source);
       const dep = query.dep
         ? await svc.deploymentById(query.dep)
         : await svc.latestDeployment(params.id);
@@ -655,13 +664,20 @@ export default defineRoutes()
         close(): unknown;
       };
       try {
+        const targetId = Number(ctx.params.id);
         const session = await ctx.di
           .get("runtimeService")
-          .openConsole(Number(ctx.params.id), ctx.query.svc || undefined);
+          .openConsole(targetId, ctx.query.svc || undefined);
         consoleSessions.set(ws, session);
-        session.stream.on("data", (chunk: Buffer) =>
-          ctx.send(chunk.toString("utf8")),
-        );
+        // 控制台输出同时进统一日志表（source=console）+ 同一条 SSE 频道
+        const writer = ctx.di
+          .get("deployService")
+          .logWriter({ targetId, source: "console" });
+        session.stream.on("data", (chunk: Buffer) => {
+          const text = chunk.toString("utf8");
+          ctx.send(text);
+          void writer(text);
+        });
         session.stream.on("end", () => ctx.close());
         session.stream.on("error", () => ctx.close());
       } catch (e) {

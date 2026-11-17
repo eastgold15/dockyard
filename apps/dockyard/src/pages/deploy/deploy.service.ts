@@ -10,6 +10,7 @@ import { parse as parseYaml } from "yaml";
 import { decryptSecret, encryptSecret } from "../../shared/crypto";
 import { envMapToText, textToEnvMap } from "../../shared/env-text";
 import { CANVAS_CHANNEL, events, type CanvasEvent } from "./events";
+import type { LogSource } from "./log-stream";
 import type {
   DeployArtifact,
   DeployTarget,
@@ -241,10 +242,12 @@ export class DeployService {
         finishedAt: new Date(),
       });
       await this.repo
-        .appendLogChunk(
-          run.id,
-          "\n[中断] 控制面进程重启，该次部署未完成（如需重试请重新部署）\n",
-        )
+        .appendLogChunk({
+          targetId: run.targetId,
+          source: "build",
+          runId: run.id,
+          text: "\n[中断] 控制面进程重启，该次部署未完成（如需重试请重新部署）\n",
+        })
         .catch(() => {});
       events.publish(CANVAS_CHANNEL, {
         type: "status",
@@ -257,8 +260,19 @@ export class DeployService {
   }
 
   /** 整段日志（分块拼接；兼容存量 logText 行） */
-  logTextOf(runId: number) {
-    return this.repo.logTextOf(runId);
+  async logTextOf(runId: number): Promise<string> {
+    const run = await this.repo.deploymentById(runId);
+    if (!run) return "";
+    return this.repo.logTextOf({
+      targetId: run.targetId,
+      source: "build",
+      runId,
+    });
+  }
+
+  /** 统一日志表读取（按源）：运行时/控制台没有 run 归属，按 (target, source) 全量读 */
+  logTextOfSource(targetId: number, source: LogSource): Promise<string> {
+    return this.repo.logTextOf({ targetId, source });
   }
 
   /** 同卡片同类型名称唯一（db 层还有唯一索引兜底，这里给用户友好报错） */
@@ -1173,15 +1187,19 @@ export class DeployService {
   }
 
   /**
-   * 部署日志 writer：chunk 落库 + SSE 增量推送。
+   * 日志 writer（三源统一入口）：chunk 落库 + SSE 增量推送。
    * 落库逐行（appendLogChunk 单行 insert 足够快）；SSE 必须合并——
    * execLongRemote 一个 256KB 轮询窗口可能含上千行，逐行 publish 会打爆频道。
    * 窗口规则：满 50 行立即 flush，否则 100ms 后 flush；终态由 pipeline 强制 flush。
+   *
+   * 三种源共用同一张 deploy_log_chunks 表与同一条 SSE 频道：
+   * build=部署构建（挂 run）/ runtime=容器运行时 / console=交互控制台（后两者无 run）。
    */
-  private makeLog(
-    runId: number,
-    targetId: number,
-  ): Log & { flush(): Promise<void> } {
+  logWriter(input: {
+    targetId: number;
+    source: LogSource;
+    runId?: number | null;
+  }): Log & { flush(): Promise<void> } {
     let buf: string[] = [];
     let timer: ReturnType<typeof setTimeout> | null = null;
     const flush = async () => {
@@ -1192,16 +1210,35 @@ export class DeployService {
       if (!buf.length) return;
       const lines = buf;
       buf = [];
-      events.publish(CANVAS_CHANNEL, { type: "log", targetId, runId, lines });
+      events.publish(CANVAS_CHANNEL, {
+        type: "log",
+        targetId: input.targetId,
+        source: input.source,
+        ...(input.runId != null ? { runId: input.runId } : {}),
+        lines,
+      });
     };
     const log: Log = async (line) => {
       if (!line.trim()) return;
-      await this.repo.appendLogChunk(runId, line);
+      await this.repo.appendLogChunk({
+        targetId: input.targetId,
+        source: input.source,
+        runId: input.runId ?? null,
+        text: line,
+      });
       buf.push(line);
       if (buf.length >= 50) await flush();
       else timer ??= setTimeout(() => void flush(), 100);
     };
     return Object.assign(log, { flush });
+  }
+
+  /** 部署构建日志 writer（挂 run；runtime/console 走 logWriter 显式指定 source） */
+  private makeLog(
+    runId: number,
+    targetId: number,
+  ): Log & { flush(): Promise<void> } {
+    return this.logWriter({ targetId, source: "build", runId });
   }
 
   /** run → 产物：优先走 artifactId（0017 之后）；存量行防御性合成（迁移已回填，双保险） */

@@ -155,21 +155,28 @@ export const deployArtifacts = sqliteTable("deploy_artifacts", {
     .$defaultFn(() => new Date()),
 });
 
-// ── 部署日志分块（替代 logText 读改写；每次 log 调用一条 chunk）──
+// ── 日志分块（三源统一：构建 / 运行时 / 控制台共用一张表）──
 export const deployLogChunks = sqliteTable(
   "deploy_log_chunks",
   {
     id: integer().primaryKey({ autoIncrement: true }),
-    runId: integer()
+    /** 归属目标（构建/运行时/控制台都属于某个部署目标） */
+    targetId: integer()
       .notNull()
-      .references(() => deployments.id, { onDelete: "cascade" }),
-    /** run 内单调递增（pipeline 生命周期独占写，内存计数器即可） */
+      .references(() => deployTargets.id, { onDelete: "cascade" }),
+    /** 日志来源：build=部署构建 / runtime=容器运行时 / console=交互控制台 */
+    source: text({ enum: ["build", "runtime", "console"] })
+      .notNull()
+      .default("build"),
+    /** 关联的部署 run（仅构建日志有；运行时/控制台为 null） */
+    runId: integer().references(() => deployments.id, { onDelete: "cascade" }),
+    /** 同一 (targetId, source) 桶内单调递增 */
     seq: integer().notNull(),
     text: text().notNull(),
     /** 块时间戳（毫秒） */
     ts: integer().notNull(),
   },
-  (t) => [index("idx_deploy_log_chunks_run").on(t.runId, t.seq)],
+  (t) => [index("idx_deploy_log_chunks_target").on(t.targetId, t.source, t.seq)],
 );
 
 /** compose 单个服务（画布小卡片行）。env/秘密值不进这里——走 envJson/overrideCompose 加密通道 */

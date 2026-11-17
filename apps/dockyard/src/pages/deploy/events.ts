@@ -1,4 +1,5 @@
 import { defineRealtime } from "@elysiax/core";
+import type { LogSource } from "./log-stream";
 import type { DeployStage } from "./schema";
 
 /**
@@ -27,8 +28,18 @@ export type CanvasEvent =
     }
   // 发现层（未纳管容器）集合变化：无载荷——客户端收到后重拉 /board（发现卡数据是现查快照）
   | { type: "discovery" }
-  // 部署日志增量（service 侧 100ms/50 行窗口合并后推送，不是逐行；日志抽屉订阅此事件免轮询）
-  | { type: "log"; targetId: number; runId: number; lines: string[] };
+  // 日志增量（三源统一帧）：
+  // - source=build：部署构建日志，runId 必填（抽屉据此判断「实时状态是不是我看的这条」）
+  // - source=runtime：容器运行时日志（docker logs --follow），无 run 归属
+  // - source=console：容器交互控制台输出，无 run 归属
+  // service 侧按 100ms/50 行窗口合并后推送，不是逐行；日志抽屉订阅此事件免轮询
+  | {
+      type: "log";
+      targetId: number;
+      source: LogSource;
+      runId?: number;
+      lines: string[];
+    };
 
 /** 全局画布频道（世界地图唯一 SSE 频道） */
 export const CANVAS_CHANNEL = "canvas";

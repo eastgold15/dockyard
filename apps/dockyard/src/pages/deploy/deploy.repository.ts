@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, isNotNull, max, notInArray } from "drizzle-orm";
 import type { Db } from "../../shared/db";
+import type { LogSource } from "./log-stream";
 import {
   deployArtifacts,
   deployLogChunks,
@@ -185,35 +186,65 @@ export class DeployRepository {
 
   /**
    * 日志分块追加（替代 logText 读改写——长构建日志数 MB，全列重写既慢又放大 WAL）。
-   * seq 取库内 MAX+1：pipeline 生命周期内可能多段写（execLongRemote 回调），
-   * 内存计数器在进程重启/多写者场景不可靠，一次廉价查询换正确性。
+   * 三种源共用一张表：桶 = (targetId, source)，seq 取桶内 MAX+1
+   * （同一桶可能多段写：构建回调 / 运行时流 / 控制台输出；
+   * 内存计数器在进程重启/多写者场景不可靠，一次廉价查询换正确性）。
    */
-  async appendLogChunk(runId: number, text: string) {
+  async appendLogChunk(input: {
+    targetId: number;
+    source: LogSource;
+    /** 关联的部署 run（仅构建日志有；运行时/控制台为 null） */
+    runId?: number | null;
+    text: string;
+  }) {
     const row = await this.db
       .select({ maxSeq: max(deployLogChunks.seq) })
       .from(deployLogChunks)
-      .where(eq(deployLogChunks.runId, runId))
+      .where(
+        and(
+          eq(deployLogChunks.targetId, input.targetId),
+          eq(deployLogChunks.source, input.source),
+        ),
+      )
       .then((r) => r[0]);
     await this.db.insert(deployLogChunks).values({
-      runId,
+      targetId: input.targetId,
+      source: input.source,
+      runId: input.runId ?? null,
       seq: (row?.maxSeq ?? -1) + 1,
-      text,
+      text: input.text,
       ts: Date.now(),
     });
   }
 
-  /** 整段日志（chunks 按 seq 拼接；chunks 为空时兜底旧 logText——存量行迁移已回填，兜底是防御） */
-  async logTextOf(runId: number) {
+  /**
+   * 整段日志（chunks 按 seq 拼接）。
+   * 构建日志按 run 过滤（runId 缺省 = 该 target 的全部构建日志）；
+   * 运行时/控制台日志没有 run，按 (targetId, source) 全量读。
+   * chunks 为空时兜底旧 logText——存量行迁移已回填，兜底是防御。
+   */
+  async logTextOf(filter: {
+    targetId: number;
+    source: LogSource;
+    runId?: number | null;
+  }) {
+    const conditions = [
+      eq(deployLogChunks.targetId, filter.targetId),
+      eq(deployLogChunks.source, filter.source),
+    ];
+    if (filter.runId != null)
+      conditions.push(eq(deployLogChunks.runId, filter.runId));
     const chunks = await this.db
       .select({ text: deployLogChunks.text })
       .from(deployLogChunks)
-      .where(eq(deployLogChunks.runId, runId))
+      .where(and(...conditions))
       .orderBy(asc(deployLogChunks.seq));
     if (chunks.length) return chunks.map((c) => c.text).join("\n");
+    if (filter.source !== "build" || filter.runId == null) return "";
     const row = await this.db
       .select({ logText: deployments.logText })
       .from(deployments)
-      .where(eq(deployments.id, runId))
+      .where(eq(deployments.id, filter.runId))
       .limit(1)
       .then((r) => r[0]);
     return row?.logText ?? "";

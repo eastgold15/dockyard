@@ -8,15 +8,15 @@
 // 逻辑库不穿零点（无产物），由 forms.ts 的 custom run 旁路承接。
 import { ServiceError } from "@elysiax/core";
 import { stringify as stringifyYaml } from "yaml";
-import { decryptSecret, encryptSecret } from "../../shared/crypto";
-import type { AppPaths } from "../../shared/paths";
-import type { CanvasService } from "../canvas/canvas.socket";
-import type { EdgeService } from "../edge/edge.socket";
-import type { GithubService } from "../github/github.socket";
-import type { ProjectService } from "../projects/projects.socket";
-import type { ServerService } from "../servers/servers.socket";
-import { openServerSftp } from "../servers/servers.socket";
-import type { ServerTransport } from "../servers/servers.socket";
+import { decryptSecret, encryptSecret } from "@/shared/crypto";
+import type { AppPaths } from "@/shared/paths";
+import type { CanvasService } from "@/pages/canvas/canvas.socket";
+import type { EdgeService } from "@/pages/edge/edge.socket";
+import type { GithubService } from "@/pages/github/github.socket";
+import type { ProjectService } from "@/pages/projects/projects.socket";
+import type { ServerService } from "@/pages/servers/servers.socket";
+import { openServerSftp } from "@/pages/servers/servers.socket";
+import type { ServerTransport } from "@/pages/servers/servers.socket";
 import type { DeployRepository } from "./deploy.repository";
 import { appEnvCompose, envFilePaths } from "./detect";
 import type {

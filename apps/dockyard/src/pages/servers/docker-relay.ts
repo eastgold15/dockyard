@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import Docker from "dockerode";
 import type { SshClient } from "@meitaim/ssh";
-import { appPaths } from "../../shared/paths";
+import { appPaths } from "@/shared/paths";
 
 /**
  * dockerode 走 SSH 中继：本地 unix socket 监听，每个入站连接开一条

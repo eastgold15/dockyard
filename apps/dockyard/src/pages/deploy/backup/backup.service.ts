@@ -2,15 +2,15 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { ServiceError } from "@elysiax/core";
-import type { AppPaths } from "../../../shared/paths";
-import { shq } from "../../../shared/shell";
-import type { CanvasService } from "../../canvas/canvas.socket";
+import type { AppPaths } from "@/shared/paths";
+import { shq } from "@/shared/shell";
+import type { CanvasService } from "@/pages/canvas/canvas.socket";
 import {
   openServerSftp,
   type ServerService,
-} from "../../servers/servers.socket";
+} from "@/pages/servers/servers.socket";
 // 父子之间也走插座：deploy 的服务经父原子插座引入
-import type { DeployService } from "../deploy.socket";
+import type { DeployService } from "@/pages/deploy/deploy.socket";
 
 /** POSIX 单引号转义（正主在 shared/shell）：容器名/路径拼进宿主 shell 前必须过这里 */
 export { shq };

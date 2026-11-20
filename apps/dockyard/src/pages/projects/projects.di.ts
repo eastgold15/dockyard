@@ -1,5 +1,5 @@
 import { defineModule, provide } from "@elysiax/core";
-import { GithubService } from "../github/github.socket";
+import { GithubService } from "@/pages/github/github.socket";
 import { LocalService } from "./local.service";
 import { ProjectRepository } from "./projects.repository";
 import { ProjectService } from "./projects.service";

@@ -13,7 +13,7 @@ import {
   Field,
   Modal,
   TextInput,
-} from "../../../shared/solid-ui";
+} from "@/shared/solid-ui/index";
 
 /** 扫描目录配置：一行一个目录，支持 ~/ */
 export function ConfigModal(props: {

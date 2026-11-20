@@ -4,13 +4,13 @@ import {
   LOGICAL_DB_SUPPORT,
   type DbType,
   type SharedEnv,
-} from "../resources/resources.socket";
-import { type GithubService, type RepoBrief } from "../github/github.socket";
-import { type CanvasService } from "../canvas/canvas.socket";
-import { type ProjectService } from "../projects/projects.socket";
-import { type EdgeService } from "../edge/edge.socket";
-import { RuntimeService } from "./runtime/runtime.socket";
-import { BackupService, RESTORE_SUPPORT } from "./backup/backup.socket";
+} from "@/pages/resources/resources.socket";
+import { type GithubService, type RepoBrief } from "@/pages/github/github.socket";
+import { type CanvasService } from "@/pages/canvas/canvas.socket";
+import { type ProjectService } from "@/pages/projects/projects.socket";
+import { type EdgeService } from "@/pages/edge/edge.socket";
+import { RuntimeService } from "@/pages/deploy/runtime/runtime.socket";
+import { BackupService, RESTORE_SUPPORT } from "@/pages/deploy/backup/backup.socket";
 import {
   detectLocal,
   detectRepo,

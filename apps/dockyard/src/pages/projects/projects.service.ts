@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { parseOwnerRepo, type GithubService } from "../github/github.socket";
+import { parseOwnerRepo, type GithubService } from "@/pages/github/github.socket";
 import { readGitRemote } from "./local.service";
 import type { ProjectRepository } from "./projects.repository";
 import type { NewProjectData } from "./projects.types";

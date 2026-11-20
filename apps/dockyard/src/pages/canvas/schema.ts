@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, unique } from "drizzle-orm/sqlite-core";
 // 插头：外键经插座引用（di 已声明依赖 servers）
-import { servers } from "../servers/servers.socket";
+import { servers } from "@/pages/servers/servers.socket";
 
 // ── 画布节点：世界地图上的一张服务器卡片（物理服务器全局唯一，不再以项目为边界）──
 export const canvasNodes = sqliteTable("canvas_nodes", {

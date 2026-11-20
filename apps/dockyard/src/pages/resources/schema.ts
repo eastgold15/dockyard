@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, unique } from "drizzle-orm/sqlite-core";
 // 插头：外键经插座引用（di 已声明依赖 servers）
-import { servers } from "../servers/servers.socket";
+import { servers } from "@/pages/servers/servers.socket";
 
 // ── 服务器共享资源清单：绑定到单台服务器的中间件（视角 B 预部署产物）──
 // 任意项目部署到该服务器时可引用其连接串（envKey 下拉），不再重复部署中间件

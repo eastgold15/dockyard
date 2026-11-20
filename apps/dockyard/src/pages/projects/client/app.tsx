@@ -13,12 +13,12 @@ import {
   Button,
   Empty,
   PageHeader,
-} from "../../../shared/solid-ui";
+} from "@/shared/solid-ui/index";
 import {
   FeedbackHost,
   confirmAction,
   toast,
-} from "../../../shared/solid-ui/feedback";
+} from "@/shared/solid-ui/feedback";
 import { button, field } from "../../../../styled-system/recipes";
 import { cx } from "../../../../styled-system/css";
 
@@ -284,77 +284,77 @@ export function App() {
   return (
     <AppShell>
       <div class="flex min-h-0 flex-1 flex-col">
-          <PageHeader
-            title="项目"
-            sub={model() ? `本地 ${model()?.local.length ?? 0} · 远程 ${model()?.remote.length ?? 0}` : undefined}
-          >
-            <Button
-              label="⚙ 扫描目录"
-              variant="ghost"
-              size="sm"
-              onClick={() => void openConfig()}
-            />
-            <Button
-              label="＋ 从 GitHub 创建"
-              onClick={() => void openNew()}
-            />
-          </PageHeader>
+        <PageHeader
+          title="项目"
+          sub={model() ? `本地 ${model()?.local.length ?? 0} · 远程 ${model()?.remote.length ?? 0}` : undefined}
+        >
+          <Button
+            label="⚙ 扫描目录"
+            variant="ghost"
+            size="sm"
+            onClick={() => void openConfig()}
+          />
+          <Button
+            label="＋ 从 GitHub 创建"
+            onClick={() => void openNew()}
+          />
+        </PageHeader>
 
+        <Show
+          when={!loading()}
+          fallback={
+            <div class="flex flex-1 items-center justify-center text-sm text-neutral-400">
+              正在加载项目…
+            </div>
+          }
+        >
           <Show
-            when={!loading()}
+            when={
+              (model()?.local.length ?? 0) + (model()?.remote.length ?? 0) >
+              0
+            }
             fallback={
-              <div class="flex flex-1 items-center justify-center text-sm text-neutral-400">
-                正在加载项目…
-              </div>
+              <Empty text="扫描目录下没有发现项目——点右上角「⚙ 扫描目录」检查配置" />
             }
           >
-            <Show
-              when={
-                (model()?.local.length ?? 0) + (model()?.remote.length ?? 0) >
-                0
-              }
-              fallback={
-                <Empty text="扫描目录下没有发现项目——点右上角「⚙ 扫描目录」检查配置" />
-              }
-            >
-              <div class="flex-1 overflow-auto">
-                <For each={model()?.local ?? []}>
-                  {(project) => (
-                    <LocalRow
-                      project={project}
-                      editors={model()?.editors ?? []}
-                      defaultEditor={defaultEditor()}
-                      lazygit={model()?.lazygit ?? false}
-                      busy={busy()}
-                      onOpen={(tool) => void open(project.path, tool)}
-                      onDelete={() =>
-                        void remove(
-                          project.registeredId ?? 0,
-                          project.name,
-                        )
-                      }
-                    />
-                  )}
-                </For>
+            <div class="flex-1 overflow-auto">
+              <For each={model()?.local ?? []}>
+                {(project) => (
+                  <LocalRow
+                    project={project}
+                    editors={model()?.editors ?? []}
+                    defaultEditor={defaultEditor()}
+                    lazygit={model()?.lazygit ?? false}
+                    busy={busy()}
+                    onOpen={(tool) => void open(project.path, tool)}
+                    onDelete={() =>
+                      void remove(
+                        project.registeredId ?? 0,
+                        project.name,
+                      )
+                    }
+                  />
+                )}
+              </For>
 
-                <Show when={(model()?.remote.length ?? 0) > 0}>
-                  <div class="px-4 pt-5 pb-1 text-xs font-medium tracking-wide text-neutral-600 md:px-6">
-                    GitHub 项目空间（本地未检出）
-                  </div>
-                </Show>
-                <For each={model()?.remote ?? []}>
-                  {(project) => (
-                    <RemoteRow
-                      project={project}
-                      busy={busy()}
-                      onDelete={() => void remove(project.id, project.name)}
-                    />
-                  )}
-                </For>
-              </div>
-            </Show>
+              <Show when={(model()?.remote.length ?? 0) > 0}>
+                <div class="px-4 pt-5 pb-1 text-xs font-medium tracking-wide text-neutral-600 md:px-6">
+                  GitHub 项目空间（本地未检出）
+                </div>
+              </Show>
+              <For each={model()?.remote ?? []}>
+                {(project) => (
+                  <RemoteRow
+                    project={project}
+                    busy={busy()}
+                    onDelete={() => void remove(project.id, project.name)}
+                  />
+                )}
+              </For>
+            </div>
           </Show>
-        </div>
+        </Show>
+      </div>
 
       <Show when={configOpen()}>
         <ConfigModal

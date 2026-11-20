@@ -11,8 +11,8 @@ import { ServiceError } from "@elysiax/core";
 import { resolve4 } from "node:dns/promises";
 import type { Domain } from "./schema";
 import type { EdgeRepository } from "./edge.repository";
-import { openServerSftp, type ServerService } from "../servers/servers.socket";
-import { shq } from "../../shared/shell";
+import { openServerSftp, type ServerService } from "@/pages/servers/servers.socket";
+import { shq } from "@/shared/shell";
 
 export const EDGE_CONTAINER = "dockyard-edge";
 const EDGE_CONFIG_PATH = "/tmp/dockyard-edge-caddy.json";

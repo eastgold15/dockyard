@@ -13,7 +13,7 @@ import type {
   DeployStage,
   DeployTarget,
   DeploymentRow,
-} from "../../../deploy/deploy.socket";
+} from "@/pages/deploy/deploy.socket";
 
 export const STAGES: readonly DeployStage[] = [
   "sourcing",

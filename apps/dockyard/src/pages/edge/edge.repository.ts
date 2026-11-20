@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "../../shared/db";
-import { canvasNodes } from "../canvas/canvas.socket";
-import { deployTargets } from "../deploy/deploy.socket";
+import type { Db } from "@/shared/db";
+import { canvasNodes } from "@/pages/canvas/canvas.socket";
+import { deployTargets } from "@/pages/deploy/deploy.socket";
 import { domains, type Domain } from "./schema";
 
 /** 域名行归 edge 上下文（语义 = 路由 + 证书）；跨表 join 只为定位「这台服务器上的域名」 */

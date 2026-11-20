@@ -6,7 +6,7 @@ import { beforeEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { migrationsJournal } from "../../shared/migrations-journal";
+import { migrationsJournal } from "@/shared/migrations-journal";
 import { DeployRepository } from "./deploy.repository";
 import { deployArtifacts, deployLogChunks } from "./schema";
 import { eq } from "drizzle-orm";

@@ -7,11 +7,11 @@
 import { ServiceError } from "@elysiax/core";
 import { dirname, join, normalize } from "node:path";
 import { Readable, Writable } from "node:stream";
-import { decryptSecret } from "../../shared/crypto";
-import { parseOwnerRepo } from "../github/github.socket";
-import { openServerSftp } from "../servers/servers.socket";
-import { logicalDbCommands, type DbType } from "../resources/resources.socket";
-import type { Project } from "../projects/projects.socket";
+import { decryptSecret } from "@/shared/crypto";
+import { parseOwnerRepo } from "@/pages/github/github.socket";
+import { openServerSftp } from "@/pages/servers/servers.socket";
+import { logicalDbCommands, type DbType } from "@/pages/resources/resources.socket";
+import type { Project } from "@/pages/projects/projects.socket";
 import { envFilePaths } from "./detect";
 import {
   dockerArch,

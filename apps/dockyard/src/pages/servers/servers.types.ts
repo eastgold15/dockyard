@@ -1,6 +1,6 @@
 /** servers 的 HTTP 契约类型（服务端 actions 与 Solid client 共用，纯类型无值导入）。 */
 import type { Server } from "./schema";
-import type { ServerResource } from "../resources/resources.socket";
+import type { ServerResource } from "@/pages/resources/resources.socket";
 
 export type CheckResult =
   | { ok: true; dockerVersion: string; warning?: string }

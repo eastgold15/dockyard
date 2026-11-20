@@ -1,6 +1,6 @@
 import { ServiceError } from "@elysiax/core";
-import { decryptSecret, encryptSecret } from "../../shared/crypto";
-import { shq } from "../../shared/shell";
+import { decryptSecret, encryptSecret } from "@/shared/crypto";
+import { shq } from "@/shared/shell";
 import type { ServerResource } from "./schema";
 import {
   assertSafeResourceName,
@@ -10,7 +10,7 @@ import {
   suggestedEnvKey,
   type DbType,
 } from "./db-templates";
-import { openServerSftp, type ServerService } from "../servers/servers.socket";
+import { openServerSftp, type ServerService } from "@/pages/servers/servers.socket";
 import type { NewResource, ResourceRepository } from "./resources.repository";
 
 /** credsJson 解密后的结构：模板 compose/env + 部署成功后回填的连接串 */

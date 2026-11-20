@@ -14,7 +14,7 @@ import {
   Field,
   Modal,
   TextInput,
-} from "../../../shared/solid-ui";
+} from "@/shared/solid-ui/index";
 
 /** 本机/远程徽章（部署通道分界线：以 builtin 列为准） */
 function ScopeBadge(props: { server: Server }) {

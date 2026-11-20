@@ -1,10 +1,10 @@
 import { defineModule, provide } from "@elysiax/core";
-import { CanvasService } from "../canvas/canvas.socket";
-import { GithubService } from "../github/github.socket";
-import { ServerService } from "../servers/servers.socket";
-import { EdgeService } from "../edge/edge.socket";
-import { ProjectService } from "../projects/projects.socket";
-import { ResourceService } from "../resources/resources.socket";
+import { CanvasService } from "@/pages/canvas/canvas.socket";
+import { GithubService } from "@/pages/github/github.socket";
+import { ServerService } from "@/pages/servers/servers.socket";
+import { EdgeService } from "@/pages/edge/edge.socket";
+import { ProjectService } from "@/pages/projects/projects.socket";
+import { ResourceService } from "@/pages/resources/resources.socket";
 import { DeployRepository } from "./deploy.repository";
 import { DeployService } from "./deploy.service";
 import { ContainerPoller } from "./container-poller";

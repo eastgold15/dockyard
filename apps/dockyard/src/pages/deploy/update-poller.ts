@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "../../shared/db";
-import { parseOwnerRepo, type GithubService } from "../github/github.socket";
+import type { Db } from "@/shared/db";
+import { parseOwnerRepo, type GithubService } from "@/pages/github/github.socket";
 import type { DeployService } from "./deploy.service";
 import { deployTargets, type DeployTarget } from "./schema";
 

@@ -7,8 +7,8 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 // 插头：外键经插座引用（di 已声明依赖 canvas/projects）
-import { canvasNodes, serviceGroups } from "../canvas/canvas.socket";
-import { projects } from "../projects/projects.socket";
+import { canvasNodes, serviceGroups } from "@/pages/canvas/canvas.socket";
+import { projects } from "@/pages/projects/projects.socket";
 
 // ── 部署目标：一张卡片上部署的 app 或数据库 ──
 export const deployTargets = sqliteTable(

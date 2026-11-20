@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { createSign } from "node:crypto";
 import { $ } from "bun";
 import { parse as parseYaml } from "yaml";
-import { appPaths } from "../../shared/paths";
-import { decryptSecret, encryptSecret } from "../../shared/crypto";
+import { appPaths } from "@/shared/paths";
+import { decryptSecret, encryptSecret } from "@/shared/crypto";
 import type { GithubRepository } from "./github.repository";
 
 const API = "https://api.github.com";

@@ -7,7 +7,7 @@
  */
 import { createContext, useContext } from "solid-js";
 import type { ServiceState } from "../../canvas.model";
-import type { DeployStage, LogSource } from "../../../deploy/deploy.socket";
+import type { DeployStage, LogSource } from "@/pages/deploy/deploy.socket";
 import { STAGES } from "../panes/pipeline-steps";
 
 export type DeployStatus =

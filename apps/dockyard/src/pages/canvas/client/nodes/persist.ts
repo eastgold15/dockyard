@@ -2,7 +2,7 @@
 /** 节点尺寸持久化与目标移除：Resizer/卡面 ✕ 共用同一套写操作。 */
 import { api, canvasApi, unwrap } from "../infra/api";
 import { emitRefresh } from "../infra/ui";
-import { confirmAction, toast } from "../../../../shared/solid-ui/feedback";
+import { confirmAction, toast } from "@/shared/solid-ui/feedback";
 
 /** Resizer 拉伸结束 → 持久化手动尺寸（refetch 后作自动收敛的下限）。
  *  服务端会按车道规则拒绝（422，例如本机卡拉宽压到中立带）：不能静默吞掉——

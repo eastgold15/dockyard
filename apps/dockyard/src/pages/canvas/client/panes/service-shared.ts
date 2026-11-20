@@ -4,8 +4,8 @@ import type {
   DbRef,
   DeployTarget,
   DeploymentRow,
-} from "../../../deploy/deploy.socket";
-import type { Domain } from "../../../edge/edge.socket";
+} from "@/pages/deploy/deploy.socket";
+import type { Domain } from "@/pages/edge/edge.socket";
 
 export type ServiceTab =
   "deployments" | "variables" | "metrics" | "console" | "settings" | "backups";

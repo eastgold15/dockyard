@@ -371,10 +371,10 @@ export function detectFromCompose(composeText: string): DetectResult {
   };
 }
 
-import { envMapToText, textToEnvMap } from "../../shared/env-text";
+import { envMapToText, textToEnvMap } from "@/shared/env-text";
 
 // env 文本转换函数抽到了零依赖的 env-text.ts（canvas client 也要打包），此处转出口保持旧 import 不破
-export { serviceEnvToText, textToEnvMap } from "../../shared/env-text";
+export { serviceEnvToText, textToEnvMap } from "@/shared/env-text";
 
 /** rootEnv → .env 文本（服务 compose 的 ${VAR} 插值；服务级变量走 override 的 environment，不扁平化） */
 export function detectToEnvText(detect: Pick<DetectResult, "rootEnv">): string {
@@ -428,7 +428,7 @@ export function detectToOverrideCompose(
 
 // ── 识别入口（原 DeployService.detectRepo/detectLocal，下沉为纯函数）──
 import { join } from "node:path";
-import { parseOwnerRepo, type GithubService } from "../github/github.socket";
+import { parseOwnerRepo, type GithubService } from "@/pages/github/github.socket";
 
 /** 清单文件名：产品定名 dockyard.json */
 const MANIFEST_FILE = "dockyard.json";

@@ -2,7 +2,7 @@ import { ServiceError } from "@elysiax/core";
 import Docker from "dockerode";
 import { userInfo } from "node:os";
 import type { Server } from "./schema";
-import { encryptSecret } from "../../shared/crypto";
+import { encryptSecret } from "@/shared/crypto";
 import { isLocalHost } from "./host";
 import { SshPool, UnknownHostKeyError } from "./ssh-pool";
 import { DockerRelay } from "./docker-relay";

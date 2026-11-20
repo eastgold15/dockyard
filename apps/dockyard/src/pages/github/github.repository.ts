@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import type { Db } from "../../shared/db";
+import type { Db } from "@/shared/db";
 import { githubApps } from "./schema";
 
 /** GitHub App 安装凭据的持久化（私钥/webhook secret 已加密，仓库层只搬运密文） */

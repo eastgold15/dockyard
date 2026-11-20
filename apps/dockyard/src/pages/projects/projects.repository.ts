@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "../../shared/db";
+import type { Db } from "@/shared/db";
 import { projects } from "./schema";
 
 export class ProjectRepository {

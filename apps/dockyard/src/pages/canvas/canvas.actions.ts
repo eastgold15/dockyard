@@ -5,10 +5,10 @@ import {
   events,
   type DeployService,
   type DeployTarget,
-} from "../deploy/deploy.socket";
-import type { ProjectService } from "../projects/projects.socket";
-import type { ServerService } from "../servers/servers.socket";
-import type { EdgeService } from "../edge/edge.socket";
+} from "@/pages/deploy/deploy.socket";
+import type { ProjectService } from "@/pages/projects/projects.socket";
+import type { ServerService } from "@/pages/servers/servers.socket";
+import type { EdgeService } from "@/pages/edge/edge.socket";
 import type {
   BoardModel,
   CardModel,

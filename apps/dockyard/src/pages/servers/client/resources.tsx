@@ -5,7 +5,7 @@
  */
 import { createSignal, For, onMount, Show } from "solid-js";
 import type { ResourcesResponse, ResourceItem } from "../servers.types";
-import type { ServerResource } from "../../resources/resources.socket";
+import type { ServerResource } from "@/pages/resources/resources.socket";
 import { api, unwrap } from "./api";
 import { field } from "../../../../styled-system/recipes";
 import { cx } from "../../../../styled-system/css";
@@ -16,8 +16,8 @@ import {
   Field,
   Modal,
   TextInput,
-} from "../../../shared/solid-ui";
-import { confirmAction, toast } from "../../../shared/solid-ui/feedback";
+} from "@/shared/solid-ui/index";
+import { confirmAction, toast } from "@/shared/solid-ui/feedback";
 
 const DB_TYPES = ["postgres", "mysql", "redis", "mongo"] as const;
 type DbType = (typeof DB_TYPES)[number];

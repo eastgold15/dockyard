@@ -5,10 +5,10 @@ import { ServiceError } from "@elysiax/core";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import type { AppPaths } from "../../shared/paths";
+import type { AppPaths } from "@/shared/paths";
 import { parse as parseYaml } from "yaml";
-import { decryptSecret, encryptSecret } from "../../shared/crypto";
-import { envMapToText, textToEnvMap } from "../../shared/env-text";
+import { decryptSecret, encryptSecret } from "@/shared/crypto";
+import { envMapToText, textToEnvMap } from "@/shared/env-text";
 import { CANVAS_CHANNEL, events, type CanvasEvent } from "./events";
 import type { LogSource } from "./log-stream";
 import type {
@@ -18,13 +18,13 @@ import type {
   DepEdge,
   TargetService,
 } from "./schema";
-import type { Project, ProjectService } from "../projects/projects.socket";
-import type { ResourceService, SharedEnv } from "../resources/resources.socket";
-import type { ServerService } from "../servers/servers.socket";
-import { parseOwnerRepo, type GithubService } from "../github/github.socket";
-import type { CanvasService } from "../canvas/canvas.socket";
+import type { Project, ProjectService } from "@/pages/projects/projects.socket";
+import type { ResourceService, SharedEnv } from "@/pages/resources/resources.socket";
+import type { ServerService } from "@/pages/servers/servers.socket";
+import { parseOwnerRepo, type GithubService } from "@/pages/github/github.socket";
+import type { CanvasService } from "@/pages/canvas/canvas.socket";
 import type { DeployRepository } from "./deploy.repository";
-import type { EdgeService } from "../edge/edge.socket";
+import type { EdgeService } from "@/pages/edge/edge.socket";
 import { envFilePaths, type DetectedService } from "./detect";
 import {
   activateArtifact,
@@ -56,7 +56,7 @@ import {
   logicalDbUrl,
   suggestedEnvKey,
   type DbType,
-} from "../resources/resources.socket";
+} from "@/pages/resources/resources.socket";
 
 /** 每个 target 保留的部署历史条数（超出由 pruneRuns 清理，chunks 级联删除） */
 const RUNS_KEEP = 20;

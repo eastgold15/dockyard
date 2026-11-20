@@ -4,7 +4,7 @@
  *  仍用 routes.gen 的 URL 助手（deployPaths / canvasPaths）。 */
 import { treaty } from "@elysia/eden";
 import { routes } from "../../../../../.elysiax/routes.gen";
-import type { DeployApi } from "../../../deploy/deploy.socket";
+import type { DeployApi } from "@/pages/deploy/deploy.socket";
 import type { CanvasApi } from "../../canvas.socket";
 
 export const api = treaty<DeployApi>(`${location.origin}/api/deploy`);

@@ -16,8 +16,8 @@ import {
   NewDbModal,
   ServiceDrawer,
 } from "./panes";
-import { FeedbackHost } from "../../../shared/solid-ui/feedback";
-import { AppShell } from "../../../shared/solid-ui";
+import { FeedbackHost } from "@/shared/solid-ui/feedback";
+import { AppShell } from "@/shared/solid-ui/index";
 import { lens, setLens } from "./infra/lens";
 import { LiveProvider } from "./infra/live-provider";
 import { emitRefresh, UiContext, type UiBus, type View } from "./infra/ui";

@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, isNotNull, max, notInArray } from "drizzle-orm";
-import type { Db } from "../../shared/db";
+import type { Db } from "@/shared/db";
 import type { LogSource } from "./log-stream";
 import {
   deployArtifacts,

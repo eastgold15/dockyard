@@ -2,7 +2,7 @@ import { status, t } from "elysia";
 import { ServiceError } from "@elysiax/core";
 import { defineRoutes, type ServiceMap } from "../../../.elysiax";
 import type { ServerService } from "./servers.service";
-import type { ResourceService } from "../resources/resources.socket";
+import type { ResourceService } from "@/pages/resources/resources.socket";
 import type { ResourcesResponse, ServersModel } from "./servers.types";
 import type { ServersServices } from "../../../.elysiax/services.gen";
 

@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { userInfo } from "node:os";
 import { ServiceError } from "@elysiax/core";
-import { migrationsJournal } from "../../shared/migrations-journal";
+import { migrationsJournal } from "@/shared/migrations-journal";
 import { ServerRepository } from "./servers.repository";
 import {
   ServerService,

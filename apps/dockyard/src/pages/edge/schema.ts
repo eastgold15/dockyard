@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, unique } from "drizzle-orm/sqlite-core";
 // 插头：外键经插座引用（edge 依赖 deploy 的部署目标）
-import { deployTargets } from "../deploy/deploy.socket";
+import { deployTargets } from "@/pages/deploy/deploy.socket";
 
 // ── 域名绑定：app target 的自定义域名（edge 反代 + 自动证书的状态机）──
 export const domains = sqliteTable(

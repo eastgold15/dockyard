@@ -19,12 +19,12 @@ import {
   Button,
   Empty,
   PageHeader,
-} from "../../../shared/solid-ui";
+} from "@/shared/solid-ui/index";
 import {
   FeedbackHost,
   confirmAction,
   toast,
-} from "../../../shared/solid-ui/feedback";
+} from "@/shared/solid-ui/feedback";
 
 interface TrustState {
   server: Server;

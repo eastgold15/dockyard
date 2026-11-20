@@ -4,4 +4,4 @@ import type { ProjectApi } from "../projects.socket";
 
 export const api = treaty<ProjectApi>(`${location.origin}/api/projects`);
 
-export { unwrap } from "../../../shared/solid-ui/api";
+export { unwrap } from "@/shared/solid-ui/api";

@@ -4,4 +4,4 @@ import type pingActions from "../ping.actions";
 
 export const api = treaty<typeof pingActions>(`${location.origin}/api/ping`);
 
-export { unwrap } from "../../../shared/solid-ui/api";
+export { unwrap } from "@/shared/solid-ui/api";

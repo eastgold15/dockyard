@@ -1,5 +1,5 @@
 import { defineModule, provide } from "@elysiax/core";
-import { ServerService } from "../servers/servers.socket";
+import { ServerService } from "@/pages/servers/servers.socket";
 import { ResourceRepository } from "./resources.repository";
 import { ResourceService } from "./resources.service";
 

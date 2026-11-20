@@ -17,7 +17,7 @@ import type {
 } from "../../canvas.model";
 import { api, canvasApi, unwrap } from "../infra/api";
 import { useUi } from "../infra/ui";
-import { confirmAction, promptAction, toast } from "../../../../shared/solid-ui/feedback";
+import { confirmAction, promptAction, toast } from "@/shared/solid-ui/feedback";
 import { clampCardX, laneRect } from "../../domain/zones";
 import {
   FlowView,

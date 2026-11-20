@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "../../shared/db";
+import type { Db } from "@/shared/db";
 import { servers, type Server } from "./schema";
 
 /** 建服务器入参：字段与形状从 drizzle insert 类型派生，不手抄 */

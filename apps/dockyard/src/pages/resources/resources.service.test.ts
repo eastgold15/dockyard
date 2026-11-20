@@ -5,7 +5,7 @@
  */
 import { expect, test } from "bun:test";
 import { ServiceError } from "@elysiax/core";
-import type { ServerService } from "../servers/servers.socket";
+import type { ServerService } from "@/pages/servers/servers.socket";
 import type { ResourceRepository } from "./resources.repository";
 import type { ServerResource } from "./schema";
 import { ResourceService } from "./resources.service";

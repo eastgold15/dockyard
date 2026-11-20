@@ -9,7 +9,7 @@ import {
 } from "@meitaim/ssh";
 import { sshAgent } from "@meitaim/ssh/agent";
 import type { Server } from "./schema";
-import { decryptSecret } from "../../shared/crypto";
+import { decryptSecret } from "@/shared/crypto";
 
 /** 首次连接未知主机：携带指纹让 UI 走 TOFU 确认流程 */
 export class UnknownHostKeyError extends Error {

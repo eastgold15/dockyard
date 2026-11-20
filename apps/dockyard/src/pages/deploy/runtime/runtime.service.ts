@@ -1,13 +1,13 @@
 import { ServiceError } from "@elysiax/core";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { decryptSecret, encryptSecret } from "../../../shared/crypto";
-import { textToEnvMap } from "../../../shared/env-text";
+import { decryptSecret, encryptSecret } from "@/shared/crypto";
+import { textToEnvMap } from "@/shared/env-text";
 // containerNameOf 不再现算：身份读 target.containerName 列（体检病-3）
-import type { CanvasService } from "../../canvas/canvas.socket";
-import type { ServerService } from "../../servers/servers.socket";
+import type { CanvasService } from "@/pages/canvas/canvas.socket";
+import type { ServerService } from "@/pages/servers/servers.socket";
 // 父子之间也走插座：deploy 的服务经父原子插座引入
-import type { DeployService, DeployTarget } from "../deploy.socket";
-import { decodeDockerFrames } from "../deploy.socket";
+import type { DeployService, DeployTarget } from "@/pages/deploy/deploy.socket";
+import { decodeDockerFrames } from "@/pages/deploy/deploy.socket";
 
 /**
  * 运行时操作（嵌套原子）：容器交互/指标/日志/资源限制/服务变量。

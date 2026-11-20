@@ -27,20 +27,20 @@ import type {
   Deployment,
   DeploymentRow,
   DeployTarget,
-} from "../../../deploy/deploy.socket";
-import type { Domain } from "../../../edge/edge.socket";
-import type { RepoBrief } from "../../../github/github.socket";
-import type { DbConnection, DbRef, EnvEntry } from "../../../deploy/deploy.socket";
-import type { DetectResult, DetectedService } from "../../../deploy/deploy.socket";
+} from "@/pages/deploy/deploy.socket";
+import type { Domain } from "@/pages/edge/edge.socket";
+import type { RepoBrief } from "@/pages/github/github.socket";
+import type { DbConnection, DbRef, EnvEntry } from "@/pages/deploy/deploy.socket";
+import type { DetectResult, DetectedService } from "@/pages/deploy/deploy.socket";
 import type { DiscoveredContainer } from "../../canvas.model";
 import copy from "copy-to-clipboard";
 // env 文本函数从零依赖模块引（detect.ts 依赖链里的 dotenv 无法进浏览器包）
-import { envMapToText, serviceEnvToText, textToEnvMap } from "../../../../shared/env-text";
+import { envMapToText, serviceEnvToText, textToEnvMap } from "@/shared/env-text";
 import { api, deployPaths, unwrap } from "../infra/api";
 import { ConsoleView } from "./console";
 import { LogView } from "./log-view";
 import { emitRefresh, useUi } from "../infra/ui";
-import { confirmAction, toast } from "../../../../shared/solid-ui/feedback";
+import { confirmAction, toast } from "@/shared/solid-ui/feedback";
 import { useDeployLog, useTargetLive } from "../infra/live";
 import {
   mergeLiveRow,

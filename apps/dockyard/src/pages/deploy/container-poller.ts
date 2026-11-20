@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import type { Db } from "../../shared/db";
-import { canvasNodes, discoverySignature } from "../canvas/canvas.socket";
-import type { ServerService } from "../servers/servers.socket";
+import type { Db } from "@/shared/db";
+import { canvasNodes, discoverySignature } from "@/pages/canvas/canvas.socket";
+import type { ServerService } from "@/pages/servers/servers.socket";
 import { deployTargets, type TargetServicesDoc } from "./schema";
 import { CANVAS_CHANNEL, events, type CanvasEvent } from "./events";
 

@@ -18,6 +18,7 @@ const serverForm = t.Object({
   keyPath: t.Optional(t.String()),
   password: t.Optional(t.String()),
   registryMirrors: t.Optional(t.String()),
+  gitProxy: t.Optional(t.String()),
 });
 
 const DB_TYPES = [
@@ -40,6 +41,7 @@ export default defineRoutes<ServersServices>()
       keyPath: body.keyPath || undefined,
       password: body.password || undefined,
       registryMirrors: body.registryMirrors || undefined,
+      gitProxy: body.gitProxy || undefined,
     });
     return listModel(di);
   })
@@ -100,6 +102,20 @@ export default defineRoutes<ServersServices>()
       const server = await svc.byId(params.id);
       if (!server) return status(404, { error: "服务器不存在" });
       return { server, result };
+    },
+  )
+  // Git 代理：远端拉 GitHub 走它，绕开直连限速/丢包（国内服务器必需）
+  .patch(
+    "/:id/git-proxy",
+    {
+      params: t.Object({ id: t.Number() }),
+      body: t.Object({ gitProxy: t.Optional(t.String()) }),
+    },
+    async ({ di, params, body }) => {
+      await di.get("serverService").setGitProxy(params.id, body.gitProxy ?? "");
+      const server = await di.get("serverService").byId(params.id);
+      if (!server) return status(404, { error: "服务器不存在" });
+      return server;
     },
   )
   // ── 共享资源（弹窗内写操作，client 每次返回整段刷新） ──

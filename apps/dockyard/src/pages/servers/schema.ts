@@ -28,6 +28,9 @@ export const servers = sqliteTable("servers", {
   dockerId: text(), // docker info 的 Server ID
   // Docker 镜像源（JSON 数组字符串，每行一个 URL）；applyRegistryMirrors 时写进远端 /etc/docker/daemon.json
   registryMirrors: text(),
+  // Git 代理（如 http://127.0.0.1:7890）；远端拉 GitHub 走它，绕开直连限速。
+  // 空 = 不设代理（海外服务器直连更快）
+  gitProxy: text(),
   lastCheckedAt: integer({ mode: "timestamp" }),
   createdAt: integer({ mode: "timestamp" })
     .notNull()

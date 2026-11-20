@@ -14,6 +14,7 @@ export type NewServer = Pick<
   | "password"
   | "builtin"
   | "registryMirrors"
+  | "gitProxy"
 >;
 
 export class ServerRepository {

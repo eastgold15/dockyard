@@ -42,13 +42,16 @@ export function ServerRow(props: {
   server: Server;
   message?: string;
   mirrorsOpen: boolean;
+  gitProxyOpen: boolean;
   busy: boolean;
   onToggleMirrors: () => void;
+  onToggleGitProxy: () => void;
   onCheck: () => void;
   onInstall: () => void;
   onResources: () => void;
   onDelete: () => void;
   onSaveMirrors: (text: string) => void;
+  onSaveGitProxy: (url: string) => void;
 }) {
   const server = () => props.server;
   return (
@@ -97,6 +100,14 @@ export function ServerRow(props: {
         )}
         {server().builtin ? null : (
           <Button
+            label="Git 代理"
+            variant="ghost"
+            size="sm"
+            onClick={props.onToggleGitProxy}
+          />
+        )}
+        {server().builtin ? null : (
+          <Button
             label="删除"
             variant="danger"
             size="sm"
@@ -113,11 +124,57 @@ export function ServerRow(props: {
           onSave={props.onSaveMirrors}
         />
       )}
+      {server().builtin ? null : (
+        <GitProxyPanel
+          server={server()}
+          open={props.gitProxyOpen}
+          busy={props.busy}
+          onSave={props.onSaveGitProxy}
+        />
+      )}
       {props.message ? (
         <pre class="mono mx-4 mb-3 max-h-40 overflow-auto rounded bg-harbor-950 p-2 text-xs whitespace-pre-wrap text-neutral-400 sm:mx-6">
           {props.message}
         </pre>
       ) : null}
+    </div>
+  );
+}
+
+/** Git 代理面板：远端拉 GitHub 走它（国内服务器直连慢/断时的正解） */
+function GitProxyPanel(props: {
+  server: Server;
+  open: boolean;
+  busy: boolean;
+  onSave: (url: string) => void;
+}) {
+  const [url, setUrl] = createSignal(props.server.gitProxy ?? "");
+  if (!props.open) return null;
+  return (
+    <div class="border-t border-harbor-800/60 bg-harbor-950 px-4 py-3 sm:px-6">
+      <div class="flex max-w-xl flex-col gap-2">
+        <Field label="Git 代理（远端拉 GitHub 走它；留空 = 直连）">
+          <input
+            class={cx(field(), "mono py-2 text-xs")}
+            value={url()}
+            placeholder="http://127.0.0.1:7890"
+            onInput={(e) => setUrl(e.currentTarget.value)}
+          />
+        </Field>
+        <p class="text-xs text-neutral-500">
+          写入远端用户级 ~/.gitconfig 的 http.proxy，只影响 git 拉取，不动其他网络配置。
+          国内服务器连不上 GitHub 时，也可以在「部署」时由控制面代为下载并推送源码——
+          不需要代理也能部署。
+        </p>
+        <div>
+          <Button
+            label="保存"
+            size="sm"
+            disabled={props.busy}
+            onClick={() => props.onSave(url())}
+          />
+        </div>
+      </div>
     </div>
   );
 }

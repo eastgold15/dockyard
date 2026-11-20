@@ -18,7 +18,7 @@ import type { ServerService } from "@/pages/servers/servers.socket";
 import { openServerSftp } from "@/pages/servers/servers.socket";
 import type { ServerTransport } from "@/pages/servers/servers.socket";
 import type { DeployRepository } from "./deploy.repository";
-import { appEnvCompose, envFilePaths } from "./detect";
+import { appEnvCompose, createComposeNoiseFilter, envFilePaths } from "./detect";
 import type {
   DeployArtifact,
   Deployment,
@@ -162,8 +162,12 @@ export async function run(
     env: env ? { ...process.env, ...env } : undefined,
   });
   const pump = async (stream: ReadableStream<Uint8Array>) => {
+    // 每个流各用一个过滤器：stdout/stderr 交错时共用一份缓冲会把两边的半行拼在一起
+    const noise = createComposeNoiseFilter(log);
+    const decoder = new TextDecoder(); // stream:true 防止多字节字符被块边界劈开
     for await (const chunk of stream)
-      await log(new TextDecoder().decode(chunk).trimEnd());
+      await noise.feed(decoder.decode(chunk, { stream: true }));
+    await noise.flush();
   };
   await Promise.all([pump(proc.stdout), pump(proc.stderr)]);
   const code = await proc.exited;
@@ -295,6 +299,9 @@ export function createHarness(deps: {
     );
     if (start.code !== 0)
       throw new ServiceError(`远端后台命令启动失败：${start.stderr}`);
+    // compose 的 `${VAR}` 缺值会逐行刷英文警告并重复多遍，把真正的报错淹掉。
+    // 过滤器按行收敛成一条中文摘要（flush 时才发，那时才知道缺了哪些键）。
+    const noise = createComposeNoiseFilter(log);
     let offset = 0;
     let delay = 4_000;
     for (;;) {
@@ -319,12 +326,14 @@ export function createHarness(deps: {
       const printed = Number(sizeText.trim());
       if (Number.isFinite(printed) && printed > 0) {
         offset += printed;
-        if (chunk) await log(chunk.trimEnd());
+        // 不 trimEnd：尾行可能被窗口切断，过滤器要原样拿到才能正确拼接
+        if (chunk) await noise.feed(chunk);
         if (printed >= 262144) delay = 300; // 读满窗口说明积压严重，加速排空
       }
       const codeStr = codeText.trim();
       // 命令已结束但日志还有积压时继续排空（失败上下文在文件尾部），printed==0 说明已追到 EOF
       if (codeStr !== "" && (!Number.isFinite(printed) || printed === 0)) {
+        await noise.flush();
         const code = Number(codeStr);
         return { code: Number.isFinite(code) ? code : -1 };
       }

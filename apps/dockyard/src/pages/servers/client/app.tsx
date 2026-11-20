@@ -50,6 +50,7 @@ export function App() {
   const [busyId, setBusyId] = createSignal<number | null>(null);
   const [messages, setMessages] = createSignal<Record<number, string>>({});
   const [mirrorsFor, setMirrorsFor] = createSignal<number | null>(null);
+  const [gitProxyFor, setGitProxyFor] = createSignal<number | null>(null);
   const [trust, setTrust] = createSignal<TrustState | null>(null);
   const [resourcesFor, setResourcesFor] = createSignal<number | null>(null);
 
@@ -140,6 +141,16 @@ export function App() {
       setMirrorsFor(null);
     });
 
+  const saveGitProxy = (server: Server, url: string) =>
+    run(server.id, async () => {
+      const next = await unwrap(
+        api({ id: server.id })["git-proxy"].patch({ gitProxy: url }),
+      );
+      mergeServer(next);
+      setMessage(server.id, url ? `Git 代理已设为 ${url}` : "Git 代理已清除");
+      setGitProxyFor(null);
+    });
+
   const remove = async (server: Server) => {
     const ok = await confirmAction({
       title: `删除服务器「${server.name}」？`,
@@ -201,6 +212,7 @@ export function App() {
                           server={server}
                           message={messages()[server.id]}
                           mirrorsOpen={mirrorsFor() === server.id}
+                          gitProxyOpen={gitProxyFor() === server.id}
                           busy={busyId() === server.id}
                           onToggleMirrors={() =>
                             setMirrorsFor((prev) =>
@@ -211,8 +223,16 @@ export function App() {
                           onInstall={() => void install(server)}
                           onResources={() => setResourcesFor(server.id)}
                           onDelete={() => void remove(server)}
+                          onToggleGitProxy={() =>
+                            setGitProxyFor((prev) =>
+                              prev === server.id ? null : server.id,
+                            )
+                          }
                           onSaveMirrors={(text) =>
                             void saveMirrors(server, text)
+                          }
+                          onSaveGitProxy={(url) =>
+                            void saveGitProxy(server, url)
                           }
                         />
                       }

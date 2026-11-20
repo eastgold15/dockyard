@@ -12,7 +12,8 @@ import { parseOwnerRepo } from "@/pages/github/github.socket";
 import { openServerSftp } from "@/pages/servers/servers.socket";
 import { logicalDbCommands, type DbType } from "@/pages/resources/resources.socket";
 import type { Project } from "@/pages/projects/projects.socket";
-import { envFilePaths } from "./detect";
+import { composeInterpVars, envFilePaths, textToEnvMap } from "./detect";
+import { fetchViaControlPlane, probeGithub, safeDirName } from "./source";
 import {
   dockerArch,
   inspectCompose,
@@ -41,38 +42,64 @@ export const githubAppForm: DeployForm = {
     const rlog = async (s: string) => log(redact(s));
     const srcDir = await h.resolveRemoteDir(
       client,
-      `~/dockyard/src/${target.id}-${target.name}`,
+      `~/dockyard/src/${target.id}-${safeDirName(target.name)}`,
     );
     const composePath = target.composePath ?? "docker-compose.yml";
 
-    // 1. 源：远端 clone / fetch（token 不落盘——clone 后立即重写 remote）
+    // 1. 源：拉代码。
+    //
+    // 两种取码路径：
+    //   a) 远端直连 GitHub（海外服务器 / 有代理的国内服务器）——git clone / fetch
+    //   b) 控制面代理（国内服务器连不上 GitHub 时）——控制面下载 tarball，
+    //      经 SFTP 推给远端解包，远端全程不碰 GitHub
+    //
+    // 判定：先探远端到 GitHub 的连通性（HEAD 请求，5s 超时）；
+    // 不通就走 (b)，省掉三次注定失败的 git 尝试。
     await ctx.setStatus("building");
     await ctx.setStage("sourcing");
+    const remoteReachable = await probeGithub(client);
+    if (!remoteReachable) {
+      await rlog(
+        `远端连不上 GitHub，改由控制面代理取码：控制面下载 → 推送远端`,
+      );
+    }
     const probe = await client.exec(
       `[ -d "${srcDir}/.git" ] && echo yes || echo no`,
     );
     if (probe.stdout.trim() !== "yes") {
-      await rlog(`远端克隆 ${ownerRepo} …`);
-      await client.exec(`mkdir -p "$(dirname "${srcDir}")"`);
-      const clone = await client.exec(
-        `git clone --branch "${branch}" --single-branch "${authedUrl}" "${srcDir}"`,
-      );
-      if (clone.code !== 0)
-        throw new ServiceError(
-          redact(`远端克隆失败（exit ${clone.code}）\n${clone.stderr}`),
+      if (remoteReachable) {
+        await rlog(`远端克隆 ${ownerRepo} …`);
+        await client.exec(`mkdir -p "$(dirname "${srcDir}")"`);
+        const clone = await client.exec(
+          `git -c http.version=HTTP/1.1 clone --branch "${branch}" --single-branch "${authedUrl}" "${srcDir}"`,
         );
-      await client.exec(
-        `git -C "${srcDir}" remote set-url origin "https://github.com/${ownerRepo}.git"`,
-      );
+        if (clone.code !== 0)
+          throw new ServiceError(
+            redact(`远端克隆失败（exit ${clone.code}）\n${clone.stderr}`),
+          );
+        await client.exec(
+          `git -C "${srcDir}" remote set-url origin "https://github.com/${ownerRepo}.git"`,
+        );
+      } else {
+        await rlog(`控制面下载 ${ownerRepo}@${branch} …`);
+        await fetchViaControlPlane(h, client, {
+          ownerRepo,
+          branch,
+          srcDir,
+          log: rlog,
+        });
+      }
     }
     // ── 取码：判定「有没有更新」放在控制面，远端只负责取 ──
     // 远端服务器到 GitHub 的链路不稳（TLS 抖动会打断整轮部署），
     // 而控制面（本地）问 GitHub 是可靠的。所以：控制面查上游最新 sha，
     // 与远端现有检出比对——相同就复用缓存（完全不碰远端→GitHub 链路），
     // 不同才让远端 fetch。手动重部署同样走这条路径，不再依赖 updateAvailable 徽章。
-    const currentSha = (
-      await client.exec(`git -C "${srcDir}" rev-parse --short=8 HEAD`)
-    ).stdout.trim();
+    // 远端工作目录可能没有 .git（控制面代理解包的目录）——那时读标记文件
+    const revParse = await client.exec(
+      `git -C "${srcDir}" rev-parse --short=8 HEAD 2>/dev/null || cat "${srcDir}/.dockyard-sha" 2>/dev/null || true`,
+    );
+    const currentSha = revParse.stdout.trim();
     let upstreamShort: string | null = null;
     try {
       const head = await h.github.latestSha(ownerRepo, branch);
@@ -87,6 +114,27 @@ export const githubAppForm: DeployForm = {
     let stale = false;
     if (!needFetch) {
       await rlog(`远端已是上游最新提交 ${currentSha}，复用现有检出`);
+    } else if (!remoteReachable) {
+      // 远端连不上 GitHub → 由控制面下载快照推过去（远端零 GitHub 依赖）
+      await rlog(
+        upstreamShort
+          ? `控制面下载上游 ${upstreamShort}（远端现有 ${currentSha}）…`
+          : "控制面下载上游最新快照…",
+      );
+      try {
+        await fetchViaControlPlane(h, client, {
+          ownerRepo,
+          branch,
+          srcDir,
+          log: rlog,
+          sha: upstreamShort ?? undefined,
+        });
+      } catch (error) {
+        stale = true;
+        await rlog(
+          `⚠️ 控制面代理取码失败（${(error as Error).message}），本轮沿用远端现有检出 ${currentSha}`,
+        );
+      }
     } else {
       await rlog(
         upstreamShort
@@ -96,26 +144,40 @@ export const githubAppForm: DeployForm = {
       // 瞬时网络抖动（TLS 断连）重试；三次都失败不再打死整轮——
       // 退回远端现有检出继续构建，并在日志与 UI 上明确标注「构建的不是最新提交」。
       let fetched = false;
-      let fetchErr = "";
       for (let attempt = 1; attempt <= 3 && !fetched; attempt++) {
         const fetch = await client.exec(
-          `git -C "${srcDir}" fetch --no-tags "${authedUrl}" "${branch}" && git -C "${srcDir}" checkout --force --detach FETCH_HEAD`,
+          // http.version=HTTP/1.1：远端 git 走 HTTP/2 时常报
+          // "RPC failed; curl 16 Error in the HTTP2 framing layer"，降到 1.1 即可稳定。
+          // 用 -c 单次生效，不写进仓库配置。
+          //
+          // http.lowSpeedLimit/Time：国内服务器到 GitHub 链路慢时，git 默认 30s 无数据就
+          // 判定传输失败（"The remote end hung up unexpectedly"）。放宽到「60s 至少 1 字节」
+          // 让慢链路能熬过去，而不是直接掐断。
+          `git -c http.version=HTTP/1.1 -c http.lowSpeedLimit=1 -c http.lowSpeedTime=60` +
+            ` -C "${srcDir}" fetch --no-tags --depth=1 "${authedUrl}" "${branch}"` +
+            ` && git -C "${srcDir}" checkout --force --detach FETCH_HEAD`,
         );
         fetched = fetch.code === 0;
         if (!fetched) {
-          fetchErr = fetch.stderr || fetch.stdout || "";
-          if (attempt < 3) await rlog(`拉取失败（exit ${fetch.code}），重试…`);
+          // 每次失败都把原始输出打出来：之前只在最后一次打印，且截断 300 字，
+          // 用户既看不到「第几次失败的」也看不到完整错误（限速/代理/证书的真实原因）。
+          const detail = (fetch.stderr || fetch.stdout || "").trim();
+          await rlog(
+            `拉取失败（exit ${fetch.code}）${attempt < 3 ? "，重试…" : ""}` +
+              (detail ? `\n${detail}` : "（无输出）"),
+          );
         }
       }
       if (!fetched) {
         stale = true;
-        await rlog(
-          `⚠️ 拉取最新提交失败（${fetchErr.slice(0, 300).trim() || "无输出"}），本轮沿用远端现有检出 ${currentSha}`,
-        );
+        await rlog(`⚠️ 三次拉取均失败，本轮沿用远端现有检出 ${currentSha}`);
       }
     }
+    // 构建用的提交号：控制面代理模式下远端没有 .git，读标记文件
     const sha = (
-      await client.exec(`git -C "${srcDir}" rev-parse --short=8 HEAD`)
+      await client.exec(
+        `git -C "${srcDir}" rev-parse --short=8 HEAD 2>/dev/null || cat "${srcDir}/.dockyard-sha" 2>/dev/null || echo unknown`,
+      )
     ).stdout.trim();
     await rlog(`远端构建 ${ownerRepo}@${sha} …`);
 
@@ -123,6 +185,10 @@ export const githubAppForm: DeployForm = {
     // compose 把 env_file 解析为「相对 compose 文件所在目录」，子目录 compose（deploy/x.yml 写 ../apps/.env）必须同样解析
     const composeText = (await client.exec(`cat "${srcDir}/${composePath}"`))
       .stdout;
+    await reportMissingInterpVars(composeText, target.envJson, rlog, [
+      ...(target.serviceName ? [target.serviceName] : []),
+      ...(target.upServices ?? []),
+    ]);
     for (const p of envFilePaths(composeText)) {
       const rel = normalize(join(dirname(composePath), p));
       if (rel.startsWith("..") || rel.startsWith("/")) continue; // 逃出仓库的路径不创建
@@ -151,38 +217,10 @@ export const githubAppForm: DeployForm = {
       : undefined;
     if (target.serviceName && !selectedService)
       throw new ServiceError(`compose 中不存在服务「${target.serviceName}」`);
-    await ctx.setStage("building");
-    if (target.serviceName && !selectedService?.build) {
-      await rlog(`服务 ${target.serviceName} 使用现成镜像，跳过构建`);
-      const pull = await h.execLongRemote(
-        serverId,
-        `cd "${srcDir}" && docker compose -f "${composePath}" pull "${target.serviceName}"`,
-        `pull-${target.id}`,
-        rlog,
-      );
-      if (pull.code !== 0)
-        throw new ServiceError(`远端镜像拉取失败（exit ${pull.code}）`);
-    } else {
-      const buildCmd = target.serviceName
-        ? `docker compose -f "${composePath}" build "${target.serviceName}"`
-        : `for s in $(docker compose -f "${composePath}" config --services); do docker compose -f "${composePath}" build "$s" || exit 1; done`;
-      const build = await h.withBuildLock(
-        serverId,
-        () =>
-          h.execLongRemote(
-            serverId,
-            `cd "${srcDir}" && ${buildCmd}`,
-            `build-${target.id}`,
-            rlog,
-          ),
-        rlog,
-      );
-      if (build.code !== 0)
-        throw new ServiceError(`远端构建失败（exit ${build.code}）`);
-    }
-
-    // 4. 传输 = 免（就地就绪）：产物断言核验（config 解析 + preflight 门禁）→ 推 .env/override。
-    // 检出目录的构建产物已在上面落位（clone 之本意），但秘密文件必须在归属校验通过后才写
+    // 4. 归属校验 + 秘密落盘：compose config 解析 → 容器归属对账 → 写 .env/override/labels。
+    // 顺序刻意如此：秘密文件必须在归属校验通过后才写（不能被抢先覆盖别人的目录）；
+    // 但必须排在 build 之前——compose 的 ${VAR} 插值在解析 YAML 时就发生，.env 晚到
+    // 会让 build.args / environment 拿到空串，且日志里刷一堆「variable is not set」。
     const inspected = await inspectCompose(h, {
       target,
       serverId,
@@ -193,7 +231,6 @@ export const githubAppForm: DeployForm = {
       redact,
     });
 
-    // 构建期间缓存连接可能已被丢弃重建——拿当前可用连接
     const fresh = await h.serverService.transport(serverId);
     const sftp = await openServerSftp(fresh);
     if (inspected.labelsCompose)
@@ -226,6 +263,50 @@ export const githubAppForm: DeployForm = {
     else
       await fresh.exec(`rm -f "${srcDir}/docker-compose.dockyard-env.yml"`);
     await sftp.close();
+
+    // 秘密落盘后复验：compose 的 `${VAR:?}` 是硬依赖（缺值直接解析失败），
+    // 而上面的 inspectCompose 必须在 .env 之前跑（它同时是归属校验）。
+    // 这里再解析一次，让「变量没配」表现为一条中文报错，而不是等到 build/up 才炸。
+    const recheck = await fresh.exec(
+      `cd "${srcDir}" && docker compose -f "${composePath}" config --format json`,
+    );
+    if (recheck.code !== 0)
+      throw new ServiceError(
+        redact(
+          `compose 解析失败（.env 已写入）：${recheck.stderr}\n` +
+            `常见原因：compose 用了 \${VAR:?} 但变量里没有该键`,
+        ),
+      );
+
+    await ctx.setStage("building");
+    if (target.serviceName && !selectedService?.build) {
+      await rlog(`服务 ${target.serviceName} 使用现成镜像，跳过构建`);
+      const pull = await h.execLongRemote(
+        serverId,
+        `cd "${srcDir}" && docker compose -f "${composePath}" pull "${target.serviceName}"`,
+        `pull-${target.id}`,
+        rlog,
+      );
+      if (pull.code !== 0)
+        throw new ServiceError(`远端镜像拉取失败（exit ${pull.code}）`);
+    } else {
+      const buildCmd = target.serviceName
+        ? `docker compose -f "${composePath}" build "${target.serviceName}"`
+        : `for s in $(docker compose -f "${composePath}" config --services); do docker compose -f "${composePath}" build "$s" || exit 1; done`;
+      const build = await h.withBuildLock(
+        serverId,
+        () =>
+          h.execLongRemote(
+            serverId,
+            `cd "${srcDir}" && ${buildCmd}`,
+            `build-${target.id}`,
+            rlog,
+          ),
+        rlog,
+      );
+      if (build.code !== 0)
+        throw new ServiceError(`远端构建失败（exit ${build.code}）`);
+    }
 
     return {
       remoteDir: srcDir,
@@ -365,6 +446,10 @@ export function localAppForm(proj: Project): DeployForm {
       await client.exec(`mkdir -p "${remoteDir}"`);
       const sftp = await openServerSftp(client);
       const composeText = await Bun.file(join(repoDir, composePath)).text();
+      await reportMissingInterpVars(composeText, target.envJson, log, [
+        ...(target.serviceName ? [target.serviceName] : []),
+        ...(target.upServices ?? []),
+      ]);
       await sftp.write(`${remoteDir}/docker-compose.yml`, composeText);
       // 用户 compose 的 env_file 是相对仓库的路径（远端没有目录树）——放空占位，
       // 否则 compose config/up 直接报 "env file not found"；真实值由 override 的 environment 注入
@@ -415,6 +500,16 @@ export function localAppForm(proj: Project): DeployForm {
         );
       await sftp.close();
 
+      // 秘密落盘后复验（同 github 流程）：让 compose 的硬依赖变量缺失在部署前暴露
+      const recheck = await client.exec(
+        `cd "${remoteDir}" && docker compose -f "docker-compose.yml" config --format json`,
+      );
+      if (recheck.code !== 0)
+        throw new ServiceError(
+          `compose 解析失败（.env 已写入）：${recheck.stderr}\n` +
+            `常见原因：compose 用了 \${VAR:?} 但变量里没有该键`,
+        );
+
       return {
         remoteDir,
         ...inspected,
@@ -433,6 +528,34 @@ export function localAppForm(proj: Project): DeployForm {
       };
     },
   };
+}
+
+/**
+ * 部署前对账：compose 引用的插值变量 vs 目标变量。
+ *
+ * 为什么需要：`docker compose` 解析 YAML 时就把 `${X}` 就地替换，缺值只打一行英文警告并
+ * 用空串顶上。构建阶段缺值通常无害（不启动容器），但 up 阶段缺值会让服务拿到空配置，
+ * 而用户只看得到「我明明填了 DATABASE_URL」——缺的其实是另一个键（如 POSTGRES_PASSWORD）。
+ * 这里提前算差集，用中文点名，别让人去翻 compose 源码。
+ */
+async function reportMissingInterpVars(
+  composeText: string,
+  envJson: string | null | undefined,
+  log: (chunk: string) => Promise<void> | void,
+  serviceNames?: string[],
+): Promise<string[]> {
+  const referenced = composeInterpVars(composeText, serviceNames);
+  if (!referenced.length) return [];
+  const have = new Set(
+    Object.keys(textToEnvMap(envJson ? decryptSecret(envJson) : "")),
+  );
+  const missing = referenced.filter((k) => !have.has(k));
+  if (missing.length)
+    await log(
+      `⚠️ compose 引用但变量里没有：${missing.join("、")}` +
+        `（缺值会被替换成空串；在「变量」里补上，或给 compose 写默认值 \${X:-default}）`,
+    );
+  return missing;
 }
 
 // ── db · 独立实例：模板渲染 → sftp 推送 → compose up（官方镜像由 up 拉取，无构建、无 tag）──

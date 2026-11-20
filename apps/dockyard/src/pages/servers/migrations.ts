@@ -24,4 +24,12 @@ export const migrations: MigrationsJournal = [
     timestamp: 22,
     sql: "ALTER TABLE `servers` ADD `registryMirrors` text;",
   },
+  {
+    // Git 代理：远端拉 GitHub 走它，绕开直连限速/丢包
+    // name 保持 0023（本地开发库已按此名记录过，改名会重跑 ADD COLUMN 而报错）；
+    // timestamp 用 24——23 已被 deploy 原子的 0023_log_unified_sources 占用。
+    name: "0023_server_git_proxy",
+    timestamp: 24,
+    sql: "ALTER TABLE `servers` ADD `gitProxy` text;",
+  },
 ];

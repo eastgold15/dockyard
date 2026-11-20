@@ -323,6 +323,98 @@ export function envFilePaths(composeText: string): string[] {
   return [...paths];
 }
 
+/** compose 插值里的「必填」变量名（**没有默认值**的那些）。
+ *
+ *  `${X}` / `${X:?msg}` 缺值 → compose 替换成空串（或直接报错），是真问题。
+ *  `${X:-default}` / `${X-default}` / `${X:+alt}` / `${X+alt}` 有默认值或可选，缺值是正常用法，
+ *  不算缺失——否则一个 compose 里十个带默认值的键会被误报成十个错误。
+ *  跳过 `$${X}`（compose 转义：字面量原样传给容器，不需要值）。
+ *
+ *  `serviceNames` 给了就只扫这些服务的子树：同一个 compose 文件里的 web/admin 服务
+ *  往往有各自的构建参数，把它们算进「本次部署缺失」纯属噪音。 */
+export function composeInterpVars(
+  composeText: string,
+  serviceNames?: string[],
+): string[] {
+  let text = composeText;
+  if (serviceNames?.length) {
+    try {
+      const doc: unknown = parseYaml(composeText);
+      const all = isObj(doc) && isObj(doc.services) ? doc.services : {};
+      const picked: Record<string, unknown> = {};
+      for (const name of serviceNames)
+        if (isObj(all) && name in all)
+          picked[name] = (all as Record<string, unknown>)[name];
+      if (Object.keys(picked).length)
+        text = stringifyYaml({ services: picked });
+    } catch {
+      /* YAML 解析不了就退回全文扫描：宁可多报，不可漏报 */
+    }
+  }
+  const names = new Set<string>();
+  for (const m of text.matchAll(/(^|[^$])\$\{([A-Za-z_][A-Za-z0-9_]*)([^}]*)\}/g)) {
+    const mod = m[3]!;
+    // :- / - 是默认值；:+ / + 是替代值（变量本身可选）
+    if (/^:?[-+]/.test(mod)) continue;
+    names.add(m[2]!);
+  }
+  return [...names];
+}
+
+/** compose 的「变量未设置」警告行（构建日志里会重复很多遍） */
+// compose 输出里变量名带转义引号：msg="The \"POSTGRES_PASSWORD\" variable is not set. …"
+const COMPOSE_NOISE_RE =
+  /^time="[^"]*"\s+level=warning\s+msg="The \\?"([A-Za-z_][A-Za-z0-9_]*)\\?" variable is not set\. Defaulting to a blank string\."$/;
+
+/**
+ * compose 噪音过滤器：把逐行重复的英文插值警告收敛成一条中文摘要。
+ *
+ * 远端日志是分块推送的（可能切断行），所以内部保留未闭合的尾行，闭合后才判定；
+ * 摘要要到 flush() 才发——那时已经知道这次命令到底缺了哪些键。
+ */
+export function createComposeNoiseFilter(
+  emit: (chunk: string) => Promise<void> | void,
+): { feed(chunk: string): Promise<void>; flush(): Promise<void> } {
+  let tail = "";
+  const missing = new Set<string>();
+  /** 把完整的行过一遍：噪音进 missing，其余原样保留 */
+  const scan = (text: string): string => {
+    const keep: string[] = [];
+    for (const line of text.split("\n")) {
+      const m = COMPOSE_NOISE_RE.exec(line.trim());
+      if (m) missing.add(m[1]!);
+      else keep.push(line);
+    }
+    return keep.join("\n");
+  };
+  return {
+    async feed(chunk) {
+      const buf = tail + chunk;
+      const cut = buf.lastIndexOf("\n");
+      // 没有换行 = 整块是一行的一部分，留着等下一块
+      if (cut < 0) {
+        tail = buf;
+        return;
+      }
+      tail = buf.slice(cut + 1);
+      const out = scan(buf.slice(0, cut));
+      if (out.trim()) await emit(out);
+    },
+    async flush() {
+      if (tail) {
+        const out = scan(tail);
+        tail = "";
+        if (out.trim()) await emit(out);
+      }
+      if (missing.size)
+        await emit(
+          `⚠️ compose 插值缺值：${[...missing].join("、")}` +
+            `（compose 在 .env / 环境里找不到这些键，已替换成空串）`,
+        );
+    },
+  };
+}
+
 /** compose 回退：只探测 services 和 ports（格式 "host:container" 或 "port"），env 不猜 */
 export function detectFromCompose(composeText: string): DetectResult {
   const warnings: string[] = [];

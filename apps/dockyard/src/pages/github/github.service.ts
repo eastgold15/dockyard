@@ -476,4 +476,29 @@ export class GithubService {
   async authedRepoUrl(ownerRepo: string): Promise<string> {
     return `https://x-access-token:${await this.token()}@github.com/${ownerRepo}.git`;
   }
+
+  /**
+   * 下载仓库快照（tar.gz 字节）。
+   *
+   * 用途：远端服务器访问不了 GitHub（国内线路限速/丢包）时，由**控制面**（本机，
+   * 线路正常）下载源码，再经 SFTP 推给远端，远端全程不碰 GitHub。
+   *
+   * 为什么走 API 而不是 codeload 直链：`/repos/{owner}/{repo}/tarball/{ref}` 带
+   * Authorization 头，私有库也能拉；codeload 直链不认 token。
+   * API 返回 302 跳到 codeload，fetch 默认跟随重定向。
+   */
+  async tarball(ownerRepo: string, ref: string): Promise<Uint8Array> {
+    const res = await this.apiRequest(
+      `/repos/${ownerRepo}/tarball/${encodeURIComponent(ref)}`,
+      { headers: { Accept: "application/vnd.github+json" } },
+    );
+    if (!res.ok)
+      throw new ServiceError(
+        `GitHub 下载 ${ownerRepo}@${ref} 失败（${res.status}）：${(await res.text()).slice(0, 200)}`,
+      );
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength === 0)
+      throw new ServiceError(`GitHub 返回空快照：${ownerRepo}@${ref}`);
+    return buf;
+  }
 }

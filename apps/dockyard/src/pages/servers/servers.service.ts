@@ -188,6 +188,33 @@ export class ServerService {
    * 保存镜像源设置；列表非空时立即应用到远端（写 /etc/docker/daemon.json + 重启 dockerd）。
    * 清空列表只保存不碰远端——不留 dockyard 去拆掉用户手工配的镜像源。
    */
+  /**
+   * 设 Git 代理：远端拉 GitHub 时走它。
+   *
+   * 国内服务器直连 GitHub 常被限速或丢包（"RPC failed; curl 16 Error in the HTTP2
+   * framing layer" / "The remote end hung up unexpectedly"）。给远端写一份
+   * ~/.gitconfig 的 http.proxy，git clone/fetch 自动走代理；清空时撤掉。
+   *
+   * 代理只影响 GitHub 拉取，不动远端其他网络配置。
+   */
+  async setGitProxy(id: number, proxy: string): Promise<void> {
+    const server = await this.mustGet(id);
+    const url = proxy.trim();
+    if (url && !/^https?:\/\//i.test(url))
+      throw new ServiceError("Git 代理必须是 http:// 或 https:// 开头的地址");
+    await this.repo.update(id, { gitProxy: url || null });
+    const client = await this.transport(id);
+    // 远端用户级 gitconfig：只影响 git 自己，不污染系统级 /etc/gitconfig
+    const unset = url
+      ? `git config --global http.proxy "${url}"` +
+        ` && git config --global https.proxy "${url}"`
+      : `git config --global --unset http.proxy; ` +
+        `git config --global --unset https.proxy; true`;
+    const res = await client.exec(unset);
+    if (res.code !== 0)
+      throw new ServiceError(`远端设置 Git 代理失败：${res.stderr || res.stdout}`);
+  }
+
   async configureMirrors(
     id: number,
     text: string,

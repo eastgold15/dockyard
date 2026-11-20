@@ -20,12 +20,13 @@ import {
   type DetectedService,
 } from "./detect";
 import { sourceTypeOf, type DeployService } from "./deploy.service";
+import type { DeployServices } from "../../../.elysiax/services.gen";
 
 /** 共享资源匹配（部署前置检查）：识别出的中间件服务 vs 目标服务器的共享资源清单 */
 export type SharedMatch = { service: string; displayUrl: string } & SharedEnv;
 
 /** DI 容器视图：键与返回类型全部来自 codegen 的 ServiceMap，不重抄 */
-type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] };
+type Di = { get<K extends keyof DeployServices>(k: K): DeployServices[K] };
 
 async function sharedMatchesOf(
   di: Di,
@@ -40,12 +41,12 @@ async function sharedMatchesOf(
     const hit = dbType ? shared.find((sh) => sh.dbType === dbType) : undefined;
     return hit
       ? [
-          {
-            service: s.name,
-            ...hit,
-            displayUrl: hit.url.replace(/(\/\/[^:/@]+:)[^@]+(@)/, "$1•••$2"),
-          },
-        ]
+        {
+          service: s.name,
+          ...hit,
+          displayUrl: hit.url.replace(/(\/\/[^:/@]+:)[^@]+(@)/, "$1•••$2"),
+        },
+      ]
       : [];
   });
 }
@@ -230,10 +231,10 @@ export default defineRoutes()
       const dbType = (query.dbType ?? "postgres") as DbType;
       const instances = LOGICAL_DB_SUPPORT[dbType]
         ? await ctxOf(di).deploy.instancesOfNode(
-            query.nodeId,
-            dbType,
-            query.projectId ?? null,
-          )
+          query.nodeId,
+          dbType,
+          query.projectId ?? null,
+        )
         : [];
       return { instances };
     },
@@ -342,17 +343,17 @@ export default defineRoutes()
       const instanceId = body.instanceId ? Number(body.instanceId) : 0;
       const target = instanceId
         ? await svc.createLogicalDbTarget({
-            nodeId: body.nodeId,
-            name: body.name,
-            instanceId,
-          })
+          nodeId: body.nodeId,
+          name: body.name,
+          instanceId,
+        })
         : await svc.createDbTarget({
-            nodeId: body.nodeId,
-            projectId: body.projectId,
-            name: body.name,
-            dbType: body.dbType,
-            remoteDir: body.remoteDir ?? "",
-          });
+          nodeId: body.nodeId,
+          projectId: body.projectId,
+          name: body.name,
+          dbType: body.dbType,
+          remoteDir: body.remoteDir ?? "",
+        });
       void svc.deploy(target.id); // 创建即部署
       return { ok: true as const };
     },
@@ -482,8 +483,8 @@ export default defineRoutes()
       const project = target.projectId
         ? await ctx.project.byId(target.projectId)
         : (await ctx.project.list()).find(
-            (p) => p.repoUrl && p.repoUrl === target.repoUrl,
-          );
+          (p) => p.repoUrl && p.repoUrl === target.repoUrl,
+        );
       // Railway 式：一次全量返回服务详情，前端自由组织 tab 而无需按 tab 重拉。
       // 数据量小（部署历史≤几十行、域名/变量若干），全量代价可忽略；tab 保留兼容旧调用。
       return {
@@ -502,15 +503,15 @@ export default defineRoutes()
         connections:
           query.svc && target.kind === "app"
             ? (await ctx.deploy.connectionsOfApp(target)).filter(
-                (c) => c.service === query.svc,
-              )
+              (c) => c.service === query.svc,
+            )
             : undefined,
         sharedEnv: await ctx.deploy.sharedEnvOfTarget(params.id),
         selectedDeps: query.svc
           ? ctx.deploy
-              .edgesOfTarget(target)
-              .filter((e) => e.service === query.svc)
-              .map((e) => e.db)
+            .edgesOfTarget(target)
+            .filter((e) => e.service === query.svc)
+            .map((e) => e.db)
           : undefined,
         domains: await ctx.edge.domainsOfTarget(params.id),
         resources: query.svc
@@ -694,7 +695,7 @@ export default defineRoutes()
           | { type: "resize"; cols: number; rows: number };
         if (msg.type === "input") session.stream.write(msg.data);
         else if (msg.type === "resize" && msg.cols > 0 && msg.rows > 0)
-          session.exec.resize({ h: msg.rows, w: msg.cols }).catch(() => {});
+          session.exec.resize({ h: msg.rows, w: msg.cols }).catch(() => { });
       } catch {
         /* 坏帧忽略 */
       }

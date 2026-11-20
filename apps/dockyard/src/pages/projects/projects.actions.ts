@@ -1,5 +1,5 @@
 import { t } from "elysia";
-import { defineRoutes, type ServiceMap } from "../../../.elysiax";
+import { defineRoutes, type ProjectsServices } from "../../../.elysiax";
 import { loadConfig, saveConfig } from "./config";
 import type {
   NewProjectData,
@@ -7,8 +7,8 @@ import type {
   ScanConfig,
 } from "./projects.types";
 
-/** DI 容器视图：键与返回类型全部来自 codegen 的 ServiceMap，不重抄 */
-type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] };
+/** DI 视图：键与类型来自 codegen 的 ProjectsServices（= 本模块 provides ∪ 直接 deps） */
+type Di = { get<K extends keyof ProjectsServices>(k: K): ProjectsServices[K] };
 
 /** 列表视图模型：本地扫描结果（磁盘为准）+ 未检出的 GitHub 项目空间 */
 const model = async (di: Di): Promise<ProjectListModel> => {
@@ -30,7 +30,7 @@ const model = async (di: Di): Promise<ProjectListModel> => {
 };
 
 /** projects 的 JSON API（Solid 页；壳由 codegen HTMLBundle 服务）。 */
-export default defineRoutes()
+export default defineRoutes<ProjectsServices>()
   .get("/", async ({ di }): Promise<ProjectListModel> => model(di))
   // 扫描目录配置：GET 取当前配置，POST 保存并返回刷新后的列表
   .get("/config", async (): Promise<ScanConfig> => {
@@ -52,17 +52,10 @@ export default defineRoutes()
       return model(di);
     },
   )
-  // 新建项目弹窗：gh CLI 列仓库（未登录时降级为空列表，仍可手填/跳过）
-  .get("/new", async ({ di }): Promise<NewProjectData> => {
-    try {
-      return { repos: await di.get("githubService").listRepos() };
-    } catch (e) {
-      return {
-        repos: [],
-        error: `仓库列表拉取失败（${(e as Error).message}），可跳过绑定`,
-      };
-    }
-  })
+  // 新建项目弹窗：仓库列表由 projectService 组装（GitHub 失败降级为空列表）
+  .get("/new", async ({ di }): Promise<NewProjectData> =>
+    di.get("projectService").newProjectData(),
+  )
   // 用编辑器 / lazygit 打开本地目录（编辑器用过即设为默认）
   .post(
     "/open",

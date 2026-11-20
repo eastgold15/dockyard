@@ -2,7 +2,7 @@ import { ServiceError } from "@elysiax/core";
 import type { CanvasRepository } from "./canvas.repository";
 
 export class CanvasService {
-  constructor(private readonly repo: CanvasRepository) {}
+  constructor(private readonly repo: CanvasRepository) { }
 
   nodesAll() {
     return this.repo.nodesAll();

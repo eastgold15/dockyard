@@ -1,10 +1,27 @@
 import { basename } from "node:path";
-import { parseOwnerRepo } from "../github/github.socket";
+import { parseOwnerRepo, type GithubService } from "../github/github.socket";
 import { readGitRemote } from "./local.service";
 import type { ProjectRepository } from "./projects.repository";
+import type { NewProjectData } from "./projects.types";
 
 export class ProjectService {
-  constructor(private readonly repo: ProjectRepository) {}
+  constructor(
+    private readonly repo: ProjectRepository,
+    private readonly github: GithubService,
+  ) { }
+
+  /** 新建项目弹窗的初始数据：列 GitHub 仓库；未登录/失败降级为空列表 + 提示 */
+  async newProjectData(): Promise<NewProjectData> {
+    try {
+      return { repos: await this.github.listRepos() };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return {
+        repos: [],
+        error: `仓库列表拉取失败（${message}），可跳过绑定`,
+      };
+    }
+  }
 
   list() {
     return this.repo.list();

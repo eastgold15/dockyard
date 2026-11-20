@@ -17,9 +17,10 @@ import type {
 import type { CanvasService } from "./canvas.service";
 import { discoverContainers } from "./domain/discovery";
 import { clampCardX, violatesLane } from "./domain/zones";
+import type { CanvasServices } from "../../../.elysiax/services.gen";
 
 /** DI 容器视图：键与返回类型全部来自 codegen 的 ServiceMap，不重抄 */
-type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] };
+type Di = { get<K extends keyof CanvasServices>(k: K): CanvasServices[K] };
 
 interface Ctx {
   project: ProjectService;
@@ -36,7 +37,7 @@ const lastDiscovered = new Map<number, DiscoveredContainer[]>();
 
 /** 超时竞速；超时后原 promise 的失败也要接住，避免变成 unhandled rejection */
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  p.catch(() => {});
+  p.catch(() => { });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -75,12 +76,12 @@ async function canvasData(ctx: Ctx) {
           const domains =
             target.kind === "app"
               ? (await ctx.edge.domainsOfTarget(target.id)).map((d) => ({
-                  hostname: d.hostname,
-                  sslStatus: d.sslStatus,
-                  dnsStatus: d.dnsStatus,
-                  serviceName: d.serviceName,
-                  targetPort: d.targetPort,
-                }))
+                hostname: d.hostname,
+                sslStatus: d.sslStatus,
+                dnsStatus: d.dnsStatus,
+                serviceName: d.serviceName,
+                targetPort: d.targetPort,
+              }))
               : [];
           // compose 服务清单（创建落库/存量惰性补全）；容器状态在下方按服务器聚合后填入
           const svcDoc =

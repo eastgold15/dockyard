@@ -4,10 +4,10 @@ import { defineRoutes, type ServiceMap } from "../../../.elysiax";
 import type { ServerService } from "./servers.service";
 import type { ResourceService } from "../resources/resources.socket";
 import type { ResourcesResponse, ServersModel } from "./servers.types";
+import type { ServersServices } from "../../../.elysiax/services.gen";
 
 /** DI 容器视图：键与返回类型全部来自 codegen 的 ServiceMap，不重抄 */
-type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] };
-
+type Di = { get<K extends keyof ServersServices>(k: K): ServersServices[K] };
 const serverForm = t.Object({
   name: t.String({ minLength: 1 }),
   host: t.String({ minLength: 1 }),

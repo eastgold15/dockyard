@@ -3,7 +3,10 @@
  * Solid 的 context/useContext 与 React 语义一致，只是 provider 值是稳定引用、
  * 细粒度订阅发生在 JSX 读取处。
  */
-import { createContext, useContext } from "solid-js";
+import {
+  createContext,
+  useContext,
+} from "solid-js";
 import type { DiscoveredContainer } from "../../canvas.model";
 
 /** 模态视图描述：App 层的 DrawerHost 按 kind 渲染对应抽屉 */

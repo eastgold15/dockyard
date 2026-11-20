@@ -1,28 +1,25 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 画布抽屉/弹窗（Solid 版）：数据走 /api/canvas JSON，
  * 写操作 JSON 进出，错误内联回显；结构变更后 emitRefresh() 让画布重拉。
  *
  * React → Solid 转换要点：
  * - useState → createSignal，读取一律函数调用（envText() 等）
- * - useEffect → onMount（一次性加载/轮询）/ createEffect（跟随信号重拉）
- * - 行内编辑列表用 <Index> 而非 <For>：patchSvc 换对象引用时 <Index> 保 DOM，输入框不丢焦点
+ * - useEffect → onSettled（一次性加载/轮询）/ createEffect（跟随信号重拉）
+ * - 行内编辑列表用 <For>（原 <Index>）：patchSvc 换对象引用时保 DOM，输入框不丢焦点
  * - React 版靠 key={repoUrl} 重挂载换 defaultValue，Solid 改为信号量受控输入
  * - onChange → 文本/数字用 onInput，select/checkbox/radio 用 onChange（原生语义）
  */
 import {
   createEffect,
   createSignal,
-  Index,
   For,
   Match,
-  onCleanup,
-  onMount,
+  onSettled,
   Show,
-  splitProps,
   Switch,
-} from "solid-js";
-import type { JSX } from "solid-js";
+} from "solid-js";;;
+import type { JSX } from "@solidjs/web";
 import type {
   Deployment,
   DeploymentRow,
@@ -240,8 +237,8 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
             title="服务"
             hint={`${services().length} 个 · 端口/域名/资源`}
           >
-            {/* Index 按位置渲染：patchSvc 换对象引用时保 DOM，输入不丢焦点 */}
-            <Index each={services()}>
+            {/* For keyed={false} 按位置渲染：patchSvc 换对象引用时保 DOM，输入不丢焦点 */}
+            <For each={services()} keyed={false}>
               {(svc) => (
                 <div class="rounded border border-harbor-800 bg-harbor-950/70 px-3 py-2.5">
                   <div class="mb-2 flex items-center gap-2">
@@ -366,7 +363,7 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
                   </Show>
                 </div>
               )}
-            </Index>
+            </For>
           </Section>
         </Show>
 
@@ -477,7 +474,7 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
             hint="按清单顺序逐个部署：数据库拉取镜像、应用构建镜像"
           >
             <div class="flex flex-col gap-1.5">
-              <Index each={services()}>
+              <For each={services()} keyed={false}>
                 {(svc) => (
                   <div class="flex items-center gap-2 rounded border border-harbor-800 bg-harbor-950/70 px-3 py-2">
                     <span class="mono text-xs text-neutral-200">
@@ -504,7 +501,7 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
                     </Show>
                   </div>
                 )}
-              </Index>
+              </For>
             </div>
             <div class="text-[11px] text-neutral-600">
               每个服务独立建卡、独立构建、独立日志；上一个完成后再部署下一个。

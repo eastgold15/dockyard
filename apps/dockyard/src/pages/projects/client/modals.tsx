@@ -1,9 +1,12 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * projects 页的两个弹窗：扫描目录配置 / 新建项目（从 GitHub 仓库选或跳过）。
  * 弹层行为走 Kobalte（经 shared Modal），外观走 Panda recipe；提交错误由父层 toast 回显。
  */
-import { createSignal, For } from "solid-js";
+import {
+  createSignal,
+  For,
+} from "solid-js";
 import type { NewProjectData, RepoBrief } from "../projects.types";
 import { field } from "../../../../styled-system/recipes";
 import { cx } from "../../../../styled-system/css";

@@ -1,12 +1,15 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 实时状态的所有者：SSE 连接 + live store 建在 App 层，
  * Board（节点徽章/按钮）与 DrawerHost（部署行/日志弹窗）必须同处其下——
  * 只包住 Board 的话，兄弟位置的抽屉拿到的是 context 默认值（emptyLive），
  * 表现为「节点实时是好的、抽屉永远不刷新」。
  */
-import { onCleanup, onMount, type JSX } from "solid-js";
-import { createStore } from "solid-js/store";
+import {
+  onSettled,
+} from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { createStore } from "solid-js";
 import { LiveContext, nextLog, nextTargetLive, type LiveState } from "./live";
 import type { ServiceState } from "../../canvas.model";
 import { canvasPaths } from "./api";
@@ -30,7 +33,7 @@ export function LiveProvider(props: { children: JSX.Element }) {
     logs: {},
   });
 
-  onMount(() => {
+  onSettled(() => {
     const es = new EventSource(EVENTS_URL);
     es.onmessage = (e) => {
       try {
@@ -51,7 +54,8 @@ export function LiveProvider(props: { children: JSX.Element }) {
           const source = typeof msg.source === "string" ? msg.source : "build";
           const key = `${id}:${source}`;
           const next = nextLog(live.logs[key], msg);
-          if (next) setLive("logs", key, next);
+          // Solid 2 store setter 是 draft 回调（不再是路径参数）：写同一路径
+          if (next) setLive((draft) => void (draft.logs[key] = next));
           return;
         }
         if (msg.type === "state") {
@@ -59,24 +63,22 @@ export function LiveProvider(props: { children: JSX.Element }) {
           // state 与 status 同标准：未知值照写会把运行中的容器渲染成灰色「状态未知」
           if (typeof msg.state !== "string" || !SERVICE_STATES.has(msg.state))
             return;
-          setLive(
-            "services",
-            `${id}:${msg.service}`,
-            msg.state as ServiceState,
-          );
+          const svcKey = `${id}:${msg.service}`;
+          setLive((draft) => void (draft.services[svcKey] = msg.state as ServiceState));
           return;
         }
         // status/running：合并语义只有 nextTargetLive 一份实现（有单测），按 target 键写入
         const next = nextTargetLive(live.targets[id], msg);
-        if (next) setLive("targets", id, next);
+        if (next) setLive((draft) => void (draft.targets[id] = next));
       } catch {
         /* 忽略坏帧 */
       }
     };
-    onCleanup(() => es.close());
+    // Solid 2：onSettled 内不能调 onCleanup（禁止作用域），改为返回清理函数
+    return () => es.close();
   });
 
   return (
-    <LiveContext.Provider value={live}>{props.children}</LiveContext.Provider>
+    <LiveContext value={live}>{props.children}</LiveContext>
   );
 }

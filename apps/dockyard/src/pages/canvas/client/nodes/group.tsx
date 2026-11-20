@@ -1,4 +1,4 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 服务分组（服务器卡内的命名容器）：虚线边界 + 标题；app/db 卡可拖入 */
 import { Resizer } from "@elysiax/flow";
 import type { GroupModel } from "../../canvas.model";

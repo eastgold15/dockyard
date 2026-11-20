@@ -1,10 +1,16 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 画布 client 页根组件：世界地图形态——Board 无项目边界，页头是「透镜选择器」
  * （全部项目 = 世界视图，默认值；选项目 = 只看该项目的卡）。
  * URL ?project=<id> 作初始透镜；?path=<本地路径> 幂等落库后聚焦该项目。
  */
-import { createSignal, Match, onMount, Show, Switch } from "solid-js";
+import {
+  createSignal,
+  Match,
+  onSettled,
+  Show,
+  Switch,
+} from "solid-js";
 import { canvasApi, unwrap } from "./infra/api";
 import { Board } from "./board";
 import {
@@ -95,7 +101,7 @@ export function App() {
   const [projects, setProjects] = createSignal<ProjectBrief[]>([]);
   const [view, setView] = createSignal<View | null>(null);
 
-  onMount(() => {
+  onSettled(() => {
     // 项目列表与初始透镜并行解析；透镜 id 不在列表（如已删项目）→ 回退世界视图
     void (async () => {
       const [id, ps] = await Promise.all([
@@ -121,7 +127,7 @@ export function App() {
   const lensProject = () => projects().find((p) => p.id === lens());
 
   return (
-    <UiContext.Provider value={bus}>
+    <UiContext value={bus}>
       {/* LiveProvider 必须同时罩住 Board 与 DrawerHost：抽屉是 Board 的兄弟，
           只包 Board 会让抽屉拿到 emptyLive——节点实时、抽屉沉默 */}
       <LiveProvider>
@@ -175,6 +181,6 @@ export function App() {
             </Show>
         </AppShell>
       </LiveProvider>
-    </UiContext.Provider>
+    </UiContext>
   );
 }

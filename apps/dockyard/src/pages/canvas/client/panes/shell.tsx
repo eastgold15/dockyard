@@ -1,6 +1,9 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** panes 共享壳：遮罩状态机 + Modal/Drawer + Section/Field/SubmitBtn 等通用件。 */
-import { splitProps, type JSX } from "solid-js";
+import {
+  omit,
+} from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { badge, button, drawer, field, modal } from "../../../../../styled-system/recipes";
 import { cx } from "../../../../../styled-system/css";
 // ── 壳与通用件 ──
@@ -136,10 +139,11 @@ export const Chip = (props: {
 export const Field = (
   props: { label: string } & JSX.InputHTMLAttributes<HTMLInputElement>,
 ) => {
-  const [local, rest] = splitProps(props, ["label"]);
+  // Solid 2：splitProps 移除，改用 omit（第二参是变参键名；被摘掉的 key 直接读 props）
+  const rest = omit(props, "label");
   return (
     <label class="flex flex-col gap-1 text-sm">
-      <span class="text-xs text-neutral-500">{local.label}</span>
+      <span class="text-xs text-neutral-500">{props.label}</span>
       <input class={field()} {...rest} />
     </label>
   );

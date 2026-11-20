@@ -1,7 +1,9 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 发现容器卡（只读）：服务器上 docker 里跑着、但不归 dockyard 管的容器。
  *  虚框 + 「发现」徽章，明确它与部署目标卡不同：没有部署/回滚/备份入口 */
-import { Show } from "solid-js";
+import {
+  Show,
+} from "solid-js";
 import type { DiscoveredContainer } from "../../canvas.model";
 import { lens } from "../infra/lens";
 import { Badge } from "./atoms";

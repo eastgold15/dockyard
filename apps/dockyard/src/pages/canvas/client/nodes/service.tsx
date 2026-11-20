@@ -1,7 +1,10 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 服务卡（compose 声明式识别的叶子单元）：无边框纯内容行，嵌在 app 卡内——
  *  消除「父框套子框」的多层边框嵌套，app 卡就是唯一的长方体 */
-import { For, Show } from "solid-js";
+import {
+  For,
+  Show,
+} from "solid-js";
 import { HandleView } from "@elysiax/flow";
 import type { ServiceRow, TargetModel } from "../../canvas.model";
 import { DomainLink, StateDot } from "./atoms";

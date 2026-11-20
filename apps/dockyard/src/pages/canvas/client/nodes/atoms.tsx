@@ -1,6 +1,6 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 节点卡共用原子：徽章、域名链接、两个实时状态点。 */
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { DomainBadge } from "../../canvas.model";
 import { useServiceState, useTargetLive } from "../infra/live";
 import { badge } from "../../../../../styled-system/recipes";

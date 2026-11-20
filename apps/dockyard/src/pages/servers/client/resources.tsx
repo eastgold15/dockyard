@@ -1,9 +1,14 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 共享资源弹窗（servers 页私有）：服务器上可被任何项目引用的中间件目录。
  * 数据走 /api/servers/resources/*，写操作后服务端返回整段最新清单，客户端直接替换。
  */
-import { createSignal, For, onMount, Show } from "solid-js";
+import {
+  createSignal,
+  For,
+  onSettled,
+  Show,
+} from "solid-js";
 import type { ResourcesResponse, ResourceItem } from "../servers.types";
 import type { ServerResource } from "@/pages/resources/resources.socket";
 import { api, unwrap } from "./api";
@@ -98,7 +103,7 @@ export function ResourcesModal(props: {
       setLoading(false);
     }
   };
-  onMount(() => {
+  onSettled(() => {
     void load();
   });
 

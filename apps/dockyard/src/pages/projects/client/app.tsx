@@ -1,9 +1,15 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 项目列表页（整页 Solid client）：本地扫描（磁盘为准）+ 未检出的 GitHub 项目空间。
  * 行点击进画布（本地按路径、远端按 project id）；编辑器/lazygit 打开走 JSON 端点。
  */
-import { createSignal, For, onMount, Show, type JSX } from "solid-js";
+import {
+  createSignal,
+  For,
+  onSettled,
+  Show,
+} from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { LocalProject, NewProjectData, ProjectListModel } from "../projects.types";
 import { api, unwrap } from "./api";
 import { ConfigModal, NewProjectModal } from "./modals";
@@ -209,7 +215,7 @@ export function App() {
     setDefaultEditor(next.defaultEditor);
   };
 
-  onMount(() => {
+  onSettled(() => {
     void reload()
       .catch((e) => toast((e as Error).message, "err"))
       .finally(() => setLoading(false));

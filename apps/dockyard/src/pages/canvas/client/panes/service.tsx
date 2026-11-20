@@ -1,28 +1,25 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 画布抽屉/弹窗（Solid 版）：数据走 /api/canvas JSON，
  * 写操作 JSON 进出，错误内联回显；结构变更后 emitRefresh() 让画布重拉。
  *
  * React → Solid 转换要点：
  * - useState → createSignal，读取一律函数调用（envText() 等）
- * - useEffect → onMount（一次性加载/轮询）/ createEffect（跟随信号重拉）
- * - 行内编辑列表用 <Index> 而非 <For>：patchSvc 换对象引用时 <Index> 保 DOM，输入框不丢焦点
+ * - useEffect → onSettled（一次性加载/轮询）/ createEffect（跟随信号重拉）
+ * - 行内编辑列表用 <For>（原 <Index>）：patchSvc 换对象引用时保 DOM，输入框不丢焦点
  * - React 版靠 key={repoUrl} 重挂载换 defaultValue，Solid 改为信号量受控输入
  * - onChange → 文本/数字用 onInput，select/checkbox/radio 用 onChange（原生语义）
  */
 import {
   createEffect,
   createSignal,
-  Index,
   For,
   Match,
-  onCleanup,
-  onMount,
+  onSettled,
   Show,
-  splitProps,
   Switch,
-} from "solid-js";
-import type { JSX } from "solid-js";
+} from "solid-js";;;
+import type { JSX } from "@solidjs/web";
 import type {
   Deployment,
   DeploymentRow,
@@ -79,7 +76,7 @@ import {
 /** 一次性资源快照（4s 轮询） */
 const MetricsPanel = (props: { targetId: number; svc?: string }) => {
   const [stats, setStats] = createSignal<Metrics | null | undefined>(undefined);
-  onMount(() => {
+  onSettled(() => {
 
     const tick = async () => {
       try {
@@ -95,7 +92,8 @@ const MetricsPanel = (props: { targetId: number; svc?: string }) => {
     };
     void tick();
     const timer = setInterval(tick, 4000);
-    onCleanup(() => clearInterval(timer));
+    // Solid 2：onSettled 内不能调 onCleanup（禁止作用域），改为返回清理函数
+    return () => clearInterval(timer);
   });
 
   return (
@@ -134,8 +132,7 @@ const MetricsPanel = (props: { targetId: number; svc?: string }) => {
                     : 0,
                   text: `${fmtBytes(m()!.memUsage)} / ${fmtBytes(m()!.memLimit)}`,
                 },
-              ]}
-            >
+              ]}>
               {(row) => (
                 <div class="flex flex-col gap-1">
                   <div class="flex justify-between text-xs text-neutral-400">
@@ -167,7 +164,7 @@ const MetricsPanel = (props: { targetId: number; svc?: string }) => {
 /** 服务日志（2s 轮询） */
 const ServiceLogs = (props: { targetId: number; svc?: string }) => {
   const [text, setText] = createSignal("加载中…");
-  onMount(() => {
+  onSettled(() => {
     // SSH 拉 docker logs 可能超过一个轮询周期：禁止请求重叠，且只接受最后一次
     // 发出的请求结果，否则先发后到的旧快照会把新日志顶回去（表现为日志回跳/重复）
     let seq = 0;
@@ -194,7 +191,8 @@ const ServiceLogs = (props: { targetId: number; svc?: string }) => {
     };
     void tick();
     const timer = setInterval(tick, 2000);
-    onCleanup(() => clearInterval(timer));
+    // Solid 2：onSettled 内不能调 onCleanup（禁止作用域），改为返回清理函数
+    return () => clearInterval(timer);
   });
   // 撑满抽屉里除操作行/历史列表外的剩余高度：不再用固定 40vh 把日志裁在抽屉底边外
   return <LogView text={text()} fill />;
@@ -243,12 +241,15 @@ export function ServiceDrawer(props: {
     }
   };
   // 跟随 tab 重拉（等价 React 的 [load] 依赖）；首挂也跑一次
-  createEffect(() => {
-    tab();
-    setNotice(undefined);
-    setError(undefined);
-    void load();
-  });
+  // Solid 2 两段式 effect：compute 段读 tab，effect 段清提示并重拉
+  createEffect(
+    () => tab(),
+    () => {
+      setNotice(undefined);
+      setError(undefined);
+      void load();
+    },
+  );
 
   /** 写操作统一出口：成功后提示 + 按需刷新画布/抽屉数据 */
   const mutate = async (

@@ -1,7 +1,10 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** app 卡：一个 div 盒子。项目名 header（顶部）+ 服务名/域名纯粹流式行（不嵌套子节点）。
  *  部署/变量/域名/日志/移除全部收进 Sidebar——数据库卡同样式，一个长方体 */
-import { For, Show } from "solid-js";
+import {
+  For,
+  Show,
+} from "solid-js";
 import { HandleView, Resizer } from "@elysiax/flow";
 import type { TargetModel } from "../../canvas.model";
 import { useTargetLive } from "../infra/live";

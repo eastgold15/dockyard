@@ -1,4 +1,4 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 六阶段流水线迷你步骤条（部署历史行内嵌）。
  * 执行序六段：源→构建→传输→运行→暴露→产物（产物落库实际在容器起来之后，
@@ -8,7 +8,7 @@
  * 进行中 = 实时 stage（SSE）；历史 run = 库值驻留段；failed 的驻留段即断点红叉。
  * stage=null（旁路逻辑库/存量行）整体降级，不渲染步骤条。
  */
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type {
   DeployStage,
   DeployTarget,

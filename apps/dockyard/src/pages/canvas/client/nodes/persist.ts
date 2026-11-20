@@ -1,4 +1,4 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 节点尺寸持久化与目标移除：Resizer/卡面 ✕ 共用同一套写操作。 */
 import { api, canvasApi, unwrap } from "../infra/api";
 import { emitRefresh } from "../infra/ui";

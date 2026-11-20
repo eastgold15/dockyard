@@ -1,10 +1,14 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 全站共享控件（L4 渲染件层）：无业务、无状态、无路由感知。
  * 样式只从 Panda recipe 取，行为由 Kobalte 提供；应用已无 htmx 页面，这里是唯一控件实现。
  */
 import { Dialog } from "@kobalte/core/dialog";
-import { For, Show, type JSX } from "solid-js";
+import {
+  For,
+  Show,
+} from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { badge, button, field, modal } from "../../../styled-system/recipes";
 import { cx } from "../../../styled-system/css";
 

@@ -1,4 +1,4 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 只读日志视图（LogView）：用原生 DOM + ansi-to-html 渲染 ANSI 日志。
  * 不再用 xterm 画布——拖动选区、右键复制、Ctrl+C 全部走浏览器原生行为，
@@ -10,7 +10,10 @@
  *
  * 跟随策略：用户停在底部时自动跟随；向上翻阅后不强制拉回。
  */
-import { createEffect, createSignal } from "solid-js";
+import {
+  createEffect,
+  createSignal,
+} from "solid-js";
 import AnsiToHtml from "ansi-to-html";
 import copy from "copy-to-clipboard";
 import { button } from "../../../../../styled-system/recipes";
@@ -87,29 +90,32 @@ export function LogView(props: {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  createEffect(() => {
-    // 必须先读 props.text：effect 首次执行建立响应式依赖
-    const text = props.text;
-    const wasAtBottom = atBottom();
-    const prevTop = box.scrollTop;
+  createEffect(
+    // 跟踪阶段：只读取响应式，收集依赖，不要碰 DOM
+    () => props.text,
+    // 副作用阶段：untracked，在这里操作 DOM、scroll、ref
+    (text) => {
+      const wasAtBottom = atBottom();
+      const prevTop = box.scrollTop;
 
-    if (text.startsWith(rendered)) {
-      const delta = text.slice(rendered.length);
-      if (delta)
-        pre.insertAdjacentHTML(
-          "beforeend",
-          converter.toHtml(colorizeLog(delta)),
-        );
-    } else {
-      // 全量替换：换新的 converter，避免上一段未闭合的 ANSI 状态串色
-      converter = new AnsiToHtml(CONVERT_OPTIONS);
-      pre.innerHTML = converter.toHtml(colorizeLog(text));
+      if (text.startsWith(rendered)) {
+        const delta = text.slice(rendered.length);
+        if (delta)
+          pre.insertAdjacentHTML(
+            "beforeend",
+            converter.toHtml(colorizeLog(delta)),
+          );
+      } else {
+        // 全量替换：换新 converter，防止 ANSI 状态串色
+        converter = new AnsiToHtml(CONVERT_OPTIONS);
+        pre.innerHTML = converter.toHtml(colorizeLog(text));
+      }
+      rendered = text;
+
+      // 追加时保持滚动位置；底部跟随逻辑
+      box.scrollTop = wasAtBottom ? box.scrollHeight : prevTop;
     }
-    rendered = text;
-
-    // 追加时保持用户当前滚动位置；贴底时跟随到底
-    box.scrollTop = wasAtBottom ? box.scrollHeight : prevTop;
-  });
+  );
 
   return (
     <div

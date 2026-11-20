@@ -1,9 +1,14 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 服务器列表页（整页 Solid client）：页面状态、请求编排与列表渲染。
  * 数据走 /api/servers 的 JSON 端点；写操作成功后服务端返回最新列表/行，客户端直接替换。
  */
-import { createSignal, For, onMount, Show } from "solid-js";
+import {
+  createSignal,
+  For,
+  onSettled,
+  Show,
+} from "solid-js";
 import type { CheckResult } from "../servers.types";
 import type { Server } from "../schema";
 import { api, unwrap } from "./api";
@@ -64,7 +69,7 @@ export function App() {
     setServers(model.servers);
   };
 
-  onMount(() => {
+  onSettled(() => {
     void reload()
       .catch((e) => toast((e as Error).message, "err"))
       .finally(() => setLoading(false));

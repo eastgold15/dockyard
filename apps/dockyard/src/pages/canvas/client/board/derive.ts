@@ -1,4 +1,4 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 画布数据派生：父子尺寸收敛、节点/边派生、透镜过滤。纯函数，不碰 DOM。 */
 import type { CardModel, DiscoveredContainer, TargetModel } from "../../canvas.model";
 import type { FlowEdge } from "@elysiax/flow";

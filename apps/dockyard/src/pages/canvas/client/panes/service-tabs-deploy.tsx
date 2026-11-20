@@ -1,28 +1,25 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 画布抽屉/弹窗（Solid 版）：数据走 /api/canvas JSON，
  * 写操作 JSON 进出，错误内联回显；结构变更后 emitRefresh() 让画布重拉。
  *
  * React → Solid 转换要点：
  * - useState → createSignal，读取一律函数调用（envText() 等）
- * - useEffect → onMount（一次性加载/轮询）/ createEffect（跟随信号重拉）
- * - 行内编辑列表用 <Index> 而非 <For>：patchSvc 换对象引用时 <Index> 保 DOM，输入框不丢焦点
+ * - useEffect → onSettled（一次性加载/轮询）/ createEffect（跟随信号重拉）
+ * - 行内编辑列表用 <For>（原 <Index>）：patchSvc 换对象引用时保 DOM，输入框不丢焦点
  * - React 版靠 key={repoUrl} 重挂载换 defaultValue，Solid 改为信号量受控输入
  * - onChange → 文本/数字用 onInput，select/checkbox/radio 用 onChange（原生语义）
  */
 import {
   createEffect,
   createSignal,
-  Index,
   For,
   Match,
-  onCleanup,
-  onMount,
+  onSettled,
   Show,
-  splitProps,
   Switch,
-} from "solid-js";
-import type { JSX } from "solid-js";
+} from "solid-js";;;
+import type { JSX } from "@solidjs/web";
 import type {
   Deployment,
   DeploymentRow,
@@ -83,22 +80,24 @@ export function DeploymentsTab(props: {
   // 拿它当条件会变成每次 status 迁移都重拉一次列表。
   let seenRunId: number | null = null;
   let prevStatus: string | null = null;
-  createEffect(() => {
-    const s = live().status;
-    const id = live().runId;
-    if (id != null && id !== seenRunId) {
-      seenRunId = id;
+  // Solid 2 两段式 effect：compute 段读 live 的 status/runId，effect 段决定要不要重拉
+  createEffect(
+    () => ({ s: live().status, id: live().runId }),
+    ({ s, id }) => {
+      if (id != null && id !== seenRunId) {
+        seenRunId = id;
+        prevStatus = s;
+        void props.reload();
+        return;
+      }
+      const terminal = s === "success" || s === "failed";
+      const wasTerminal = prevStatus === "success" || prevStatus === "failed";
       prevStatus = s;
-      void props.reload();
-      return;
-    }
-    const terminal = s === "success" || s === "failed";
-    const wasTerminal = prevStatus === "success" || prevStatus === "failed";
-    prevStatus = s;
-    // 只认「非终态 → 终态」这一跳：终态之后服务端还会推一条 running:false，
-    // store 对象换新会让 effect 再跑一次，按值判断会把同一次收尾重拉两遍
-    if (terminal && !wasTerminal) void props.reload();
-  });
+      // 只认「非终态 → 终态」这一跳：终态之后服务端还会推一条 running:false，
+      // store 对象换新会让 effect 再跑一次，按值判断会把同一次收尾重拉两遍
+      if (terminal && !wasTerminal) void props.reload();
+    },
+  );
   return (
     <>
       <div class="flex shrink-0 items-center gap-2">

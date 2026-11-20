@@ -1,4 +1,4 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 画布 flow 节点类型：服务器 → app → 服务；db 直属服务器，分组是容器。 */
 import type { FlowNodeBase } from "@elysiax/flow";
 import type { CardModel, DiscoveredContainer, GroupModel, ServiceRow, TargetModel } from "../../canvas.model";

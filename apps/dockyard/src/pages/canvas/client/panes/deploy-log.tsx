@@ -1,28 +1,25 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 画布抽屉/弹窗（Solid 版）：数据走 /api/canvas JSON，
  * 写操作 JSON 进出，错误内联回显；结构变更后 emitRefresh() 让画布重拉。
  *
  * React → Solid 转换要点：
  * - useState → createSignal，读取一律函数调用（envText() 等）
- * - useEffect → onMount（一次性加载/轮询）/ createEffect（跟随信号重拉）
- * - 行内编辑列表用 <Index> 而非 <For>：patchSvc 换对象引用时 <Index> 保 DOM，输入框不丢焦点
+ * - useEffect → onSettled（一次性加载/轮询）/ createEffect（跟随信号重拉）
+ * - 行内编辑列表用 <For>（原 <Index>）：patchSvc 换对象引用时保 DOM，输入框不丢焦点
  * - React 版靠 key={repoUrl} 重挂载换 defaultValue，Solid 改为信号量受控输入
  * - onChange → 文本/数字用 onInput，select/checkbox/radio 用 onChange（原生语义）
  */
 import {
   createEffect,
   createSignal,
-  Index,
   For,
   Match,
-  onCleanup,
-  onMount,
+  onSettled,
   Show,
-  splitProps,
   Switch,
-} from "solid-js";
-import type { JSX } from "solid-js";
+} from "solid-js";;;
+import type { JSX } from "@solidjs/web";
 import type {
   Deployment,
   DeploymentRow,
@@ -87,47 +84,58 @@ export function DeployLogModal(props: { targetId: number; dep?: number }) {
     return res.text();
   };
 
-  onMount(async () => {
-    try {
-      const d = await unwrap(
-        api
-          .targets({ id: props.targetId })
-          .log.get({ query: { dep: props.dep } }),
-      );
-      setData(d);
-      const text = await fetchBody();
-      setBackfill(text || "尚未部署");
-    } catch {
-      setBackfill("加载失败");
-    }
-  });
-
-  // 终态对齐：live 状态进入 success/failed 时做最后一次 HTTP 全量回填。
-  // 必须确认终态属于本抽屉看的那次 run：看历史日志时，别的 run 收尾不该触发回填
-  createEffect(() => {
-    const s = live().status;
-    const depId = data()?.dep?.id;
-    if (
-      !depId ||
-      finalText() !== null ||
-      live().runId !== depId ||
-      (s !== "success" && s !== "failed")
-    )
-      return;
+  // Solid 2 的 onSettled 回调不能是 async（返回 Promise 不被接受）：用 void 包裹
+  onSettled(() => {
     void (async () => {
       try {
-        const head = await unwrap(
+        const d = await unwrap(
           api
             .targets({ id: props.targetId })
             .log.get({ query: { dep: props.dep } }),
         );
-        setData(head);
-        setFinalText((await fetchBody()) || "尚未部署");
+        setData(d);
+        const text = await fetchBody();
+        setBackfill(text || "尚未部署");
       } catch {
-        /* 对齐失败则维持 SSE/backfill 显示 */
+        setBackfill("加载失败");
       }
     })();
   });
+
+  // 终态对齐：live 状态进入 success/failed 时做最后一次 HTTP 全量回填。
+  // 必须确认终态属于本抽屉看的那次 run：看历史日志时，别的 run 收尾不该触发回填
+  // Solid 2 两段式 effect：compute 段判断「是否需要对齐全量」，返回要对齐的 depId
+  // （null = 不需要）；effect 段做 HTTP 对齐。
+  createEffect(
+    () => {
+      const s = live().status;
+      const depId = data()?.dep?.id;
+      if (
+        !depId ||
+        finalText() !== null ||
+        live().runId !== depId ||
+        (s !== "success" && s !== "failed")
+      )
+        return null;
+      return depId;
+    },
+    (depId) => {
+      if (depId === null) return;
+      void (async () => {
+        try {
+          const head = await unwrap(
+            api
+              .targets({ id: props.targetId })
+              .log.get({ query: { dep: props.dep } }),
+          );
+          setData(head);
+          setFinalText((await fetchBody()) || "尚未部署");
+        } catch {
+          /* 对齐失败则维持 SSE/backfill 显示 */
+        }
+      })();
+    },
+  );
 
   // 显示优先级：终态全文 > 当前 run 的 SSE 实时行 > 初始回填
   const logText = () => {
@@ -171,4 +179,3 @@ export function DeployLogModal(props: { targetId: number; dep?: number }) {
     </Modal>
   );
 }
-

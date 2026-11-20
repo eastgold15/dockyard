@@ -1,9 +1,11 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 容器交互式终端（Console Tab）：xterm.js ←→ WebSocket ←→ docker exec TTY（SSH 中继）。
- * 挂在 ServiceDrawer 的 Console Tab 里，组件卸载（onCleanup）即断开。
+ * 挂在 ServiceDrawer 的 Console Tab 里，组件卸载（onSettled 返回的清理函数）即断开。
  */
-import { onCleanup, onMount } from "solid-js";
+import {
+  onSettled,
+} from "solid-js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -13,7 +15,7 @@ export function ConsoleView(props: { targetId: number; service?: string }) {
   let el!: HTMLDivElement;
 
   // 宿主按 tab 条件渲染本组件，挂载即建连、卸载即断开（targetId/service 在生命周期内不变）
-  onMount(() => {
+  onSettled(() => {
     const term = new Terminal({
       fontSize: 12,
       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -46,11 +48,12 @@ export function ConsoleView(props: { targetId: number; service?: string }) {
     });
     ro.observe(el);
 
-    onCleanup(() => {
+    // Solid 2：onSettled 内不能调 onCleanup（禁止作用域），改为返回清理函数
+    return () => {
       ro.disconnect();
       sock.close();
       term.dispose();
-    });
+    };
   });
 
   return <div ref={el} class="h-full w-full" />;

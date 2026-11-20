@@ -1,28 +1,25 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 画布抽屉/弹窗（Solid 版）：数据走 /api/canvas JSON，
  * 写操作 JSON 进出，错误内联回显；结构变更后 emitRefresh() 让画布重拉。
  *
  * React → Solid 转换要点：
  * - useState → createSignal，读取一律函数调用（envText() 等）
- * - useEffect → onMount（一次性加载/轮询）/ createEffect（跟随信号重拉）
- * - 行内编辑列表用 <Index> 而非 <For>：patchSvc 换对象引用时 <Index> 保 DOM，输入框不丢焦点
+ * - useEffect → onSettled（一次性加载/轮询）/ createEffect（跟随信号重拉）
+ * - 行内编辑列表用 <For>（原 <Index>）：patchSvc 换对象引用时保 DOM，输入框不丢焦点
  * - React 版靠 key={repoUrl} 重挂载换 defaultValue，Solid 改为信号量受控输入
  * - onChange → 文本/数字用 onInput，select/checkbox/radio 用 onChange（原生语义）
  */
 import {
   createEffect,
   createSignal,
-  Index,
   For,
   Match,
-  onCleanup,
-  onMount,
+  onSettled,
   Show,
-  splitProps,
   Switch,
-} from "solid-js";
-import type { JSX } from "solid-js";
+} from "solid-js";;;
+import type { JSX } from "@solidjs/web";
 import type {
   Deployment,
   DeploymentRow,
@@ -164,7 +161,7 @@ export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate })
   const [conns, setConns] = createSignal<DbConnection[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
 
-  onMount(() => {
+  onSettled(() => {
     unwrap(api.targets({ id: t().id }).env.get())
       .then((d) => {
         setRows(d.entries);

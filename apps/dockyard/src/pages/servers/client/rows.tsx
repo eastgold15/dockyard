@@ -1,9 +1,11 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * servers 页的行与面板组件：服务器行、TOFU 信任提示、镜像源面板、添加服务器弹窗。
  * 纯展示 + 回调，状态与请求编排在 app.tsx（一个页面目录内的 L5 client）。
  */
-import { createSignal } from "solid-js";
+import {
+  createSignal,
+} from "solid-js";
 import type { Server } from "../schema";
 import { parseMirrors } from "../servers.mirrors";
 import { field } from "../../../../styled-system/recipes";

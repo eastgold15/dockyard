@@ -1,12 +1,11 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 画布主体：FlowView 装配、拖拽/缩放持久化、区域车道钳制、右键菜单。 */
 import {
   createEffect,
   createMemo,
   createSignal,
   For,
-  onCleanup,
-  onMount,
+  onSettled,
   Show,
 } from "solid-js";
 import type {
@@ -31,7 +30,6 @@ import { cx } from "../../../../../styled-system/css";
 import type { CanvasFlowNode } from "../nodes";
 import { nodeViews } from "./geometry";
 import { applyLens, deriveEdges, deriveNodes, fitParents, type Menu } from "./derive";
-import { MenuGate } from "./menu";
 export function Board(props: { lens: () => number | null }) {
   // 三源：structure（/board，refresh 驱动，存普通变量）、nodes（布局，本地权威信号）、live（SSE store）
   const ui = useUi();
@@ -65,16 +63,19 @@ export function Board(props: { lens: () => number | null }) {
   };
 
   // 透镜切换是纯客户端过滤：不走网络，用已拉的 structure 重推导节点/边
-  createEffect(() => {
-    const cards = applyLens(structure, props.lens());
-    setNodes((cur) => deriveNodes(cards, new Map(cur.map((n) => [n.id, n]))));
-    setEdges((cur) =>
-      deriveEdges(
-        cards,
-        new Set(cur.filter((e) => e.selected).map((e) => e.id)),
-      ),
-    );
-  });
+  // Solid 2 两段式 effect：compute 段按透镜重算卡片，effect 段写回 nodes/edges
+  createEffect(
+    () => applyLens(structure, props.lens()),
+    (cards) => {
+      setNodes((cur) => deriveNodes(cards, new Map(cur.map((n) => [n.id, n]))));
+      setEdges((cur) =>
+        deriveEdges(
+          cards,
+          new Set(cur.filter((e) => e.selected).map((e) => e.id)),
+        ),
+      );
+    },
+  );
 
   // 交互门闩：拖拽/连线进行中 refresh 排队，结束后补拉——用户交互期间不被自动刷新打断
   let interacting = false;
@@ -95,11 +96,12 @@ export function Board(props: { lens: () => number | null }) {
   };
 
   // 结构：挂载拉一次 + refresh 事件（抽屉在结构变更后 dispatch，见 ui.ts）
-  onMount(() => {
+  onSettled(() => {
     void fetchBoard();
     const onRefresh = () => void refetch();
     document.body.addEventListener("refresh", onRefresh);
-    onCleanup(() => document.body.removeEventListener("refresh", onRefresh));
+    // Solid 2：onSettled 内不能调 onCleanup（禁止作用域），改为返回清理函数
+    return () => document.body.removeEventListener("refresh", onRefresh);
   });
 
   // 实时状态（SSE → live store）住在 App 层的 <LiveProvider>，Board 只消费 context：
@@ -485,9 +487,14 @@ export function Board(props: { lens: () => number | null }) {
 
   return (
     <>
-      <ContextMenu>
-        {/* 打开桥：FlowView 的右键回调只确定菜单内容（kind/坐标），实际打开与视口内定位、键盘/Esc/焦点交给 Kobalte ContextMenu 管理。 */}
-        <MenuGate state={menuState} />
+      {/* Kobalte 2：菜单由 Trigger 自己的 onContextMenu 打开（不再有公开的 useMenuContext
+          可程序化 open）。菜单内容仍由 FlowView 的右键回调算出 menuState；
+          onOpenChange(false) 时清空，避免下次打开显示旧项。 */}
+      <ContextMenu
+        onOpenChange={(open) => {
+          if (!open) setMenuState(null);
+        }}
+      >
         <ContextMenu.Trigger class="block h-full w-full">
           <FlowView
             nodes={nodes()}
@@ -514,7 +521,11 @@ export function Board(props: { lens: () => number | null }) {
               flowApi = a;
             }}
             onPaneContextMenu={(e) => {
-              if (servers().length === 0) return;
+              // 没有服务器时没有可部署的对象：不弹菜单（掐断原生事件，Kobalte 不会打开）
+              if (servers().length === 0) {
+                e.preventDefault();
+                return;
+              }
               const p = flowApi.screenToFlowPosition({
                 x: e.clientX,
                 y: e.clientY,
@@ -528,8 +539,8 @@ export function Board(props: { lens: () => number | null }) {
               });
             }}
             onNodeContextMenu={(e, node) => {
-              e.preventDefault(); // 抑制原生菜单：Kobalte 由 MenuGate 打开，不走 Trigger 自动打开
-              if (node.type === "server")
+              // server / group 有右键菜单：不掐断原生事件，Kobalte Trigger 自己打开并定位
+              if (node.type === "server") {
                 setMenuState({
                   x: e.clientX,
                   y: e.clientY,
@@ -538,7 +549,9 @@ export function Board(props: { lens: () => number | null }) {
                   flowX: 0,
                   flowY: 0,
                 });
-              else if (node.type === "group")
+                return;
+              }
+              if (node.type === "group") {
                 setMenuState({
                   x: e.clientX,
                   y: e.clientY,
@@ -547,8 +560,11 @@ export function Board(props: { lens: () => number | null }) {
                   flowX: 0,
                   flowY: 0,
                 });
-              else setMenuState(null); // app/db/service/container：操作在卡片按钮上，无右键菜单
-              // app/db 卡的操作在卡片按钮上
+                return;
+              }
+              // app/db/service/container：操作在卡片按钮上，无右键菜单——掐断，Kobalte 不开
+              e.preventDefault();
+              setMenuState(null);
             }}
           />
         </ContextMenu.Trigger>

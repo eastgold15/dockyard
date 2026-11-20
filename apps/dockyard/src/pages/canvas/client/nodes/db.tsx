@@ -1,6 +1,8 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 数据库卡（托管实例/逻辑库，直属服务器卡）：干净长方体，点击打开 Sidebar */
-import { Show } from "solid-js";
+import {
+  Show,
+} from "solid-js";
 import { HandleView, Resizer } from "@elysiax/flow";
 import type { TargetModel } from "../../canvas.model";
 import { useTargetLive } from "../infra/live";

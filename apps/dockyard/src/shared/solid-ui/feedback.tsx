@@ -1,4 +1,4 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * Solid 页面的应用内反馈件：toast / 确认框 / 输入框——替代原生 alert/confirm/prompt。
  * canvas 与 servers/projects 共用本文件，避免每个 client 原子各写一套弹层行为。
@@ -8,7 +8,10 @@
  */
 import { Dialog } from "@kobalte/core/dialog";
 import { Toast, toaster } from "@kobalte/core/toast";
-import { createSignal, Show } from "solid-js";
+import {
+  createSignal,
+  Show,
+} from "solid-js";
 // Panda recipe（panda/recipes.ts）：视觉契约唯一来源，运行时只产 className
 import { button, field, modal } from "../../../styled-system/recipes";
 import { cx } from "../../../styled-system/css";

@@ -1,10 +1,19 @@
-/** @jsxImportSource solid-js */
 // 拖拽收尾契约：pointercancel（手势被系统夺走）必须走 onNodeDragStop(node, true)，
 // 调用方才能回滚位置并放开门闩。只清内部状态的写法会让画布永久冻结。
+//
+// **入口不写 JSX**：Solid 2 只支持编译期 JSX——Bun 的 onLoad 插件对测试入口不生效，
+// 入口里的 JSX 会走 Bun 内置的自动 runtime（React 风格 props），Solid 组件收不到
+// class / 事件绑定（表现为「渲染出来了但点不动」）。JSX 都在 flow.harness.tsx。
 import { expect, test } from "bun:test";
-import { createSignal } from "solid-js";
-import { render } from "solid-js/web";
-import { FlowView, Resizer, type NodeViewProps } from "@elysiax/flow";
+import { createComponent, createSignal } from "solid-js";
+import { delegateEvents, render } from "@solidjs/web";
+import type { NodeViewProps } from "@elysiax/flow";
+import {
+  boxView,
+  ensureCapture,
+  FlowHarness,
+  resizeView,
+} from "./flow.harness";
 
 interface N {
   id: string;
@@ -17,15 +26,8 @@ interface N {
 }
 
 const nodeViews = {
-  box: (p: NodeViewProps<never>) => <div class="box">{p.id}</div>,
+  box: boxView,
 } as unknown as Record<string, (p: NodeViewProps<never>) => Element>;
-
-/** FlowView 需要 pointer capture；happy-dom 未实现时补一个空实现 */
-const ensureCapture = () => {
-  const proto = Element.prototype as unknown as Record<string, unknown>;
-  proto.setPointerCapture ??= () => {};
-  proto.releasePointerCapture ??= () => {};
-};
 
 function mount(onStop: (n: N, cancelled?: boolean) => void) {
   ensureCapture();
@@ -36,15 +38,14 @@ function mount(onStop: (n: N, cancelled?: boolean) => void) {
   const el = document.createElement("div");
   document.body.appendChild(el);
   const dispose = render(
-    () => (
-      <FlowView
-        nodes={nodes}
-        edges={[]}
-        nodeViews={nodeViews}
-        onNodeMove={() => {}}
-        onNodeDragStop={onStop as never}
-      />
-    ),
+    () =>
+      createComponent(FlowHarness, {
+        nodes,
+        edges: [],
+        nodeViews,
+        onNodeMove: () => {},
+        onNodeDragStop: onStop as never,
+      }),
     el,
   );
   return {
@@ -74,6 +75,18 @@ test("pointercancel 上报 dragStop(cancelled=true)（系统夺走手势）", ()
   );
 
   const node = el.querySelector(".flow-node")!;
+  delegateEvents(["pointerdown", "pointermove", "pointerup"]);
+  console.log("[probe] .flow-node 存在:", Boolean(node));
+  console.log(
+    "[probe] 元素上的 handler 属性:",
+    Object.keys(node as unknown as Record<string, unknown>).filter((k) =>
+      k.includes("pointer"),
+    ),
+  );
+  console.log(
+    "[probe] _$$pointerdown 类型:",
+    typeof (node as unknown as Record<string, unknown>)["_$$pointerdown"],
+  );
   fire(node, "pointerdown", 1);
   fire(node, "pointercancel", 1);
   expect(calls).toEqual([{ id: "n1", cancelled: true }]);
@@ -122,37 +135,23 @@ test("缩放中途拉伸：尺寸按新 k 换算，不跳变（rebase 生效）"
     },
   ]);
   const views = {
-    box: (p: NodeViewProps<never>) => (
-      <div class="box">
-        <Resizer
-          nodeId={p.id}
-          visible
-          minW={10}
-          minH={10}
-          width={p.width ?? 100}
-          height={p.height ?? 100}
-          onEnd={() => {}}
-        />
-      </div>
-    ),
+    box: resizeView,
   } as unknown as Record<string, (p: NodeViewProps<never>) => Element>;
 
   const el = document.createElement("div");
   document.body.appendChild(el);
   const dispose = render(
-    () => (
-      <FlowView
-        nodes={nodes()}
-        edges={[]}
-        nodeViews={views}
-        onNodeMove={() => {}}
-        onNodeResize={(id, w, h) =>
+    () =>
+      createComponent(FlowHarness, {
+        nodes: nodes(),
+        edges: [],
+        nodeViews: views,
+        onNodeMove: () => {},
+        onNodeResize: (id, w, h) =>
           setNodes((ns) =>
             ns.map((n) => (n.id === id ? { ...n, width: w, height: h } : n)),
-          )
-        }
-      />
-    ),
+          ),
+      }),
     el,
   );
 
@@ -196,38 +195,25 @@ test("缩放后取消：回滚到起手尺寸，而不是滚轮时刻的尺寸",
     },
   ]);
   const views = {
-    box: (p: NodeViewProps<never>) => (
-      <div class="box">
-        <Resizer
-          nodeId={p.id}
-          visible
-          minW={10}
-          minH={10}
-          width={p.width ?? 100}
-          height={p.height ?? 100}
-          onEnd={() => {}}
-        />
-      </div>
-    ),
+    box: resizeView,
   } as unknown as Record<string, (p: NodeViewProps<never>) => Element>;
   const el = document.createElement("div");
   document.body.appendChild(el);
   const dispose = render(
-    () => (
-      <FlowView
-        nodes={nodes()}
-        edges={[]}
-        nodeViews={views}
-        onNodeMove={() => {}}
-        onNodeResize={(id, w, h, resizing) => {
+    () =>
+      createComponent(FlowHarness, {
+        nodes: nodes(),
+        edges: [],
+        nodeViews: views,
+        onNodeMove: () => {},
+        onNodeResize: (id, w, h, resizing) => {
           resizes.push({ w, h, resizing });
           setNodes((ns) =>
             ns.map((n) => (n.id === id ? { ...n, width: w, height: h } : n)),
           );
-        }}
-        onNodeResizeEnd={(id, w, h) => ends.push({ w, h })}
-      />
-    ),
+        },
+        onNodeResizeEnd: (id, w, h) => ends.push({ w, h }),
+      }),
     el,
   );
 
@@ -277,40 +263,25 @@ test("多指并发：拖节点与拉另一节点各持 rebase token，缩放后�
     },
   ]);
   const views = {
-    box: (p: NodeViewProps<never>) => (
-      <div class="box">
-        <Resizer
-          nodeId={p.id}
-          visible
-          minW={10}
-          minH={10}
-          width={p.width ?? 100}
-          height={p.height ?? 100}
-          onEnd={() => {}}
-        />
-      </div>
-    ),
+    box: resizeView,
   } as unknown as Record<string, (p: NodeViewProps<never>) => Element>;
   const el = document.createElement("div");
   document.body.appendChild(el);
   const dispose = render(
-    () => (
-      <FlowView
-        nodes={nodes()}
-        edges={[]}
-        nodeViews={views}
-        onNodeMove={(id, pos) =>
+    () =>
+      createComponent(FlowHarness, {
+        nodes: nodes(),
+        edges: [],
+        nodeViews: views,
+        onNodeMove: (id, pos) =>
           setNodes((ns) =>
             ns.map((n) => (n.id === id ? { ...n, position: pos } : n)),
-          )
-        }
-        onNodeResize={(id, w, h) =>
+          ),
+        onNodeResize: (id, w, h) =>
           setNodes((ns) =>
             ns.map((n) => (n.id === id ? { ...n, width: w, height: h } : n)),
-          )
-        }
-      />
-    ),
+          ),
+      }),
     el,
   );
 

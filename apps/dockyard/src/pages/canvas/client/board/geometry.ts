@@ -1,4 +1,4 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** 画布几何常量与节点视图映射：尺寸估算与 nodes.tsx 的 Tailwind 类对应，改一处要同步另一处。 */
 import type { TargetModel } from "../../canvas.model";
 import type { NodeViewProps } from "@elysiax/flow";

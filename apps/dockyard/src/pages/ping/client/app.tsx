@@ -1,6 +1,8 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /** ping 测试页（整页 Solid）：验证 client 端点连通与共享控件。 */
-import { createSignal } from "solid-js";
+import {
+  createSignal,
+} from "solid-js";
 import { api, unwrap } from "./api";
 import { AppShell, Button, PageHeader } from "@/shared/solid-ui/index";
 import { FeedbackHost, toast } from "@/shared/solid-ui/feedback";

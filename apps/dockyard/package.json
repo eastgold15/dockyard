@@ -21,8 +21,9 @@
     "@elysiax/core": "link:../../../elysiax/packages/core",
     "@inferdi/elysia": "link:../../../elysiax/packages/elysia",
     "@inferdi/inferdi": "^6.1.0",
-    "@kobalte/core": "^0.13.14",
+    "@kobalte/core": "2.0.0-alpha.5",
     "@meitaim/ssh": "^1.0.0",
+    "@solidjs/web": "^2.0.3",
     "@types/dotenv": "^8.2.3",
     "@visulima/fs": "^7.0.0",
     "@visulima/path": "^5.0.0",
@@ -35,7 +36,7 @@
     "dotenv": "^18.0.4",
     "drizzle-orm": "^1.0.0-rc.4",
     "elysia": "catalog:",
-    "solid-js": "^1.9.17",
+    "solid-js": "^2.0.3",
     "tailwindcss": "^4.1.11",
     "typebox": "~1.4.3",
     "webview-bun": "^2.4.0",
@@ -53,7 +54,8 @@
     "@types/dockerode": "^4.0.1",
     "drizzle-kit": "^1.0.0-rc.4",
     "happy-dom": "^21.0.4",
-    "webview-bun": "^2.4.0"
+    "webview-bun": "^2.4.0",
+    "@solidjs/h": "^2.0.2"
   },
   "peerDependencies": {
     "typescript": "^7"

@@ -1,28 +1,25 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 /**
  * 画布抽屉/弹窗（Solid 版）：数据走 /api/canvas JSON，
  * 写操作 JSON 进出，错误内联回显；结构变更后 emitRefresh() 让画布重拉。
  *
  * React → Solid 转换要点：
  * - useState → createSignal，读取一律函数调用（envText() 等）
- * - useEffect → onMount（一次性加载/轮询）/ createEffect（跟随信号重拉）
- * - 行内编辑列表用 <Index> 而非 <For>：patchSvc 换对象引用时 <Index> 保 DOM，输入框不丢焦点
+ * - useEffect → onSettled（一次性加载/轮询）/ createEffect（跟随信号重拉）
+ * - 行内编辑列表用 <For>（原 <Index>）：patchSvc 换对象引用时保 DOM，输入框不丢焦点
  * - React 版靠 key={repoUrl} 重挂载换 defaultValue，Solid 改为信号量受控输入
  * - onChange → 文本/数字用 onInput，select/checkbox/radio 用 onChange（原生语义）
  */
 import {
   createEffect,
   createSignal,
-  Index,
   For,
   Match,
-  onCleanup,
-  onMount,
+  onSettled,
   Show,
-  splitProps,
   Switch,
 } from "solid-js";
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type {
   Deployment,
   DeploymentRow,
@@ -114,7 +111,7 @@ export const upsertEnvRow = (
 export const removeEnvRowsByValue = (rows: EnvEntry[], value: string): EnvEntry[] =>
   rows.filter((r) => r.value !== value);
 
-/** 可编辑变量表：key/value 行 + 增删 + 敏感值显示切换（受控输入，Index 保 DOM 不丢焦点） */
+/** 可编辑变量表：key/value 行 + 增删 + 敏感值显示切换（受控输入，For keyed={false} 保 DOM 不丢焦点） */
 export function EnvRowsEditor(props: {
   rows: EnvEntry[];
   onChange: (rows: EnvEntry[]) => void;
@@ -127,7 +124,7 @@ export function EnvRowsEditor(props: {
     );
   return (
     <div class="flex flex-col gap-2">
-      <Index each={props.rows}>
+      <For each={props.rows} keyed={false}>
         {(row, i) => (
           <div class="flex items-start gap-1.5">
             <input
@@ -176,7 +173,7 @@ export function EnvRowsEditor(props: {
             </div>
           </div>
         )}
-      </Index>
+      </For>
       <Show when={!props.disabled}>
         <button
           type="button"
@@ -267,7 +264,7 @@ export function EnvDrawer(props: { targetId: number }) {
   const [error, setError] = createSignal<string>();
   const [busy, setBusy] = createSignal(false);
 
-  onMount(() => {
+  onSettled(() => {
     unwrap(api.targets({ id: props.targetId }).env.get())
       .then((d) => {
         setData(d);

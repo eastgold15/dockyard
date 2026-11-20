@@ -1,43 +1,13 @@
-/** @jsxImportSource solid-js */
 // 遮罩关闭契约：必须「按下与松开都在遮罩上」才关。
 // 两个方向都会让 click 派发到公共祖先（遮罩）：
 // - 面板内按下、拖到遮罩松手（拖选文本）
 // - 遮罩按下、拖进面板松手
 // 只比 click.target 的写法会在两种情况下都误关，把用户正在编辑的内容丢掉。
+//
+// JSX 在 shells.harness.tsx（被导入的模块）里：Solid 2 只支持编译期 JSX，
+// 测试入口写 JSX 会走 Bun 内置 runtime 而拿不到 jsx 实现（见 harness 里的说明）。
 import { expect, test } from "bun:test";
-import { render } from "solid-js/web";
-import { Drawer, Modal } from "./index";
-
-function mountShell(kind: "modal" | "drawer") {
-  let closed = 0;
-  const el = document.createElement("div");
-  document.body.appendChild(el);
-  const dispose = render(
-    () =>
-      kind === "modal" ? (
-        <Modal title="测试" onClose={() => closed++}>
-          <p class="inner">内容</p>
-        </Modal>
-      ) : (
-        <Drawer title="测试" onClose={() => closed++}>
-          <p class="inner">内容</p>
-        </Drawer>
-      ),
-    el,
-  );
-  // 钩子由组件提供（data-shell），不依赖「根节点一定是遮罩」这种未声明的结构约定
-  const overlay = el.querySelector("[data-shell='overlay']") as HTMLElement;
-  const panel = el.querySelector("[data-shell='panel']") as HTMLElement;
-  return {
-    overlay,
-    panel,
-    closed: () => closed,
-    dispose: () => {
-      dispose();
-      el.remove();
-    },
-  };
-}
+import { mountShell } from "./shells.harness";
 
 const down = (el: Element, pointerId = 1) =>
   el.dispatchEvent(

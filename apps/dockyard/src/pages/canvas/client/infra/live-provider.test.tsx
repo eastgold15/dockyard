@@ -1,8 +1,9 @@
-/** @jsxImportSource solid-js */
+/** @jsxImportSource @solidjs/web */
 // LiveProvider 的契约：唯一 SSE 连接、按 target 键写入、discovery 帧转 refresh 事件。
 // 作用域错位（只罩 Board 不罩抽屉）曾是 P0——抽屉拿到 emptyLive 永远不刷新。
 import { expect, test } from "bun:test";
-import { render } from "solid-js/web";
+import { flush } from "solid-js";
+import { render } from "@solidjs/web";
 import { LiveProvider } from "./live-provider";
 import { useDeployLog, useServiceState, useTargetLive } from "./live";
 
@@ -14,6 +15,9 @@ class FakeES {
       es.onmessage?.(
         new MessageEvent("message", { data: JSON.stringify(msg) }),
       );
+    // Solid 2 的批处理：setter 写入的值在微任务 flush 后才对读可见（测试里同步读，
+    // 必须显式 flush 才能看到刚推的帧）
+    flush();
   }
   onmessage: ((e: MessageEvent) => void) | null = null;
   closed = false;

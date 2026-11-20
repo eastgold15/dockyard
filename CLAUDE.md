@@ -50,7 +50,10 @@ bun run package                  # Linux 打包
 硬契约：
 
 - **跨原子 import 只能指向对方的 `<name>.socket.ts`**；socket 文件只 re-export，跨原子物理外键也经 socket 表引用。
+- **引用路径一律 `@/` 别名**：跨原子 `@/pages/<x>/<x>.socket`、共享层 `@/shared/...`；同原子内部用相对路径。不写 `../` 相对深度——原子文件夹要能被整体拷走。
 - 每个原子在 `*.di.ts` 用 `provide()` 声明依赖（类引用 + 字符串值服务键），运行时 `di.get("xxxService")`。
+- **环检测在服务键级**（`provide` 的键，不是模块）：模块粒度会把叶子服务误判成环。`bunx elysiax graph --keys` 看键级链路。
+- **跨原子组合走中间者**：actions 要同时用多个原子的服务时，在本原子 di 声明一个组合服务（如 canvas 的 `boardService`），该服务依赖双方且不被任何服务依赖（键级图的叶子）。actions 一律 `defineRoutes<XxxServices>()`，不写借用名单。
 - services 抛 `ServiceError`（`@elysiax/core`）；actions 不写 try/catch 回显，预期错误 `return status(code, { error })`。
 - **渲染器单选**：htmx 原子的 actions 吐 HTML 片段（@kitajs/html JSX，路径用 `routes.*` 类型化 helper）；Solid 原子（canvas、servers、projects、ping——应用已无 htmx 页面）的 actions 只吐 JSON，`client/` 依赖链禁止 Node-only 包（dotenv / bun:sqlite / fs 会导致浏览器打包失败）。Solid 共享控件在 `src/shared/solid-ui/`。
 - 新建/改动原子的脚手架流程见 `.claude/skills/elysiax-atom/SKILL.md`；契约审查清单见 `.claude/agents/elysiax-reviewer.md`。

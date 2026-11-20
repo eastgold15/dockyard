@@ -9,8 +9,7 @@ import { type GithubService, type RepoBrief } from "@/pages/github/github.socket
 import { type CanvasService } from "@/pages/canvas/canvas.socket";
 import { type ProjectService } from "@/pages/projects/projects.socket";
 import { type EdgeService } from "@/pages/edge/edge.socket";
-import { RuntimeService } from "@/pages/deploy/runtime/runtime.socket";
-import { BackupService, RESTORE_SUPPORT } from "@/pages/deploy/backup/backup.socket";
+import type { DeployConsoleService } from "./console.service";
 import {
   detectLocal,
   detectRepo,
@@ -66,8 +65,7 @@ const consoleSessions = new Map<
 
 interface Ctx {
   deploy: DeployService;
-  runtime: RuntimeService;
-  backup: BackupService;
+  console: DeployConsoleService;
   edge: EdgeService;
   github: GithubService;
   canvas: CanvasService;
@@ -76,8 +74,7 @@ interface Ctx {
 
 const ctxOf = (di: Di): Ctx => ({
   deploy: di.get("deployService"),
-  runtime: di.get("runtimeService"),
-  backup: di.get("backupService"),
+  console: di.get("deployConsoleService"),
   edge: di.get("edgeService"),
   github: di.get("githubService"),
   canvas: di.get("canvasService"),
@@ -109,7 +106,7 @@ const svcEditSchema = t.Object({
   ),
 });
 
-export default defineRoutes()
+export default defineRoutes<DeployServices>()
   // 向导数据：gh CLI 列出账号仓库做选择器（gh 未登录时降级为空列表手填）；
   // 本地文件夹导入的项目直接给出识别结果（跳过仓库选择步）
   .get(
@@ -494,7 +491,7 @@ export default defineRoutes()
         tab,
         deployments: await ctx.deploy.deploymentsOfTarget(params.id),
         envText: query.svc
-          ? await ctx.runtime.serviceEnvText(params.id, query.svc)
+          ? await ctx.console.serviceEnvText(params.id, query.svc)
           : undefined,
         dbRefs: query.svc
           ? await ctx.deploy.dbRefsForTarget(target)
@@ -515,12 +512,12 @@ export default defineRoutes()
           : undefined,
         domains: await ctx.edge.domainsOfTarget(params.id),
         resources: query.svc
-          ? await ctx.runtime.serviceResources(params.id, query.svc)
+          ? await ctx.console.serviceResources(params.id, query.svc)
           : undefined,
-        backups: await ctx.backup.backupsOf(params.id),
+        backups: await ctx.console.backupsOf(params.id),
         // 能否自动恢复由服务端判定（引擎能力单点：RESTORE_SUPPORT），client 不重复维护引擎清单
-        backupRestorable: Boolean(RESTORE_SUPPORT[target.dbType ?? ""]),
-        metrics: await ctx.runtime.serviceStats(
+        backupRestorable: ctx.console.restorableOf(target.dbType),
+        metrics: await ctx.console.serviceStats(
           params.id,
           query.svc || undefined,
         ),
@@ -534,7 +531,7 @@ export default defineRoutes()
       query: t.Object({ svc: t.Optional(t.String()) }),
     },
     async ({ di, params, query }) =>
-      ctxOf(di).runtime.serviceStats(params.id, query.svc),
+      ctxOf(di).console.serviceStats(params.id, query.svc),
   )
   .post(
     "/targets/:id/service/restart",
@@ -543,7 +540,7 @@ export default defineRoutes()
       body: t.Object({ svc: t.Optional(t.String()) }),
     },
     async ({ di, params, body }) => {
-      await ctxOf(di).runtime.restartService(params.id, body.svc || undefined);
+      await ctxOf(di).console.restartService(params.id, body.svc || undefined);
       // 结构不变（容器状态走 SSE），不刷新画布
       return { notice: "已发送重启" };
     },
@@ -555,7 +552,7 @@ export default defineRoutes()
       query: t.Object({ svc: t.Optional(t.String()) }),
     },
     async ({ di, params, query }) =>
-      ctxOf(di).runtime.serviceLogs(params.id, query.svc),
+      ctxOf(di).console.serviceLogs(params.id, query.svc),
   )
   .post(
     "/targets/:id/service/env",
@@ -569,7 +566,7 @@ export default defineRoutes()
     },
     async ({ di, params, body }) => {
       const ctx = ctxOf(di);
-      await ctx.runtime.setServiceEnv(params.id, body.svc, body.envText ?? "");
+      await ctx.console.setServiceEnv(params.id, body.svc, body.envText ?? "");
       // 依赖勾选同步服务级连线：该服务的边整组替换，app 级/其他服务的边不动；
       // 服务变量里出现 dockyard 库连接串时同样派生 origin=env 的边
       await ctx.deploy.setServiceDeps(
@@ -592,7 +589,7 @@ export default defineRoutes()
       }),
     },
     async ({ di, params, body }) => {
-      await ctxOf(di).runtime.setServiceResources(
+      await ctxOf(di).console.setServiceResources(
         params.id,
         body.svc,
         body.cpuCores,
@@ -667,7 +664,7 @@ export default defineRoutes()
       try {
         const targetId = Number(ctx.params.id);
         const session = await ctx.di
-          .get("runtimeService")
+          .get("deployConsoleService")
           .openConsole(targetId, ctx.query.svc || undefined);
         consoleSessions.set(ws, session);
         // 控制台输出同时进统一日志表（source=console）+ 同一条 SSE 频道
@@ -710,7 +707,7 @@ export default defineRoutes()
     "/targets/:id/backup",
     { params: t.Object({ id: t.Number() }) },
     async ({ di, params }) => {
-      const file = await ctxOf(di).backup.backupNow(params.id);
+      const file = await ctxOf(di).console.backupNow(params.id);
       return { notice: `已备份：${file}` };
     },
   )
@@ -722,7 +719,7 @@ export default defineRoutes()
       body: t.Object({ file: t.String(), confirm: t.Literal(true) }),
     },
     async ({ di, params, body }) => {
-      const { safety, warnings } = await ctxOf(di).backup.restore(
+      const { safety, warnings } = await ctxOf(di).console.restore(
         params.id,
         body.file,
       );
@@ -738,7 +735,7 @@ export default defineRoutes()
     "/backups/:id/:file",
     { params: t.Object({ id: t.Number(), file: t.String() }) },
     async ({ di, params, set }) => {
-      const path = ctxOf(di).backup.backupFilePath(params.id, params.file);
+      const path = ctxOf(di).console.backupFilePath(params.id, params.file);
       if (!path) return status(404, "备份不存在");
       set.headers["content-disposition"] =
         `attachment; filename="${params.file}"`;

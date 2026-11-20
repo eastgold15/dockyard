@@ -16,6 +16,9 @@ description: 脚手架新的 elysiax 原子模块（页面/子域/弹窗），�
 - 身份证两件套：`<name>.di.ts` + `<name>.socket.ts`（无对外承诺则只写 di，不写 socket）。
 - 插座纯度：socket.ts 只 re-export，注释标明"对外承诺"。
 - 跨原子依赖：import 对方 `<x>.socket.ts`，且 di provide 里声明类引用依赖（`provide(XService, [DepService, "db"])`，类引用 + 字符串值服务键）。
+- **引用路径**：跨原子写 `@/pages/<x>/<x>.socket`，共享层写 `@/shared/...`；同原子内部用 `./x`。不写 `../` 相对深度——原子文件夹要能被整体拷走。
+- **actions 一律 `defineRoutes<XxxServices>()`**（泛型来自 `.elysiax` 生成的窄类型），不写 `defineRoutes()` 裸泛型，不手写全表 `type Di`。辅助函数可用 `type Di = { get<K extends keyof XxxServices>(k: K): XxxServices[K] }`。
+- **跨原子组合走中间者**：actions 要同时用多个原子的服务时，不要直接 `di.get` 别人的键，而是在本原子加一个组合服务（如 `src/pages/canvas/board.service.ts` 的 `BoardService`）并在 di 里声明。中间者必须**没有任何服务依赖它**（服务键级图上的叶子）。详见 `apps/docs/docs/原子依赖图与中间者.md`。
 - services 抛 `ServiceError`（`@elysiax/core`）；actions 零 try/catch，预期错误 `return status(code, { error })`（status 从 "elysia" 导入）。
 - 所有文件注释用中文。
 
@@ -106,13 +109,13 @@ export { <Name>Service } from "./<name>.service";
 参照 `pages/servers/servers.actions.tsx`：
 
 ```tsx
-import { defineRoutes } from "../../../.elysiax";
+import { defineRoutes, type NameServices } from "../../../.elysiax"; // NameServices = codegen 生成的窄类型（<Name>Services）
 import { t } from "elysia";
 import { <Name>List } from "./<name>.partials";
 
 const form = t.Object({ name: t.String({ minLength: 1 }) });
 
-export default defineRoutes().post("/", { body: form }, async ({ di, body, toast }) => {
+export default defineRoutes<NameServices>().post("/", { body: form }, async ({ di, body, toast }) => {
   await di.get("<name>Service").create(body);
   toast(`「${body.name}」已添加`);
   return <<Name>List items={await di.get("<name>Service").list()} />;

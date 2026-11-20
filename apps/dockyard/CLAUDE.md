@@ -28,6 +28,35 @@
 - 服务端逻辑留在原子根层，不因 UI 差异搬家；跨页逻辑复用走 DI service，跨页 UI 复用走 `shared/solid-ui`，两条通道不混用。
 - 量化触发条件：单文件 >400 行，或一个文件里装了 3 个以上独立弹窗/视图 → 拆区域；只是“组件有点多” → 不拆。
 
+## 引用路径（一律 `@/` 绝对路径）
+
+跨原子与共享层引用**必须**写 `@/` 别名，不写 `../` 相对深度——原子文件夹要能被整体拷走 / 分发，相对深度会把本机目录结构焊死在里面。
+
+- 跨原子只指向对方插座：`import { X } from "@/pages/servers/servers.socket"`。
+- 共享层：`import { db } from "@/shared/db"`。
+- **同一原子内部**保持相对路径（`./canvas.service`）——它们随文件夹一起搬，不需要别名。
+
+## 跨原子组合：中间者（mediator）
+
+actions 的窄类型只含本原子 `*.di.ts` 声明的键。需要同时用多个原子的服务时，**不在 actions 里直接 `di.get` 别人的服务**，而是在本原子加一个组合服务（中间者）：
+
+| 中间者 | 位置 | 依赖 |
+|---|---|---|
+| `boardService` | `canvas/board.service.ts` | canvas, deploy, server, project, edge, containerPoller |
+| `deployConsoleService` | `deploy/console.service.ts` | deploy, runtime, backup |
+| `serverResourceService` | `servers/resource.service.ts` | resource, server |
+| `githubPushService` | `github/push.service.ts` | github, updatePoller |
+
+中间者住在被组合的那一侧原子内（不新建假页面目录、不建公共 services 层），由该原子 `*.di.ts` 声明；actions 只调它。它必须**没有任何服务依赖它**——即服务键级图上的叶子。
+
+## 环检测是服务键级，不是原子级
+
+`elysiax graph` 打印两张图：原子级引用图给 CLI 算依赖闭包，服务键级 DI 图给容器排序 + 环检测。
+
+原子级会误判：canvas 依赖 deployService、deployService 又依赖 canvasService，模块级看就是 `canvas ↔ deploy`，但键级上 `boardService → deployService → canvasService → canvasRepository → db` 是一条链，**不是环**。只有真的出现回边（`A → B → A` 的键链路）才是环，gen 会直接报错并给出链路。
+
+排查顺序：先 `elysiax graph --keys` 看键级链路，再加中间者或改单向依赖，不要靠搬目录。
+
 ## UI - Panda CSS
 
 共享控件样式统一使用 `panda.config.ts` / `panda/recipes.ts` 中的 token 与 recipe。htmx 与 Solid 只消费 `styled-system/` 生成的框架无关 helper，不使用 Panda `styled` JSX，不引入跨渲染器组件运行时，也不再使用 shadcn-htmx registry/snippets。
@@ -77,7 +106,7 @@ canvas、servers、projects、ping 均为整页 Solid client（各自 `client/`�
 
 ### 本仓库的两处例外（已知取舍）
 
-- **读模型拼装留在 Route**：`/canvas/board` 的卡片拼装、`/deploy/new-app` 的向导数据要同时用 project/server/deploy/edge 四个 service。下沉进任一 service 都会形成 canvas↔deploy 的 DI 环，只能留在 Route（它是视图组装，不是业务校验）。
+- **读模型拼装走中间者，不留在 Route**：`/canvas/board` 的卡片拼装已下沉到 `canvas/board.service.ts`（`boardService`）。原子级看它确实制造了 canvas→deploy 的回边，但服务键级图上它是叶子，不成环。新增同类组合时照此办理，不要退回「在 Route 里拼」。
 - **资源不存在 = ServiceError(404)**：Service 用 `mustGet` / `mustTarget` / `mustGetDomain` 抛 404，Route 不再自己判空 `return status(404, ...)`。
 
 
@@ -160,3 +189,6 @@ canvas、servers、projects、ping 均为整页 Solid client（各自 `client/`�
 ---
 
 改动要点：全文用 `Xxx` 泛指模块，规则与示例均不绑定具体业务；`Canvas` 仅作为"任意模块之一"被提及，模型读后会把规范应用到所有模块而非某个特定模块。
+
+
+使用绝对路径

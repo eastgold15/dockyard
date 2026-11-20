@@ -11,51 +11,53 @@ dockyard 是 elysiax 的实战项目：一个 docker 部署工具（服务器管
 
 ```
 src/pages/
-  index              # → 重定向/项目列表
-  projects/          # htmx CRUD 页面：page + partials + actions
-  servers/           # htmx CRUD 页面（最标准的形态，脚手架照它抄）
-  canvas/            # client 模式：整页 Solid + JSON API，世界地图（见画布篇）
+  index.page.tsx     # → 重定向到项目列表
+  projects/          # 整页 Solid client（client/）+ JSON actions
+  servers/           # 整页 Solid client（最标准的形态，脚手架照它抄）
+  canvas/            # 整页 Solid client：世界地图（见画布篇）
   ping/              # 最小示例页面
-  deploy/ edge/ github/ resources/   # 纯服务模块（无路由，只提供 DI）
-src/shared/ui/       # L4 共享渲染：cn()、PageHeader、Empty
-src/app.layout.tsx   # L0 全局壳
+  deploy/ edge/ github/ resources/   # 纯服务原子（无路由，只提供 DI）
+src/shared/solid-ui/ # 共享控件：AppShell、Button、Field、Badge、Modal、Drawer、feedback
+src/shared/db.ts     # drizzle 连接 + 迁移聚合
 ```
 
-## 标准 CRUD 页面：servers
+应用已**不带 htmx**：`app.layout.tsx` / `shared/ui` / `@elysiax/htmx` 依赖都已移除，页面外框是客户端组件 `AppShell`。
 
-三件套 + di + service + repository，一个文件夹全齐：
+## 标准形态：servers（整页 Solid + JSON API）
 
-```tsx
-// servers.page.tsx —— 整页（L1）
-export default definePage(async ({ di }) => ({
-  title: "服务器 · Dockyard",
-  content: <ServerList servers={await di.get("serverService").list()} />,
-}));
+```ts
+// servers.di.ts —— 装配声明
+export default defineModule({
+  route: "/servers",
+  provides: {
+    serverRepository: provide(ServerRepository, ["db"]),
+    serverService: provide(ServerService, [ServerRepository, SshPool, DockerRelay]),
+    // 中间者：共享资源弹窗要同时读 resources 与 servers
+    serverResourceService: provide(ServerResourceService, [ResourceService, ServerService]),
+  },
+});
+```
 
-// servers.partials.tsx —— 展示组件 + GET 片段（L2）
-export const ServerList: Component<{ servers: Server[] }> = ...
-export default defineRoutes()
-  .get("/:id/card", ({ di, params }) => <ServerCard ... />);
-
-// servers.actions.tsx —— 写端点（L2）
-export default defineRoutes()
-  .post("/", { body: serverForm }, async ({ di, body, toast }) => {
-    await di.get("serverService").create(body);
-    toast(`服务器「${body.name}」已添加`);
-    return <ServerList servers={await di.get("serverService").list()} />;
-  })
-  .delete("/:id", ...);
+```ts
+// servers.actions.ts —— 只吐 JSON，只调本原子的键
+export default defineRoutes<ServersServices>()
+  .get("/", async ({ di }): Promise<ServersModel> => ({
+    servers: await di.get("serverService").list(),
+  }))
+  .get("/resources/:id", async ({ di, params }) =>
+    di.get("serverResourceService").model(params.id));
 ```
 
 要点：
 
-- **展示组件（ServerList）放 partials**，整页和写操作后的片段刷新共用同一份渲染——这就是「一块画面一个 state 一个取数函数」的页面架构版
-- hx 目标用 `routes.pages.servers.*` 类型化助手，不手写路径
-- 弹窗（共享资源 modal）也是服务端片段，hx-get 进 `#modal-root`
+- **actions 一律 `defineRoutes<XxxServices>()`**：泛型是 codegen 生成的窄类型（`provides ∪ 直接 deps`），跨原子取不到的键在编译期就报错
+- **跨原子组合走中间者**：`serverResourceService` 依赖 `resourceService` + `serverService`，自己不被任何服务依赖（服务键级图的叶子）——详见 [原子依赖图与中间者](./原子依赖图与中间者.md)
+- 引用路径跨原子写 `@/pages/<x>/<x>.socket`，同原子内部用 `./x`
+- 前端在 `client/`，Eden Treaty 从 actions 导出的类型取 `treaty<ServersApi>()`
 
-## 纯服务模块：deploy / edge / github
+## 纯服务原子：deploy / edge / github
 
-没有 `.page.tsx` 的文件夹不进路由表，只向容器提供服务：
+没有 `.actions.ts` / `.page.tsx` 的文件夹**不进路由表**，只向容器提供服务：
 
 ```ts
 // deploy/deploy.di.ts
@@ -63,11 +65,13 @@ export default defineModule({
   provides: {
     deployRepository: provide(DeployRepository, ["db"]),
     deployService: provide(DeployService, [DeployRepository, ServerService, GithubService, CanvasService, ...]),
+    // 控制台组合根：runtime/backup 两个嵌套原子的能力只经它进入本原子 actions
+    deployConsoleService: provide(DeployConsoleService, [RuntimeService, BackupService]),
   },
 });
 ```
 
-依赖写**类引用**（经对方 socket import），容器按图装配。canvas 的 actions 通过 `di.get("deployService")` 使用；deploy 自己的 29 个端点挂在 `/api/deploy/*`（deploy.actions.ts，按文件夹 URL 自动挂载）——**页面之间零耦合，服务共享靠 DI 图**。
+依赖写**类引用**（经对方 socket import），容器按**服务键拓扑序**装配。deploy 自己的端点挂在 `/api/deploy/*`——页面之间零耦合，服务共享靠 DI 图。
 
 ## 部署管线：快照回滚 / 部署策略 / 部署通道
 
@@ -101,8 +105,8 @@ export default defineModule({
 // deploy.service.ts
 if (!target) throw new ServiceError("部署目标不存在", 404);
 
-// canvas.actions.ts —— 没有 try/catch，错误自动变成 { error } JSON
-// 或 hx 横幅片段（看请求来源），客户端 api.ts 的 errText 读 error 字段
+// actions —— 没有 try/catch，错误自动变成 { error } JSON
+// 客户端 api.ts 的 errText 读 error 字段
 ```
 
 actions 里保留的 try/catch 只剩**非回显用途**：JSON.parse 兜底、ws 终端把错误写进 xterm、GitHub 拉取失败的降级（错误作为数据字段返回）。
@@ -126,9 +130,11 @@ pages/
 
 三条落地要点：
 
-1. **外键 = 插头**：deploy 的表引用画布表，写的是 `import { canvasNodes } from "../canvas/canvas.socket"`——跨原子 import 只走插座，`elysiax doctor` 插座门禁强制
-2. **嵌套原子父子无特权**：runtime.di.ts 依赖 DeployService，import 的也是 `../deploy.socket`
+1. **外键 = 插头**：deploy 的表引用画布表，写的是 `import { canvasNodes } from "@/pages/canvas/canvas.socket"`——跨原子 import 只走插座且用 `@/` 别名，`elysiax doctor` 插座门禁强制
+2. **嵌套原子父子无特权**：runtime.di.ts 依赖 DeployService，import 的也是 `@/pages/deploy/deploy.socket`
 3. **迁移随文件夹**：每原子的 `migrations.ts` 是自己的 journal 片段，`shared/db.ts` 聚合后按 timestamp 排序重放；复制文件夹 = 连表带迁移一起带走
+4. **跨原子组合走中间者**：`boardService`（canvas）依赖 deploy/server/edge/project，`deployConsoleService`（deploy）依赖 runtime/backup——它们都是服务键级图的叶子，不成环
+5. **环检测在服务键级**：`bunx elysiax graph --keys` 看键级链路；原子级图有回边是正常的（中间者使然），键级无环即可
 
 后台轮询器也是 DI 服务：`start()` 返回 `{ app, root }`，入口 `root.get("updatePoller").start()`——轮询与请求共用同一份单例（SSH 池只有一份）。
 

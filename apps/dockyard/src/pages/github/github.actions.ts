@@ -1,13 +1,10 @@
 import { status, t } from "elysia";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { defineRoutes, type ServiceMap } from "../../../.elysiax";
+import { defineRoutes, type GithubServices } from "../../../.elysiax";
 import type { AppStatus } from "./github.service";
 
-/** DI 容器视图：键与返回类型全部来自 codegen 的 ServiceMap，不重抄 */
-type Di = { get<K extends keyof ServiceMap>(k: K): ServiceMap[K] };
-
 /** github 原子的 JSON API：GitHub App 授权状态/配置 + push webhook */
-export default defineRoutes()
+export default defineRoutes<GithubServices>()
   /** 当前凭据状态（App 已配置？账号是谁？webhook secret 有没有？） */
   .get("/app", async ({ di }): Promise<AppStatus> => di.get("githubService").appStatus())
   /**
@@ -72,7 +69,7 @@ export default defineRoutes()
       // 只处理分支推送（tag 推送不触发构建）
       if (payload.ref && !payload.ref.startsWith("refs/heads/"))
         return { ok: true, ignored: "not-a-branch" };
-      await di.get("updatePoller").checkRepo(fullName);
+      await di.get("githubPushService").checkRepo(fullName);
       return { ok: true, repo: fullName };
     },
   );

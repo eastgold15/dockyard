@@ -17,28 +17,31 @@ description: 第一次打开 dockyard 源码时的目录/文件说明书：每�
 ```
 apps/dockyard/src/
 ├─ index.ts              # 入口：start()、启动本机认领与 docker 检测、后台轮询启动
-├─ app.layout.tsx        # 全站壳（<html>、导航、toast 容器）
 ├─ global.css            # 全局样式/token
-├─ infra.di.ts           # 基础设施 DI（db 最先装配）
-├─ shared/               # 跨原子共享（浏览器安全、无业务逻辑）
-└─ pages/                # ★ 全部业务，一个文件夹 = 一个原子
+├─ infra.di.ts           # 基础设施 DI（db / appPaths 最先装配）
+├─ shared/               # 跨原子共享（solid-ui 壳与控件、db、paths、crypto、迁移聚合）
+└─ pages/                # ★ 全部业务，一个文件夹 = 一个原子= 一段 URL
 ```
 
 ## 2. 原子一览
 
 | 原子        | 形态            | 一句话职责                                               | 表                               |
 | ----------- | --------------- | -------------------------------------------------------- | -------------------------------- |
-| `index`     | htmx 页         | 根页面（重定向/项目列表）                                | —                                |
-| `projects`  | htmx 页         | 本地/远程项目登记、扫描目录、编辑器配置                  | `projects`                       |
-| `servers`   | htmx 页         | 服务器 CRUD、SSH 通道、docker 检测与本机内置行           | `servers`                        |
+| `index`     | 重定向页        | 根页面 → 项目列表                                        | —                                |
+| `projects`  | Solid client 页 | 本地/远程项目登记、扫描目录、编辑器配置                  | `projects`                       |
+| `servers`   | Solid client 页 | 服务器 CRUD、SSH 通道、docker 检测与本机内置行           | `servers`                        |
 | `canvas`    | Solid client 页 | 世界地图画布：服务器卡/目标卡/依赖边/服务分组/透镜过滤   | `canvas_nodes`、`service_groups` |
-| `ping`      | htmx 页         | 最小示例页                                               | —                                |
+| `ping`      | Solid client 页 | 最小示例页                                               | —                                |
 | `deploy`    | 纯服务          | 部署六阶段管线、日志、回滚、备份、自动更新、容器状态轮询 | `deploy_*`                       |
 | `edge`      | 纯服务          | Caddy 反代容器、域名与证书状态                           | `domains`                        |
 | `github`    | 纯服务          | GitHub 仓库解析/拉取（无表）                             | —                                |
 | `resources` | 纯服务          | 数据库模板与服务器资源（内存/CPU 限额）                  | `server_resources`               |
 
-纯服务模块 = 没有 `.page.tsx`，只提供 DI 与 `/api/<name>/*` JSON/片段端点，不占独立 URL。
+应用已无 htmx：所有页面都是整页 Solid client（`client/` + JSON actions），外框是 `AppShell`。
+纯服务原子 = 没有 `.page.tsx` / `.actions.ts`，只提供 DI，不占独立 URL。
+
+跨原子组合由**中间者**承担（`boardService` / `deployConsoleService` / `serverResourceService` / `githubPushService`），
+它们住在被组合一侧的原子内，是服务键级图的叶子。详见 [原子依赖图与中间者](./原子依赖图与中间者.md)。
 
 ## 3. 文件后缀在 dockyard 里的含义
 
@@ -49,19 +52,21 @@ apps/dockyard/src/
 | `*.service.ts`                | `deploy.service.ts`                  | 业务逻辑；抛 `ServiceError`，不碰 UI                                  |
 | `*.repository.ts`             | `canvas.repository.ts`               | 数据访问；依赖 `"db"`                                                 |
 | `*.model.ts`                  | `canvas.model.ts`                    | 服务端与 client 同构的视图模型（纯类型/数据）                         |
-| `*.actions.ts`                | `deploy.actions.ts`                  | JSON 端点（Eden 类型来源）                                            |
-| `*.actions.tsx`               | `servers.actions.tsx`                | htmx 写端点，吐 HTML 片段                                             |
-| `*.page.tsx`                  | `servers.page.tsx`                   | 整页（htmx）                                                          |
-| `*.partials.tsx`              | `servers.partials.tsx`               | 展示组件 + GET 片段                                                   |
+| `*.actions.ts`                | `deploy.actions.ts`                  | JSON 端点（Eden 类型来源）；`defineRoutes<XxxServices>()`             |
+| `*.partials.tsx`              | —                                    | htmx 片段（本仓库已无此形态，仅框架支持）                             |
 | `schema.ts` / `migrations.ts` | `servers/schema.ts`                  | drizzle 表与迁移（迁移只追加，聚合到 `shared/migrations-journal.ts`） |
 | `client/`                     | `canvas/client/`                     | 整页 Solid 客户端；`index.tsx` 标记 client 模式                       |
 | `*.test.ts(x)`                | `servers.service.test.ts`            | 就近测试；浏览器侧加 `--conditions=browser`                           |
 | 普通 `.ts`                    | `deploy/forms.ts`、`canvas/zones.ts` | 本原子内部模块，不参与 codegen 路由                                   |
 
-两条硬规则：
+三条硬规则：
 
 1. **跨原子只能 import 对方的 `*.socket.ts`**——直接摸别人的 service/schema 会被 doctor 与 review 打回。
-2. **渲染器单选**：htmx 原子只吐 HTML，Solid 原子只吐 JSON（canvas 是后者）。
+2. **引用一律 `@/` 绝对路径**：跨原子写 `@/pages/x/x.socket`，共享层写 `@/shared/...`；同原子内部保持相对路径（随文件夹一起搬）。原子文件夹要能被整体拷走，相对深度会把本机目录结构焊死。
+3. **渲染器单选**：htmx 原子只吐 HTML，Solid 原子只吐 JSON（canvas 是后者）。
+
+跨原子组合（actions 要同时用多个原子的服务）走**中间者**，不在 actions 里直接 `di.get` 别人的键。
+详见 [原子依赖图与中间者](./原子依赖图与中间者.md)。
 
 ## 4. 深水区：deploy 文件分工
 
@@ -132,8 +137,8 @@ deploy 没有页面，是纯服务，文件按"阶段"拆：
 ## 8. 新人阅读路线（约 15 分钟）
 
 1. elysiax 的 [仓库导览与文件后缀](https://github.com/eastgold15/elysiax/blob/main/apps/docs/docs/repo-guide.md)（先懂规则）
-2. `src/index.ts` → `app.layout.tsx`（应用怎么起）
-3. `pages/servers/`：最标准的 htmx 三件套（`di → socket → service → repository → page/partials/actions`）
+2. `src/index.ts` → `shared/solid-ui`（应用怎么起、外框怎么搭）
+3. `pages/servers/`：最标准的形态（`di → socket → service → repository → actions` + `client/`）
 4. `pages/deploy/forms.ts` → `pipeline.ts`（部署六阶段，配合 [部署抽象](./部署抽象.md)）
 5. `pages/canvas/client/board.tsx`（Solid 世界地图，配合 [画布 client 模式](./canvas-client.mdx)）
 6. 想核对 URL/DI 装配：看 `.elysiax/pages.gen.ts`、`.elysiax/container.gen.ts`

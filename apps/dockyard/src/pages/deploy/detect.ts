@@ -361,6 +361,46 @@ export function composeInterpVars(
   return [...names];
 }
 
+/**
+ * compose 插值要求：哪些键必须要有值。
+ *
+ * 分两档：
+ * - required（`${VAR:?msg}`）：compose 自己就会报错，缺值 = 部署必然失败 → 提前阻断
+ * - referenced（`${VAR}` / `${VAR:?}`）：compose 替换成空串，服务拿到空配置 →
+ *   多数情况是「配漏了」（空密码连库），但也可能是服务自己判空容错，所以只警告
+ *
+ * 与 composeInterpVars 的区别：那个函数只看「被引用」，这个函数额外分出「必填」档。
+ */
+export function composeInterpRequirements(
+  composeText: string,
+  serviceNames?: string[],
+): { referenced: string[]; required: string[] } {
+  let text = composeText;
+  if (serviceNames?.length) {
+    try {
+      const doc: unknown = parseYaml(composeText);
+      const all = isObj(doc) && isObj(doc.services) ? doc.services : {};
+      const picked: Record<string, unknown> = {};
+      for (const name of serviceNames)
+        if (isObj(all) && name in all)
+          picked[name] = (all as Record<string, unknown>)[name];
+      if (Object.keys(picked).length)
+        text = stringifyYaml({ services: picked });
+    } catch {
+      /* 同 composeInterpVars：解析不了就扫全文 */
+    }
+  }
+  const referenced = new Set<string>();
+  const required = new Set<string>();
+  for (const m of text.matchAll(/(^|[^$])\$\{([A-Za-z_][A-Za-z0-9_]*)([^}]*)\}/g)) {
+    const mod = m[3]!;
+    if (/^:?[-+]/.test(mod)) continue; // 有默认值/替代值 → 缺值正常
+    referenced.add(m[2]!);
+    if (mod.startsWith(":?")) required.add(m[2]!);
+  }
+  return { referenced: [...referenced], required: [...required] };
+}
+
 /** compose 的「变量未设置」警告行（构建日志里会重复很多遍） */
 // compose 输出里变量名带转义引号：msg="The \"POSTGRES_PASSWORD\" variable is not set. …"
 const COMPOSE_NOISE_RE =

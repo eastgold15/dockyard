@@ -13,6 +13,7 @@
 import {
   createEffect,
   createSignal,
+  Show,
 } from "solid-js";
 import AnsiToHtml from "ansi-to-html";
 import copy from "copy-to-clipboard";
@@ -62,11 +63,13 @@ const CONVERT_OPTIONS = {
  * @param text 完整日志字符串（每次替换为当前权威全文）
  * @param height 固定容器高度（如 "24rem"）；与 fill 二选一
  * @param fill 撑满父容器剩余空间（父级需是带确定高度的 flex 布局），抽屉内嵌日志用
+ * @param onClear 提供时显示「清空」按钮；清空的是视图基线，后续新日志照常显示
  */
 export function LogView(props: {
   text: string;
   height?: string;
   fill?: boolean;
+  onClear?: () => void;
 }) {
   /** 外层滚动容器（复制行在它外面） */
   let box!: HTMLDivElement;
@@ -125,7 +128,16 @@ export function LogView(props: {
           : "flex flex-col gap-1.5"
       }
     >
-      <div class="flex items-center justify-end">
+      <div class="flex items-center justify-end gap-1">
+        <Show when={props.onClear}>
+          <button
+            type="button"
+            class={button({ variant: "ghost", size: "sm" })}
+            onClick={() => props.onClear?.()}
+          >
+            全部清空
+          </button>
+        </Show>
         <button
           type="button"
           class={button({ variant: "ghost", size: "sm" })}

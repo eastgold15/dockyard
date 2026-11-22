@@ -164,18 +164,25 @@ const MetricsPanel = (props: { targetId: number; svc?: string }) => {
 /** 服务日志（2s 轮询） */
 const ServiceLogs = (props: { targetId: number; svc?: string }) => {
   const [text, setText] = createSignal("加载中…");
+  /** 清空基线（秒级 unix 时间）：清空后只显示 docker logs --since 之后的新日志 */
+  const [since, setSince] = createSignal<number | null>(null);
+  // 请求世代：清空动作也要作废在途请求，否则清空后旧全量会立刻写回
+  let seq = 0;
   onSettled(() => {
     // SSH 拉 docker logs 可能超过一个轮询周期：禁止请求重叠，且只接受最后一次
     // 发出的请求结果，否则先发后到的旧快照会把新日志顶回去（表现为日志回跳/重复）
-    let seq = 0;
     let inflight = false;
     const tick = async () => {
       if (inflight) return;
       inflight = true;
       const my = ++seq;
       try {
+        const q = new URLSearchParams();
+        if (props.svc) q.set("svc", props.svc);
+        const from = since();
+        if (from !== null) q.set("since", String(from));
         const res = await fetch(
-          `${deployPaths.targetsByIdServiceLogs(props.targetId)}${props.svc ? `?svc=${encodeURIComponent(props.svc)}` : ""}`,
+          `${deployPaths.targetsByIdServiceLogs(props.targetId)}${q.size > 0 ? `?${q}` : ""}`,
         );
         if (!res.ok) {
           if (my === seq) setText(`日志获取失败：HTTP ${res.status}`);
@@ -194,8 +201,14 @@ const ServiceLogs = (props: { targetId: number; svc?: string }) => {
     // Solid 2：onSettled 内不能调 onCleanup（禁止作用域），改为返回清理函数
     return () => clearInterval(timer);
   });
+  /** 全部清空：清视图 + 顺延 docker logs 的起点；作废在途快照防止旧日志回灌 */
+  const clear = () => {
+    seq++;
+    setSince(Math.floor(Date.now() / 1000));
+    setText("");
+  };
   // 撑满抽屉里除操作行/历史列表外的剩余高度：不再用固定 40vh 把日志裁在抽屉底边外
-  return <LogView text={text()} fill />;
+  return <LogView text={text()} fill onClear={clear} />;
 };
 
 export function ServiceDrawer(props: {

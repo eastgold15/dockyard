@@ -28,6 +28,8 @@ import type {
 import type { Domain } from "@/pages/edge/edge.socket";
 import type { RepoBrief } from "@/pages/github/github.socket";
 import type { DbConnection, DbRef, EnvEntry } from "@/pages/deploy/deploy.socket";
+import type { EnvBinding, EnvSource } from "@/pages/deploy/deploy.socket";
+import type { ImageVar } from "@/pages/resources/resources.socket";
 import type { DetectResult, DetectedService } from "@/pages/deploy/deploy.socket";
 import type { DiscoveredContainer } from "../../canvas.model";
 import copy from "copy-to-clipboard";
@@ -98,47 +100,21 @@ export function ServiceEnvTab(props: {
         {(conn) => <DbConnectionSection conn={conn} />}
       </For>
       <p class="text-xs text-neutral-500">
-        随 override compose 注入该服务容器（enc1: 加密保存在控制面本地，不入
-        git），重新部署后生效。
+        服务级覆盖：随 override compose 注入该服务容器（enc1:
+        加密保存在控制面本地，不入 git），重新部署后生效。
       </p>
-      <Show when={(props.data.sharedEnv ?? []).length > 0}>
-        <Section title="服务器共享变量" hint="选择即写入下方变量">
-          <select
-            class={field()}
-            value=""
-            onChange={(e) => {
-              const v = e.currentTarget.value;
-              if (!v) return;
-              const idx = v.indexOf("=");
-              setRows((cur) =>
-                upsertEnvRow(cur, v.slice(0, idx), v.slice(idx + 1)),
-              );
-            }}
-          >
-            <option value="">选择共享变量…</option>
-            <For each={props.data.sharedEnv ?? []}>
-              {(s) => (
-                <option value={`${s.envKey}=${s.url}`}>
-                  {s.name}（{s.dbType}）→ {s.envKey}
-                </option>
-              )}
-            </For>
-          </select>
-        </Section>
-      </Show>
+      <p class="text-xs text-neutral-500">
+        app 级变量与「变量来源」里勾选的键已经注入本服务；这里只写覆盖值——
+        运行时同名键以这里为准。
+      </p>
       <Show when={(props.data.dbRefs ?? []).length > 0}>
-        <Section title="引用数据库" hint="勾选 = 画布连线 + 注入连接串">
+        <Section title="依赖的数据库" hint="只画连线，不注入变量">
           <DbRefPicker
             refs={props.data.dbRefs ?? []}
             selected={depIds()}
             onToggle={(r, on) => {
               setDepIds((cur) =>
                 on ? [...cur, r.id] : cur.filter((id) => id !== r.id),
-              );
-              setRows((cur) =>
-                on
-                  ? upsertEnvRow(cur, r.envKey, r.url)
-                  : removeEnvRowsByValue(cur, r.url),
               );
             }}
           />
@@ -150,7 +126,7 @@ export function ServiceEnvTab(props: {
   );
 }
 
-/** target 级变量：app 走 .env + 依赖血缘；db 展示连接信息与模板变量。
+/** target 级变量：app 走 .env + 变量来源绑定；db 展示连接信息与镜像变量表。
  *  两处都按「行」编辑，保存时由服务端序列化（下次部署生效）。 */
 export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate }) {
   const t = () => props.data.target;
@@ -159,6 +135,9 @@ export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate })
   const [depIds, setDepIds] = createSignal<number[]>([]);
   const [dbRefs, setDbRefs] = createSignal<DbRef[]>([]);
   const [conns, setConns] = createSignal<DbConnection[]>([]);
+  const [sources, setSources] = createSignal<EnvSource[]>([]);
+  const [bindings, setBindings] = createSignal<EnvBinding[]>([]);
+  const [imageVars, setImageVars] = createSignal<ImageVar[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
 
   onSettled(() => {
@@ -168,6 +147,9 @@ export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate })
         setDepIds(d.selectedDeps);
         setDbRefs(d.dbRefs);
         setConns(d.connections ?? (d.connection ? [d.connection] : []));
+        setSources(d.sources ?? []);
+        setBindings(d.bindings ?? []);
+        setImageVars(d.imageVars ?? []);
       })
       .catch((e) => setLoadError((e as Error).message));
   });
@@ -175,7 +157,7 @@ export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate })
   /** 逻辑库变量由宿主实例生成：只读 */
   const readOnly = () => isDb() && conns().some((c) => c.logical);
 
-  /** 依赖勾选 = 画布连线 + 写入连接串行；与 ServiceEnvTab/EnvDrawer 的语义一致 */
+  /** 依赖勾选 = 画布连线；变量注入改由 app 级的「变量来源」承担 */
   const toggleDep = (r: DbRef, on: boolean) => {
     setDepIds((cur) => (on ? [...cur, r.id] : cur.filter((id) => id !== r.id)));
     setRows((cur) =>
@@ -195,12 +177,12 @@ export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate })
             unwrap(
               api.targets({ id: t().id }).env.post({
                 entries: rows(),
-                ...(isDb() ? {} : { depIds: depIds() }),
+                ...(isDb() ? {} : { depIds: depIds(), bindings: bindings() }),
               }),
             ).then(() => ({
               notice: isDb()
                 ? "模板变量已保存，重新部署后生效"
-                : "变量已保存；引用数据库会自动连线，重新部署后生效",
+                : "变量已保存；重新部署后生效",
             })),
           { refreshBoard: true, reload: false },
         );
@@ -215,48 +197,23 @@ export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate })
 
       <Show when={!isDb()}>
         <p class="text-xs text-neutral-500">
-          写入 app 的 .env（enc1: 加密保存在控制面本地，不入
-          git），重新部署后生效。变量里出现本空间数据库的连接串时，画布会自动生成依赖线。
+          手填变量写入 app 的 .env（enc1: 加密保存在控制面本地，不入
+          git）。变量来源里勾选的键在部署前统一解析注入——库里换密码后自动跟随。
         </p>
-        <Show when={(props.data.sharedEnv ?? []).length > 0}>
-          <Section title="服务器共享变量" hint="选择即写入下方变量">
-            <select
-              class={field()}
-              value=""
-              onChange={(e) => {
-                const v = e.currentTarget.value;
-                if (!v) return;
-                const idx = v.indexOf("=");
-                setRows((cur) =>
-                  upsertEnvRow(cur, v.slice(0, idx), v.slice(idx + 1)),
-                );
-              }}
-            >
-              <option value="">选择共享变量…</option>
-              <For each={props.data.sharedEnv ?? []}>
-                {(s) => (
-                  <option value={`${s.envKey}=${s.url}`}>
-                    {s.name}（{s.dbType}）→ {s.envKey}
-                  </option>
-                )}
-              </For>
-            </select>
-          </Section>
-        </Show>
-        <Show when={dbRefs().length > 0}>
-          <Section title="引用数据库" hint="勾选 = 画布连线 + 注入连接串">
-            <DbRefPicker
-              refs={dbRefs()}
-              selected={depIds()}
-              onToggle={toggleDep}
-            />
-          </Section>
-        </Show>
+        <EnvSourcePicker
+          sources={sources()}
+          bindings={bindings()}
+          onChange={setBindings}
+        />
       </Show>
 
       <Section
-        title={isDb() ? "模板变量" : "变量"}
-        hint={isDb() ? "下次部署生效 · 加密保存" : "加密保存 · 下次部署生效"}
+        title={isDb() ? "镜像变量" : "变量"}
+        hint={
+          isDb()
+            ? "该镜像要的环境变量 · 下次部署生效 · 加密保存"
+            : "加密保存 · 下次部署生效"
+        }
       >
         <Show
           when={!readOnly()}
@@ -266,7 +223,19 @@ export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate })
             </p>
           }
         >
-          <EnvRowsEditor rows={rows()} onChange={setRows} />
+          <Show
+            when={isDb() && imageVars().length > 0}
+            fallback={
+              <EnvRowsEditor rows={rows()} onChange={setRows} />
+            }
+          >
+            {/* 镜像变量表：按声明渲染（中文名 + 说明），值仍存模板 env */}
+            <ImageVarsEditor
+              vars={imageVars()}
+              rows={rows()}
+              onChange={setRows}
+            />
+          </Show>
         </Show>
       </Section>
 
@@ -278,5 +247,6 @@ export function TargetEnvTab(props: { data: ServiceDrawerData; mutate: Mutate })
 }
 
 import { DbRefPicker } from "./app-detect";
+import { EnvSourcePicker, ImageVarsEditor } from "./env-sources";
 import { DbConnectionSection, EnvRowsEditor, envRowsFromText, envRowsToText, removeEnvRowsByValue, upsertEnvRow } from "./env";
 import { dnsChip, sslChip } from "./domains";

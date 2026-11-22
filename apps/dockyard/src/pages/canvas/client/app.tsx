@@ -17,7 +17,6 @@ import {
   DeployLogModal,
   DiscoveredModal,
   DomainsModal,
-  EnvDrawer,
   NewAppWizard,
   NewDbModal,
   ServiceDrawer,
@@ -73,9 +72,6 @@ function DrawerHost(props: { view: View }) {
             initialTab={v().tab}
           />
         )}
-      </Match>
-      <Match when={viewAs("env", props.view)}>
-        {(v) => <EnvDrawer targetId={v().targetId} />}
       </Match>
       <Match when={viewAs("domains", props.view)}>
         {(v) => <DomainsModal targetId={v().targetId} />}

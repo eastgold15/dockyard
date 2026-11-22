@@ -132,4 +132,15 @@ export const migrations: MigrationsJournal = [
       "CREATE INDEX `idx_deploy_log_chunks_target` ON `deploy_log_chunks` (`targetId`,`source`,`seq`);--> statement-breakpoint\n" +
       "PRAGMA foreign_keys=ON;",
   },
+  // 变量绑定（引用语义）：只存「来源 + 勾选的键名」，值在部署前现取。
+  //
+  // 迁移名刻意用 0032 而非 0031：drizzle 按 name 判断是否已执行（migrator.utils.js
+  // 的 getMigrationsToRun），改名字会让跑过早期版本的库重跑这条 ALTER —— 而
+  // envBindings 列那时已经加过，重跑必然「duplicate column」。沿用 0032 让老库
+  // 跳过（列已存在，状态正确）、新库正常执行（列不存在，执行一次）。
+  {
+    name: "0032_env_bindings",
+    timestamp: 32,
+    sql: "ALTER TABLE `deploy_targets` ADD `envBindings` text;",
+  },
 ];

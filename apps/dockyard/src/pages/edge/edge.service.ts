@@ -267,8 +267,44 @@ export class EdgeService {
   }
 }
 
+const IPV4 = /^\d+\.\d+\.\d+\.\d+$/;
+
+/** HTTPS DNS（DoH）端点：控制机的系统 DNS 在部分网络下会被劫持，
+ *  境外域名常被解析到 28.0.0.x 之类的假 IP（本地 dig 与 DoH 结果对不上）。
+ *  用明文记录比对会得出一大片「DNS 未指向本机」的假警报，真实域名永远拿不到路由。 */
+const DOH_ENDPOINTS = [
+  (host: string) =>
+    `https://dns.google/resolve?name=${encodeURIComponent(host)}&type=A`,
+  (host: string) =>
+    `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=A`,
+];
+
+async function resolveIpsViaDoh(host: string): Promise<string[]> {
+  for (const endpoint of DOH_ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint(host), {
+        headers: { accept: "application/dns-json" },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) continue;
+      const body = (await res.json()) as {
+        Answer?: { type?: number; data?: string }[];
+      };
+      const ips = (body.Answer ?? [])
+        .filter((a) => a.type === 1 && typeof a.data === "string" && IPV4.test(a.data))
+        .map((a) => a.data!);
+      if (ips.length) return [...new Set(ips)];
+    } catch {
+      /* 端点不可达 → 换下一个；全失败再回退系统 DNS */
+    }
+  }
+  return [];
+}
+
 async function resolveIps(host: string): Promise<string[]> {
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return [host];
+  if (IPV4.test(host)) return [host];
+  const doh = await resolveIpsViaDoh(host);
+  if (doh.length) return doh;
   try {
     return await resolve4(host);
   } catch {

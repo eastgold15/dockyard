@@ -27,6 +27,17 @@ import type { DeployRepository } from "./deploy.repository";
 import type { EdgeService } from "@/pages/edge/edge.socket";
 import { envFilePaths, type DetectedService } from "./detect";
 import {
+  IMAGE_VARS,
+  providedVars,
+  type ProvidedVar,
+} from "@/pages/resources/resources.socket";
+import {
+  auditSummary,
+  resolveEnvBindings,
+  type EnvSource,
+} from "./env-prepare";
+import type { EnvBinding } from "./schema";
+import {
   activateArtifact,
   createHarness,
   executeForm,
@@ -301,6 +312,7 @@ export class DeployService {
     envText?: string; // 识别结果合并出的 .env（enc1: 加密落库）
     overrideCompose?: string | null; // 资源限制 override（compose -f 叠加）
     dependsOn?: number[]; // 依赖的 db target id（画布连线 + 连接串引用血缘）
+    envBindings?: EnvBinding[]; // 变量绑定（引用语义：来源 + 勾选的键名）
     domains?: { hostname: string; serviceName?: string; targetPort: number }[];
     services?: DetectedService[]; // compose 服务清单（画布小卡片；剥离秘密值后明文落库）
     upServices?: string[]; // 实际 up 的服务子集（共享资源复用过滤中间件；undefined = 全量）
@@ -313,6 +325,7 @@ export class DeployService {
       overrideCompose,
       domains,
       dependsOn,
+      envBindings,
       services,
       upServices,
       projectId,
@@ -340,13 +353,15 @@ export class DeployService {
         : {}),
     });
     // 逻辑库容器名定死（对账用）；app 的容器名由用户 compose 决定，config 时读
-    if (envText?.trim() || overrideCompose)
+    if (envText?.trim() || overrideCompose || envBindings?.length)
       await this.repo.updateTarget(target.id, {
         ...(envText?.trim() ? { envJson: encryptSecret(envText) } : {}),
         // override 含服务级 environment（秘密值），enc1: 加密落库
         ...(overrideCompose
           ? { overrideCompose: encryptSecret(overrideCompose) }
           : {}),
+        // 变量绑定只存来源与键名（无秘密值），明文 JSON
+        ...(envBindings?.length ? { envBindings } : {}),
       });
     // 向导里已经填了数据库连接串：创建即生成依赖边（不必等用户再打开变量页保存一次）
     if (envText?.trim()) {
@@ -586,13 +601,242 @@ export class DeployService {
     }
   }
 
-  /** db 目标的模板变量文本（实例模板的 .env；逻辑库没有可编辑变量） */
+  /**
+   * 变量来源清单：app 能从哪些地方拿到变量。
+   *
+   * Railway 模型：库目标在部署时就声明好了自己的镜像变量（用户在变量抽屉填值），
+   * app 这边勾选「从哪个库拿哪几个变量」即可。清单 = 镜像变量 + 派生连接串。
+   *
+   * 两个来源种类：
+   * - db    托管库目标（实例 / 逻辑库）
+   * - shared 服务器共享资源
+   */
+  async envSourcesOf(target: DeployTarget): Promise<EnvSource[]> {
+    if (target.kind !== "app") return [];
+    const serverId = await this.harness.nodeServerId(target);
+    const out: EnvSource[] = [];
+
+    // 托管库目标：项目空间内所有 db target
+    const projectId =
+      target.projectId ?? (await this.projectOfNode(target.nodeId));
+    if (projectId) {
+      for (const db of await this.repo.dbTargetsOfProject(projectId)) {
+        if (!db.dbType) continue;
+        const vars = await this.providedVarsOfDb(db);
+        if (!vars.length) continue;
+        const dbServerId = await this.harness.nodeServerId(db);
+        out.push({
+          sourceKind: "db",
+          sourceId: db.id,
+          name: db.name,
+          dbType: db.dbType,
+          logical: Boolean(db.instanceOf),
+          sameServer: dbServerId === serverId,
+          envKey: suggestedEnvKey(db.dbType as DbType),
+          vars,
+          bindable: true,
+        });
+      }
+    }
+
+    // 服务器共享资源
+    for (const shared of await this.resourceService.sharedEnvOf(serverId)) {
+      const vars = await this.resourceService.providedVarsOf(
+        shared.resourceId,
+      );
+      if (!vars.length) continue;
+      out.push({
+        sourceKind: "shared",
+        sourceId: shared.resourceId,
+        name: shared.name,
+        dbType: shared.dbType,
+        logical: false,
+        sameServer: true,
+        envKey: shared.envKey,
+        vars,
+        bindable: true,
+      });
+    }
+
+    return out;
+  }
+
+  /** db 目标能提供哪些变量：实例取模板 env，逻辑库取创建时的凭据 */
+  private async providedVarsOfDb(db: DeployTarget): Promise<ProvidedVar[]> {
+    if (!db.dbType) return [];
+    const dbType = db.dbType as DbType;
+    const server = await this.serverService.byId(
+      await this.harness.nodeServerId(db),
+    );
+    const host = server?.host ?? "";
+
+    // 逻辑库：凭据在 envJson 的 {url, password} 里，没有镜像变量表
+    if (db.instanceOf) {
+      const parsed = this.dbLogicalCreds(db);
+      if (!parsed) return [];
+      return providedVars({
+        dbType,
+        envText: "",
+        host,
+        port: DB_PORTS[dbType],
+        url: parsed.url,
+        database: parsed.database,
+        user: parsed.user,
+        password: parsed.password,
+      });
+    }
+
+    // 实例：镜像变量表的值就是模板 .env
+    const envText = this.dbEnvTextOf(db);
+    if (!envText) return [];
+    return providedVars({
+      dbType,
+      envText,
+      host,
+      port: DB_PORTS[dbType],
+    });
+  }
+
+  /** 逻辑库凭据解析（url / password → 用户、库名） */
+  private dbLogicalCreds(
+    db: DeployTarget,
+  ): { url: string; password: string; user?: string; database?: string } | null {
+    if (!db.envJson) return null;
+    try {
+      const parsed = JSON.parse(decryptSecret(db.envJson)) as Record<
+        string,
+        unknown
+      >;
+      const url = typeof parsed.url === "string" ? parsed.url : null;
+      const password =
+        typeof parsed.password === "string" ? parsed.password : null;
+      if (!url || !password) return null;
+      // 连接串形态 postgres://user:pass@host:port/db —— 取用户与库名
+      const m = /^(\w+):\/\/([^:@/]*):([^@/]*)@[^/]*\/([^?]*)/.exec(url);
+      return {
+        url,
+        password,
+        ...(m ? { user: m[2]!, database: m[4]! } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** 目标所在节点的项目归属（无则 undefined） */
+  private async projectOfNode(nodeId: number): Promise<number | null> {
+    const targets = await this.repo.targetsOfNode(nodeId);
+    return targets.find((t) => t.projectId)?.projectId ?? null;
+  }
+
+  /**
+   * 保存变量绑定（引用语义：只存来源与键名，值在部署前现取）。
+   *
+   * 校验在服务端做——「这个键在来源里存不存在」只有服务端知道。
+   * 绑 db 来源时自动补一条画布依赖边：连线与绑定是同一件事的两面。
+   */
+  async saveEnvBindings(targetId: number, bindings: EnvBinding[]) {
+    const target = await this.repo.targetById(targetId);
+    if (!target || target.kind !== "app")
+      throw new ServiceError("部署目标不存在");
+    const sources = await this.envSourcesOf(target);
+    const byKey = new Map(
+      sources.map((s) => [`${s.sourceKind}:${s.sourceId}`, s]),
+    );
+    const taken = new Set<string>();
+    const edges = this.edgesOfTarget(target);
+    const nextEdges = [...edges];
+    for (const binding of bindings) {
+      const key = `${binding.sourceKind}:${binding.sourceId}`;
+      const source = byKey.get(key);
+      if (!source)
+        throw new ServiceError(
+          `变量来源不存在或已移除：${binding.sourceKind}#${binding.sourceId}`,
+        );
+      if (!source.sameServer)
+        throw new ServiceError(
+          `「${source.name}」在另一台服务器上，内网地址不可用`,
+        );
+      const available = new Set(source.vars.map((v) => v.key));
+      for (const k of binding.keys) {
+        if (!available.has(k))
+          throw new ServiceError(
+            `「${source.name}」里没有变量 ${k}（可用：${[...available].join("、") || "无"}）`,
+          );
+        const targetKey = binding.rename?.[k] ?? k;
+        if (taken.has(targetKey))
+          throw new ServiceError(`变量名冲突：${targetKey}（多个来源提供同名键）`);
+        taken.add(targetKey);
+      }
+      // db 来源必须对应一条画布依赖边
+      if (binding.sourceKind === "db") {
+        const exists = nextEdges.some(
+          (e) => e.db === binding.sourceId && e.service === null,
+        );
+        if (!exists)
+          nextEdges.push({
+            service: null,
+            db: binding.sourceId,
+            origin: "manual",
+          });
+      }
+    }
+    await this.repo.updateTarget(targetId, {
+      envBindings: bindings,
+      depEdges: nextEdges.length ? nextEdges : null,
+      dependsOn: [...new Set(nextEdges.map((e) => e.db))],
+    });
+    return { bindings, edges: nextEdges };
+  }
+
+  /**
+   * 部署前的变量准备：手填 + 绑定引用 → 本轮最终变量集。
+   *
+   * 这是「变量什么时候生效」的唯一答案。解析结果只写进本轮内存 target
+   * （不写回库——库的密码会变，下次部署要现取）。
+   */
+  private async prepareTargetEnv(
+    target: DeployTarget,
+    log: Log,
+  ): Promise<DeployTarget> {
+    if (target.kind !== "app") return target;
+    const bindings = target.envBindings ?? [];
+    if (!bindings.length) return target;
+    const sources = await this.envSourcesOf(target);
+    const resolved = resolveEnvBindings({
+      manualText: this.envTextOf(target),
+      bindings,
+      sources: new Map(
+        sources.map((s) => [`${s.sourceKind}:${s.sourceId}`, s]),
+      ),
+    });
+    await log("🔧 环境变量准备（部署前）");
+    for (const line of auditSummary(resolved.audit)) await log(line);
+    return { ...target, envJson: encryptSecret(resolved.envText) };
+  }
+
+  /**
+   * db 目标的模板变量文本（实例模板的 .env；逻辑库没有可编辑变量）。
+   *
+   * 补齐镜像变量表里缺失的默认值：存量库的模板 env 是旧版渲染的（只有密码等
+   * 少数几个键），而新变量表把镜像要的变量全列了出来。不补齐的话表单里一堆
+   * 空行，用户会以为「没设」——实际容器吃的是镜像默认值。补齐后表单与容器
+   * 事实一致，且默认值与镜像默认相同（PGDATA 尤其关键：改了等于换数据目录）。
+   */
   dbEnvTextOf(target: DeployTarget): string {
     if (target.kind !== "db" || target.instanceOf || !target.envJson) return "";
     try {
-      return (
+      const env = (
         JSON.parse(decryptSecret(target.envJson)) as { env?: string }
       ).env ?? "";
+      if (!target.dbType) return env;
+      const map = textToEnvMap(env);
+      for (const v of IMAGE_VARS[target.dbType as DbType]) {
+        if (v.key in map) continue;
+        if (v.defaultValue === undefined) continue;
+        map[v.key] = { value: v.defaultValue, secret: false };
+      }
+      return envMapToText(map);
     } catch {
       return "";
     }
@@ -1139,10 +1383,12 @@ export class DeployService {
       status: "queued",
     });
     try {
-      const form = await this.resolveForm(target);
+      // 变量准备：手填 + 绑定引用 → 本轮最终变量集（唯一注入时机）
+      const resolved = await this.prepareTargetEnv(target, log);
+      const form = await this.resolveForm(resolved);
       await executeForm(
         this.harness,
-        { target, run: dep, log, setStatus, setStage },
+        { target: resolved, run: dep, log, setStatus, setStage },
         form,
       );
       await setStatus("success", { finishedAt: new Date() });

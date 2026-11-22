@@ -1,6 +1,7 @@
 import { ServiceError } from "@elysiax/core";
 import { randomBytes } from "node:crypto";
 import { parse as parseDotenv } from "dotenv";
+import { IMAGE_VARS } from "./db-vars";
 
 export type DbType = "postgres" | "mysql" | "redis" | "mongo";
 
@@ -28,6 +29,28 @@ const DATA_DIRS: Record<DbType, string> = {
 
 export function generatePassword(): string {
   return randomBytes(18).toString("base64url");
+}
+
+/**
+ * 渲染镜像变量表 → .env 文本。
+ *
+ * 变量表（db-vars.ts）声明了每个镜像要哪些变量；这里把默认值/生成的密码落成
+ * .env 行。用户在变量抽屉里看到的这张表，就是容器真正吃到的东西——
+ * 「变量从哪来」在部署前就确定，不靠事后读容器反推。
+ */
+export function renderImageVars(dbType: DbType): {
+  env: Record<string, string>;
+  lines: string[];
+} {
+  const env: Record<string, string> = {};
+  const lines: string[] = [];
+  for (const v of IMAGE_VARS[dbType]) {
+    const value = v.generate ? generatePassword() : (v.defaultValue ?? "");
+    if (!value) continue;
+    env[v.key] = value;
+    lines.push(`${v.key}=${value}`);
+  }
+  return { env, lines };
 }
 
 export { PORTS as DB_PORTS };
@@ -77,7 +100,6 @@ export function dbCompose(
   assertSafeResourceName(name);
   const image = IMAGES[dbType];
   const port = PORTS[dbType];
-  const password = generatePassword();
   const volume = `${name}-data`;
   const labels = ownership
     ? "resourceId" in ownership
@@ -103,31 +125,7 @@ export function dbCompose(
     : undefined;
   const projectName = project ? `name: ${project}\n` : "";
 
-  const envByType: Record<
-    DbType,
-    { env: Record<string, string>; lines: string[] }
-  > = {
-    postgres: {
-      env: { POSTGRES_PASSWORD: password },
-      lines: [`POSTGRES_PASSWORD=${password}`],
-    },
-    mysql: {
-      env: { MYSQL_ROOT_PASSWORD: password },
-      lines: [`MYSQL_ROOT_PASSWORD=${password}`],
-    },
-    redis: { env: {}, lines: [] },
-    mongo: {
-      env: {
-        MONGO_INITDB_ROOT_USERNAME: "root",
-        MONGO_INITDB_ROOT_PASSWORD: password,
-      },
-      lines: [
-        `MONGO_INITDB_ROOT_USERNAME=root`,
-        `MONGO_INITDB_ROOT_PASSWORD=${password}`,
-      ],
-    },
-  };
-  const { env, lines } = envByType[dbType];
+  const { env, lines } = renderImageVars(dbType);
 
   const envBlock = Object.keys(env).length ? `    env_file: .env\n` : "";
   const compose = `${projectName}services:
@@ -246,7 +244,11 @@ export function logicalDbCommands(
 }
 
 /** 逻辑库连接串 */
-/** 实例目标的根连接串：从创建时生成的 env 文本里取密码推导（env 缺密码的类型返回 null） */
+/** 实例目标的根连接串：从 env 文本（镜像变量表）里取凭据推导。
+ *
+ *  用户名/库名也取自变量表（POSTGRES_USER / POSTGRES_DB），不再硬编码——
+ *  用户改了变量表里的用户名，连接串必须跟着变，否则「填了 A 却在连 B」。
+ *  变量缺省时用官方镜像的默认（postgres/postgres、root/无库）。 */
 export function instanceUrl(
   dbType: DbType,
   host: string,
@@ -258,17 +260,26 @@ export function instanceUrl(
   switch (dbType) {
     case "postgres": {
       const pw = pick("POSTGRES_PASSWORD");
-      return pw ? `postgres://postgres:${pw}@${host}:${port}/postgres` : null;
+      if (!pw) return null;
+      const user = pick("POSTGRES_USER") || "postgres";
+      const db = pick("POSTGRES_DB") || "postgres";
+      return `postgres://${encodeURIComponent(user)}:${encodeURIComponent(pw)}@${host}:${port}/${encodeURIComponent(db)}`;
     }
     case "mysql": {
       const pw = pick("MYSQL_ROOT_PASSWORD");
-      return pw ? `mysql://root:${pw}@${host}:${port}` : null;
+      if (!pw) return null;
+      const user = pick("MYSQL_USER") || "root";
+      const db = pick("MYSQL_DATABASE");
+      return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pw)}@${host}:${port}${db ? `/${encodeURIComponent(db)}` : ""}`;
     }
     case "redis":
       return `redis://${host}:${port}`;
     case "mongo": {
       const pw = pick("MONGO_INITDB_ROOT_PASSWORD");
-      return pw ? `mongodb://root:${pw}@${host}:${port}` : null;
+      if (!pw) return null;
+      const user = pick("MONGO_INITDB_ROOT_USERNAME") || "root";
+      const db = pick("MONGO_INITDB_DATABASE") || "admin";
+      return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pw)}@${host}:${port}/${encodeURIComponent(db)}`;
     }
   }
 }

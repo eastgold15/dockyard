@@ -76,6 +76,8 @@ export interface SharedMatch {
   envKey: string;
   url: string;
   displayUrl: string;
+  /** 共享资源 id（变量绑定的来源标识） */
+  resourceId: number;
 }
 export interface DetectStepData {
   carry: Carry;

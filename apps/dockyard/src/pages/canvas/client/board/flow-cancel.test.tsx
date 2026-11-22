@@ -5,7 +5,7 @@
 // 入口里的 JSX 会走 Bun 内置的自动 runtime（React 风格 props），Solid 组件收不到
 // class / 事件绑定（表现为「渲染出来了但点不动」）。JSX 都在 flow.harness.tsx。
 import { expect, test } from "bun:test";
-import { createComponent, createSignal } from "solid-js";
+import { createComponent, createSignal, flush } from "solid-js";
 import { delegateEvents, render } from "@solidjs/web";
 import type { NodeViewProps } from "@elysiax/flow";
 import {

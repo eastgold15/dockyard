@@ -12,7 +12,11 @@ import { parseOwnerRepo } from "@/pages/github/github.socket";
 import { openServerSftp } from "@/pages/servers/servers.socket";
 import { logicalDbCommands, type DbType } from "@/pages/resources/resources.socket";
 import type { Project } from "@/pages/projects/projects.socket";
-import { composeInterpVars, envFilePaths, textToEnvMap } from "./detect";
+import {
+  composeInterpRequirements,
+  envFilePaths,
+  textToEnvMap,
+} from "./detect";
 import { fetchViaControlPlane, probeGithub, safeDirName } from "./source";
 import {
   dockerArch,
@@ -531,12 +535,19 @@ export function localAppForm(proj: Project): DeployForm {
 }
 
 /**
- * 部署前对账：compose 引用的插值变量 vs 目标变量。
+ * 部署前对账：compose 引用的插值变量 vs 本次部署的变量。
  *
  * 为什么需要：`docker compose` 解析 YAML 时就把 `${X}` 就地替换，缺值只打一行英文警告并
  * 用空串顶上。构建阶段缺值通常无害（不启动容器），但 up 阶段缺值会让服务拿到空配置，
  * 而用户只看得到「我明明填了 DATABASE_URL」——缺的其实是另一个键（如 POSTGRES_PASSWORD）。
- * 这里提前算差集，用中文点名，别让人去翻 compose 源码。
+ *
+ * 两档处理：
+ * - 必填（`${VAR:?}`）：compose 自己就会报错 → 提前中止，指出缺哪个键
+ * - 普通（`${VAR}`）：compose 替换成空串 → 警告（空密码连库是常见症状，
+ *   但也可能是服务自己判空容错，不一刀切拦死）
+ *
+ * 注意：这里读到的 envJson 已经是 prepareTargetEnv 解析后的结果——绑定引用的值
+ * 也在里面，所以「已绑定」的库不会误报缺值。
  */
 async function reportMissingInterpVars(
   composeText: string,
@@ -544,16 +555,26 @@ async function reportMissingInterpVars(
   log: (chunk: string) => Promise<void> | void,
   serviceNames?: string[],
 ): Promise<string[]> {
-  const referenced = composeInterpVars(composeText, serviceNames);
+  const { referenced, required } = composeInterpRequirements(
+    composeText,
+    serviceNames,
+  );
   if (!referenced.length) return [];
   const have = new Set(
     Object.keys(textToEnvMap(envJson ? decryptSecret(envJson) : "")),
   );
   const missing = referenced.filter((k) => !have.has(k));
-  if (missing.length)
+  const missingRequired = required.filter((k) => !have.has(k));
+  if (missingRequired.length)
+    throw new ServiceError(
+      `compose 引用了必填变量但没有值：${missingRequired.join("、")}` +
+        `（在「变量」里手填，或在「变量来源」里勾选提供它的库）`,
+    );
+  const warnOnly = missing.filter((k) => !missingRequired.includes(k));
+  if (warnOnly.length)
     await log(
-      `⚠️ compose 引用但变量里没有：${missing.join("、")}` +
-        `（缺值会被替换成空串；在「变量」里补上，或给 compose 写默认值 \${X:-default}）`,
+      `⚠️ compose 引用但变量里没有：${warnOnly.join("、")}` +
+        `（缺值会被替换成空串；在「变量」里补上，或在「变量来源」里勾选提供它的库）`,
     );
   return missing;
 }

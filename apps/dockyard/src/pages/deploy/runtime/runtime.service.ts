@@ -170,7 +170,12 @@ export class RuntimeService {
 
   /** 容器实时日志（≠ 部署日志）：docker logs --tail 300，非 TTY 输出带 8 字节多路复用帧头需剥离。
    *  快照同时按增量落进统一日志表（source=runtime）——重复拉取只补新增段。 */
-  async serviceLogs(targetId: number, svcName?: string): Promise<string> {
+  async serviceLogs(
+    targetId: number,
+    svcName?: string,
+    /** 秒级 unix 时间：只回读该时刻之后的日志（前端「清空」后传） */
+    since?: number,
+  ): Promise<string> {
     const target = await this.deploy.targetById(targetId);
     if (!target) return "部署目标不存在";
     try {
@@ -180,6 +185,7 @@ export class RuntimeService {
         stdout: true,
         stderr: true,
         tail: 300,
+        ...(since !== undefined ? { since } : {}),
       });
       // 多路复用帧头剥离（TTY 容器无帧头，按纯文本直通）
       const text = decodeDockerFrames(buf).trimEnd();

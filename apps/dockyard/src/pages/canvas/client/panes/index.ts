@@ -12,7 +12,6 @@ export {
 export { NewAppWizard } from "./new-app";
 export { NewDbModal } from "./new-db";
 export { DomainsModal } from "./domains";
-export { EnvDrawer } from "./env";
 export { DeployLogModal } from "./deploy-log";
 export { ServiceDrawer } from "./service";
 export { DiscoveredModal } from "./discovered";

@@ -5,6 +5,7 @@ import {
   type DbType,
   type SharedEnv,
 } from "@/pages/resources/resources.socket";
+import { IMAGE_VARS } from "@/pages/resources/resources.socket";
 import { type GithubService, type RepoBrief } from "@/pages/github/github.socket";
 import { type CanvasService } from "@/pages/canvas/canvas.socket";
 import { type ProjectService } from "@/pages/projects/projects.socket";
@@ -256,6 +257,17 @@ export default defineRoutes<DeployServices>()
         services: t.Array(svcEditSchema),
         depIds: t.Array(t.Number()),
         reuse: t.Array(t.String()),
+        // 变量绑定（引用语义）：来源 + 勾选的键名，值在部署前现取
+        envBindings: t.Optional(
+          t.Array(
+            t.Object({
+              sourceKind: t.Union([t.Literal("db"), t.Literal("shared")]),
+              sourceId: t.Number(),
+              keys: t.Array(t.String()),
+              rename: t.Optional(t.Record(t.String(), t.String())),
+            }),
+          ),
+        ),
       }),
     },
     async ({ di, body }) => {
@@ -302,6 +314,7 @@ export default defineRoutes<DeployServices>()
           services: selectedServices,
         }),
         dependsOn: body.depIds,
+        envBindings: body.envBindings,
         domains: selectedServices
           .filter((s) => s.domain && s.port)
           .map((s) => ({
@@ -549,10 +562,14 @@ export default defineRoutes<DeployServices>()
     "/targets/:id/service/logs",
     {
       params: t.Object({ id: t.Number() }),
-      query: t.Object({ svc: t.Optional(t.String()) }),
+      query: t.Object({
+        svc: t.Optional(t.String()),
+        // 秒级 unix 时间：前端「全部清空」后传，只回读该时刻之后的容器日志
+        since: t.Optional(t.Numeric()),
+      }),
     },
     async ({ di, params, query }) =>
-      ctxOf(di).console.serviceLogs(params.id, query.svc),
+      ctxOf(di).console.serviceLogs(params.id, query.svc, query.since),
   )
   .post(
     "/targets/:id/service/env",
@@ -762,6 +779,12 @@ export default defineRoutes<DeployServices>()
         entries: svc.envEntriesOf(target),
         dbRefs: isApp ? await svc.dbRefsForTarget(target) : [],
         selectedDeps: isApp ? target.dependsOn ?? [] : [],
+        // 变量来源清单（勾选注入用）+ 已保存的绑定
+        sources: isApp ? await svc.envSourcesOf(target) : [],
+        bindings: isApp ? (target.envBindings ?? []) : [],
+        // db 目标的镜像变量声明表（表单按它渲染，值仍存在模板 env 里）
+        imageVars:
+          !isApp && target.dbType ? IMAGE_VARS[target.dbType] : [],
         // connection 兼容旧调用；connections 同时覆盖 app 里自带的数据库服务
         connection: connections[0] ?? null,
         connections,
@@ -778,6 +801,16 @@ export default defineRoutes<DeployServices>()
           t.Array(t.Object({ key: t.String(), value: t.String() })),
         ),
         depIds: t.Optional(t.Array(t.Number())),
+        bindings: t.Optional(
+          t.Array(
+            t.Object({
+              sourceKind: t.Union([t.Literal("db"), t.Literal("shared")]),
+              sourceId: t.Number(),
+              keys: t.Array(t.String()),
+              rename: t.Optional(t.Record(t.String(), t.String())),
+            }),
+          ),
+        ),
       }),
     },
     async ({ di, params, body }) => {
@@ -797,6 +830,8 @@ export default defineRoutes<DeployServices>()
         }
         await svc.updateAppEnv(params.id, body.envText ?? "", body.depIds ?? []);
       }
+      // 绑定与手填变量一起保存（一次提交，不分两处）
+      if (body.bindings) await svc.saveEnvBindings(params.id, body.bindings);
       return { ok: true as const };
     },
   )

@@ -9,6 +9,7 @@ export type {
   TargetService,
   TargetServicesDoc,
   DepEdge,
+  EnvBinding,
 } from "./schema";
 export type { DeploymentRow } from "./deploy.repository";
 export { DeployService, sourceTypeOf } from "./deploy.service";
@@ -29,6 +30,9 @@ export {
   guessDbType,
 } from "./detect";
 export type { DetectResult, DetectedService } from "./detect";
+// 变量绑定：来源 + 勾选的键（值在部署前现取）
+export type { EnvSource, EnvSourceKind } from "./env-prepare";
+export type { ProvidedVar } from "@/pages/resources/resources.socket";
 
 // Eden Treaty 的 API 类型出口：canvas client（跨原子）经插座引用，
 // type-only 在浏览器打包时被擦除，不进 bundle

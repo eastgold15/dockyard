@@ -41,6 +41,9 @@ export const deployTargets = sqliteTable(
     overrideCompose: text(),
     // 环境变量（敏感值 enc1: 加密）
     envJson: text(),
+    // 变量绑定：从库目标/共享资源勾选了哪些变量（只存来源+键名，不存值）。
+    // 部署前统一解析取值——库重建换密码后 app 自动跟随。
+    envBindings: text({ mode: "json" }).$type<EnvBinding[]>(),
     // app 依赖的 db target id 列表（画布连线 + 连接串引用的血缘；不做外键，删 db 仅断线）
     dependsOn: text({ mode: "json" }).$type<number[]>(),
     // compose 服务清单（创建时从 DetectedService 落库，存量惰性补全；无秘密值，明文 JSON）
@@ -196,6 +199,22 @@ export interface DepEdge {
   db: number; // 依赖端 target id（托管 db 或 compose 自带库的单服务 app；画布按 kind 解析源节点）
   /** 边的来源：manual = 画布拖线/勾选；env = app 变量里出现该库连接串自动派生（重存变量时重算） */
   origin?: "manual" | "env";
+}
+
+/**
+ * 变量绑定：从某个来源勾选了哪几个变量（只记来源与键名，不记值）。
+ *
+ * 引用语义——值在部署前现取。代价是解析时要有来源可读；收益是库换密码后
+ * app 不会带着过期密码去连库。
+ */
+export interface EnvBinding {
+  sourceKind: "db" | "shared";
+  /** db = deploy_targets.id；shared = resources.id */
+  sourceId: number;
+  /** 勾选的变量名 */
+  keys: string[];
+  /** 可选改名：源键 → app 侧键名（不配则同名） */
+  rename?: Record<string, string>;
 }
 
 /** 六阶段流水线的阶段名（执行序：源→构建→传输→运行→暴露→产物） */

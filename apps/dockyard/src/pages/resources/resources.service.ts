@@ -9,7 +9,9 @@ import {
   sharedContainerNameOf,
   suggestedEnvKey,
   type DbType,
+  DB_PORTS,
 } from "./db-templates";
+import { providedVars, type ProvidedVar } from "./db-vars";
 import { openServerSftp, type ServerService } from "@/pages/servers/servers.socket";
 import type { NewResource, ResourceRepository } from "./resources.repository";
 
@@ -188,6 +190,26 @@ export class ResourceService {
         });
     }
     return out;
+  }
+
+  /**
+   * 共享资源能提供哪些变量（勾选列表的数据源）。
+   *
+   * 镜像变量（部署时填的值）+ 派生连接串。共享资源还没部署时没有 url，
+   * 但镜像变量照样在——连接串用宿主地址现算，够 app 勾选了。
+   */
+  async providedVarsOf(resourceId: number): Promise<ProvidedVar[]> {
+    const resource = await this.mustGet(resourceId);
+    const creds = credsOf(resource);
+    if (!creds) return [];
+    const server = await this.serverService.byId(resource.serverId);
+    return providedVars({
+      dbType: resource.dbType,
+      envText: creds.env,
+      host: server?.host,
+      port: creds.port ?? DB_PORTS[resource.dbType],
+      url: creds.url,
+    });
   }
 
   private async mustGet(id: number): Promise<ServerResource> {

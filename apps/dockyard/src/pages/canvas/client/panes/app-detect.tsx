@@ -28,6 +28,7 @@ import type {
 import type { Domain } from "@/pages/edge/edge.socket";
 import type { RepoBrief } from "@/pages/github/github.socket";
 import type { DbConnection, DbRef, EnvEntry } from "@/pages/deploy/deploy.socket";
+import type { EnvBinding } from "@/pages/deploy/deploy.socket";
 import type { DetectResult, DetectedService } from "@/pages/deploy/deploy.socket";
 import type { DiscoveredContainer } from "../../canvas.model";
 import copy from "copy-to-clipboard";
@@ -109,6 +110,8 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
   const [envText, setEnvText] = createSignal(props.data.envText);
   const [composePath, setComposePath] = createSignal(detect.composePath);
   const [depIds, setDepIds] = createSignal<number[]>([]);
+  // 变量绑定（引用语义）：勾选哪个库的哪个键，值在部署前现取
+  const [bindings, setBindings] = createSignal<EnvBinding[]>([]);
   const [reuse, setReuse] = createSignal<ReadonlySet<string>>(
     new Set(sharedMatches.map((m) => m.service)),
   );
@@ -123,6 +126,30 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
       .filter((l) => l.trim() && l !== line);
     if (on) lines.push(line);
     setEnvText(lines.join("\n"));
+  };
+
+  /** 绑定增删：同一来源合并 keys（勾选多个键 = 一条绑定） */
+  const toggleBinding = (
+    sourceKind: EnvBinding["sourceKind"],
+    sourceId: number,
+    key: string,
+    on: boolean,
+  ) => {
+    setBindings((cur) => {
+      const hit = cur.find(
+        (b) => b.sourceKind === sourceKind && b.sourceId === sourceId,
+      );
+      if (!hit)
+        return on
+          ? [...cur, { sourceKind, sourceId, keys: [key] }]
+          : cur;
+      const keys = new Set(hit.keys);
+      if (on) keys.add(key);
+      else keys.delete(key);
+      return cur.map((b) =>
+        b === hit ? { ...b, keys: [...keys] } : b,
+      );
+    });
   };
 
   const patchSvc = (name: string, patch: Partial<SvcEdit>) =>
@@ -159,6 +186,7 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
             },
           ],
           depIds: depIds(),
+          envBindings: bindings(),
           reuse: [...reuse()].filter((r) => r === svc.name),
         }),
       );
@@ -190,6 +218,7 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
           envText: envText(),
           services: [],
           depIds: depIds(),
+          envBindings: bindings(),
           reuse: [],
         }),
       );
@@ -386,7 +415,7 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
                         if (on) next.add(m.service);
                         else next.delete(m.service);
                         setReuse(next);
-                        syncEnvLine(`${m.envKey}=${m.url}`, on);
+                        toggleBinding("shared", m.resourceId, m.envKey, on);
                       }}
                     />
                     <span class="flex min-w-0 flex-col">
@@ -420,7 +449,7 @@ export function AppDetectStep(props: { data: DetectStepData; onBack?: () => void
                 setDepIds((cur) =>
                   on ? [...cur, r.id] : cur.filter((id) => id !== r.id),
                 );
-                syncEnvLine(`${r.envKey}=${r.url}`, on);
+                toggleBinding("db", r.id, r.envKey, on);
               }}
             />
           </Section>

@@ -59,3 +59,38 @@ export function textToEnvMap(text: string): Record<string, EnvValue> {
   }
   return out;
 }
+
+// ── 秘密判定（服务端与浏览器共用，故放零依赖模块）──
+
+/** 键名里的秘密特征词 */
+const SECRET_WORDS = [
+  "PASS",
+  "PWD",
+  "SECRET",
+  "TOKEN",
+  "CREDENTIAL",
+  "PRIVATE",
+  "APIKEY",
+  "API_KEY",
+];
+
+/** 连接串里的 user:pass@ 形态 */
+const URL_CREDENTIALS = /:\/\/[^/@]*:[^/@]*@/;
+
+/** 值是否含明文凭据（连接串里的密码段） */
+export function valueHasCredential(value: string): boolean {
+  return URL_CREDENTIALS.test(value);
+}
+
+/**
+ * 键名 + 值双重判定：这个变量算不算秘密。
+ *
+ * 键名命中秘密词，或值本身带凭据（连接串）→ 秘密。纯键名判定会漏掉
+ * `DATABASE_URL=postgres://u:p@h/db` 这类——键名不像秘密，值里有。
+ */
+export function isSecretEnvKey(key: string, value?: string): boolean {
+  const upper = key.toUpperCase();
+  if (SECRET_WORDS.some((w) => upper.includes(w))) return true;
+  if (value && valueHasCredential(value)) return true;
+  return false;
+}

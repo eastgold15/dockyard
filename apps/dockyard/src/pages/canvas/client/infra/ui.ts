@@ -16,7 +16,6 @@ export type View =
   // projectId = 当前透镜：新建实例必须带项目归属，否则透镜过滤后卡片立即消失
   | { kind: "new-db"; nodeId: number; projectId?: number | null }
   | { kind: "service"; targetId: number; svc?: string; tab?: string }
-  | { kind: "env"; targetId: number }
   | { kind: "domains"; targetId: number }
   | { kind: "log"; targetId: number; dep?: number }
   // 发现容器（只读）：卡片数据已在 /board 快照里，无需再拉接口

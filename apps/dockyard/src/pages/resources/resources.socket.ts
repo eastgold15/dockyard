@@ -23,3 +23,6 @@ export {
   suggestedEnvKey,
 } from "./db-templates";
 export type { DbType } from "./db-templates";
+// 镜像变量表（Railway 模型：部署数据库时声明该镜像要哪些变量，app 侧勾选注入）
+export { IMAGE_VARS, derivedVars, providedVars } from "./db-vars";
+export type { ImageVar, ProvidedVar } from "./db-vars";
